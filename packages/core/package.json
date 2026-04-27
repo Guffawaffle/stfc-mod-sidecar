@@ -1,0 +1,20 @@
+{
+  "name": "@stfc-mod-sidecar/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Core event types, battle-log parser, and diagnostics helpers for STFC Mod Sidecar.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  }
+}

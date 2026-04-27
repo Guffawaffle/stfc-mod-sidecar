@@ -1,0 +1,8 @@
+# Placeholder battle-log sample for parser tests and docs.
+# Replace with redacted real STFC battle-log lines before tightening parser rules.
+battleId=sample-001 combat started playerShip=USS Example enemy=Hostile Surveyor
+Round 1
+Critical hit: 1,240 damage
+Mitigation: shield absorbed 320 damage
+Victory battleId=sample-001 combat ended
+This line is intentionally not parsed yet.

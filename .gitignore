@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+.vitest/
+
+*.log
+*.local
+.env
+.env.*
+
+diagnostic-bundles/
+samples/private/
+tmp/
+
+.DS_Store
+Thumbs.db
