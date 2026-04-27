@@ -116,7 +116,7 @@ function renderSelectedEvent() {
 
     const entry = state.snapshot.events.find((item) => item.lineNumber === state.selectedLineNumber);
     if (!entry) {
-        elements.detailView.appendChild(renderEmpty("Select an event from the feed list."));
+        elements.detailView.appendChild(renderEmpty("Select a feed event to inspect its payload."));
         return;
     }
 

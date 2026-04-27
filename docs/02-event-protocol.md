@@ -179,6 +179,13 @@ It is useful for viewers and transitional consumers, but it is not the long-term
     "events": [],
     "rounds": [],
     "attackRows": [],
+    "csvParity": {
+      "reference": "stfc_client_csv_export",
+      "status": "partial",
+      "columns": [],
+      "rows": [],
+      "coverage": {}
+    },
     "decode": {},
     "parity": {
       "reference": "stfc_client_csv_export",
@@ -198,6 +205,45 @@ The first version favors reliable structured IDs over guessed display text. CSV-
 Consumers should treat `battle.report` as a convenience bundle and ignore unknown additive properties.
 
 Fleet entries may include additive display metadata such as `display_name`, `display_name_source`, `participant_kind`, `ship_level`, and `fleet_type`. Hostile names from the game may arrive as empty or placeholder text such as `Retrieving...`; emitters should preserve raw IDs while using `display_name` for derived, reviewable labels.
+
+## `battle.analytics`
+
+`battle.analytics` carries derived, reviewable battle analysis built from the canonical capture stream. The first implemented slice is a Prime CSV parity table generated from decoded attack records.
+
+```json
+{
+  "protocolVersion": "stfc.sidecar.events.v0",
+  "type": "battle.analytics",
+  "schemaVersion": "stfc.battle.analytics.v0",
+  "timestamp": "2026-04-26T20:54:44",
+  "source": "stfc-community-mod",
+  "journalId": "2709118446356718841",
+  "battleId": "2709118446356718841",
+  "battleType": 8,
+  "analytics": {
+    "summary": {},
+    "rounds": [],
+    "attackRows": [],
+    "csvParity": {
+      "reference": "stfc_client_csv_export",
+      "status": "partial",
+      "columns": [],
+      "rows": [],
+      "coverage": {
+        "attackRecordCount": 0,
+        "csvParityRowCount": 0,
+        "abilityRowCount": 0,
+        "catalogResolved": false
+      }
+    },
+    "provenance": {
+      "ruleVersion": "csv_parity_attack_rows.v1"
+    }
+  }
+}
+```
+
+Parity rows use Prime CSV column names in camelCase and keep `sourceKind`, segment/record indexes, ship IDs, component IDs, `confidence`, and `identityStatus` for provenance. Unknown catalog-backed values are emitted as explicit placeholders until the sidecar resolver can map officers, forbidden tech, ship abilities, hull names, resources, and locations.
 
 ## `session.event`
 

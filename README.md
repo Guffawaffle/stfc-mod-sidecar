@@ -105,6 +105,8 @@ npm run viewer
 
 Then open `http://127.0.0.1:43127`.
 
+The root route is now the viewer home page. The current battle-log tool lives at `http://127.0.0.1:43127/battle-log/`.
+
 Server control commands:
 
 ```bash
@@ -135,6 +137,8 @@ npm run viewer:run
 ```
 
 Detailed operating notes live in `docs/07-log-viewer.md`.
+
+Battle-log parser and analyzer requirements live in `docs/11-battle-log-parser-analyzer-requirements.md`.
 
 ## Battle-Log Samples
 

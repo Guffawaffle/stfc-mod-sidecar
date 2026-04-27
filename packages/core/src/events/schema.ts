@@ -1,10 +1,14 @@
 import {
   SIDECAR_EVENT_PROTOCOL_VERSION,
+  BATTLE_ANALYTICS_SCHEMA_VERSION,
   BATTLE_CAPTURE_SCHEMA_VERSION,
   BATTLE_REPORT_SCHEMA_VERSION,
+  CATALOG_SNAPSHOT_SCHEMA_VERSION,
+  type BattleAnalyticsEvent,
   type BattleEvent,
   type BattleCaptureEvent,
   type BattleReportEvent,
+  type CatalogSnapshotEvent,
   type DebugEvent,
   type HookEvent,
   type IntegrationEvent,
@@ -19,7 +23,9 @@ const EVENT_TYPES = new Set<SidecarEventType>([
   "hook.event",
   "battle.event",
   "battle.capture",
+  "battle.analytics",
   "battle.report",
+  "catalog.snapshot",
   "session.event",
   "integration.event",
 ]);
@@ -58,8 +64,12 @@ export function isSidecarEvent(value: unknown): value is SidecarEvent {
       return isBattleEvent(value);
     case "battle.capture":
       return isBattleCaptureEvent(value);
+    case "battle.analytics":
+      return isBattleAnalyticsEvent(value);
     case "battle.report":
       return isBattleReportEvent(value);
+    case "catalog.snapshot":
+      return isCatalogSnapshotEvent(value);
     case "session.event":
       return isSessionEvent(value);
     case "integration.event":
@@ -112,6 +122,35 @@ export function isBattleReportEvent(value: unknown): value is BattleReportEvent 
     isString(value.journalId) &&
     isRecord(value.report)
   );
+}
+
+export function isBattleAnalyticsEvent(value: unknown): value is BattleAnalyticsEvent {
+  return (
+    isRecord(value) &&
+    value.type === "battle.analytics" &&
+    value.schemaVersion === BATTLE_ANALYTICS_SCHEMA_VERSION &&
+    isString(value.journalId) &&
+    isRecord(value.analytics)
+  );
+}
+
+export function isCatalogSnapshotEvent(value: unknown): value is CatalogSnapshotEvent {
+  if (
+    !isRecord(value) ||
+    value.type !== "catalog.snapshot" ||
+    value.schemaVersion !== CATALOG_SNAPSHOT_SCHEMA_VERSION ||
+    !isString(value.journalId) ||
+    !isRecord(value.catalog)
+  ) {
+    return false;
+  }
+
+  const catalog = value.catalog as JsonObject;
+  if (!isRecord(catalog.domains) || !isRecord(catalog.coverage)) {
+    return false;
+  }
+
+  return true;
 }
 
 export function isSessionEvent(value: unknown): value is SessionEvent {

@@ -8,7 +8,9 @@ export type SidecarEventType =
   | "hook.event"
   | "battle.event"
   | "battle.capture"
+  | "battle.analytics"
   | "battle.report"
+  | "catalog.snapshot"
   | "session.event"
   | "integration.event";
 
@@ -80,6 +82,7 @@ export interface BattleEvent extends SidecarEventBase<"battle.event"> {
 
 export const BATTLE_REPORT_SCHEMA_VERSION = "stfc.sidecar.battle-report.v0" as const;
 export const BATTLE_CAPTURE_SCHEMA_VERSION = "stfc.battle.capture.v1" as const;
+export const BATTLE_ANALYTICS_SCHEMA_VERSION = "stfc.battle.analytics.v0" as const;
 
 export interface BattleCaptureEvent extends SidecarEventBase<"battle.capture"> {
   schemaVersion: typeof BATTLE_CAPTURE_SCHEMA_VERSION;
@@ -118,6 +121,8 @@ export interface BattleReportEvent extends SidecarEventBase<"battle.report"> {
     events: JsonObject[];
     rounds?: JsonObject[];
     attackRows?: JsonObject[];
+    csvParity?: JsonObject;
+    analytics?: JsonObject;
     decode: JsonObject;
     parity: {
       reference?: string;
@@ -125,6 +130,73 @@ export interface BattleReportEvent extends SidecarEventBase<"battle.report"> {
       notes?: string[];
     };
     raw?: JsonObject;
+  };
+}
+
+export interface BattleAnalyticsEvent extends SidecarEventBase<"battle.analytics"> {
+  schemaVersion: typeof BATTLE_ANALYTICS_SCHEMA_VERSION;
+  journalId: string;
+  battleId?: string;
+  battleType?: number;
+  capturedAtUnixMs?: number;
+  analytics: {
+    summary?: JsonObject;
+    rounds?: JsonObject[];
+    attackRows?: JsonObject[];
+    csvParity?: JsonObject;
+    provenance?: JsonObject;
+  };
+}
+
+export const CATALOG_SNAPSHOT_SCHEMA_VERSION = "stfc.catalog.snapshot.v0" as const;
+
+export type CatalogDomainName =
+  | "hulls"
+  | "ships"
+  | "components"
+  | "resources"
+  | "systems"
+  | "officers"
+  | "abilities"
+  | "forbiddenTech"
+  | "buffs"
+  | "debuffs"
+  | "players"
+  | "alliances";
+
+export interface CatalogEntry {
+  id: string;
+  name?: string;
+  unresolved: boolean;
+  type?: string;
+  allianceId?: string;
+  allianceName?: string;
+  allianceTag?: string;
+  tag?: string;
+  [key: string]: unknown;
+}
+
+export type CatalogDomain = Record<string, CatalogEntry>;
+
+export interface CatalogCoverage {
+  domainsPresent: string[];
+  domainsResolved: string[];
+  domainsUnresolved: string[];
+  totalEntries: number;
+  resolvedEntries: number;
+}
+
+export interface CatalogSnapshotEvent extends SidecarEventBase<"catalog.snapshot"> {
+  schemaVersion: typeof CATALOG_SNAPSHOT_SCHEMA_VERSION;
+  journalId: string;
+  battleId?: string;
+  battleType?: number;
+  capturedAtUnixMs?: number;
+  scope: "battle" | "session";
+  catalog: {
+    domains: Partial<Record<CatalogDomainName, CatalogDomain>>;
+    coverage: CatalogCoverage;
+    provenance?: JsonObject;
   };
 }
 
@@ -155,6 +227,8 @@ export type SidecarEvent =
   | HookEvent
   | BattleEvent
   | BattleCaptureEvent
+  | BattleAnalyticsEvent
   | BattleReportEvent
+  | CatalogSnapshotEvent
   | SessionEvent
   | IntegrationEvent;

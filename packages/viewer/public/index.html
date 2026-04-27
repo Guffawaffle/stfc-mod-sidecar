@@ -7,66 +7,54 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="shell">
-      <header class="hero">
+    <main class="shell site-shell">
+      <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="home"></nav>
+
+      <header class="hero home-hero">
         <div>
           <p class="eyebrow">STFC Mod Sidecar</p>
-          <h1>Battle Feed Viewer</h1>
-          <p class="hero-copy">Read-only display of the JSONL events emitted by the community mod.</p>
+          <h1>Viewer Modules</h1>
+          <p class="hero-copy">Read-only local tooling for inspecting battle capture, future analyzers, and additional sidecar diagnostics.</p>
         </div>
-        <section class="hero-controls" aria-label="viewer controls">
-          <label class="control">
-            <span>Lines</span>
-            <input id="line-limit" type="number" min="10" max="500" step="10" value="150" />
-          </label>
-          <label class="toggle">
-            <input id="auto-refresh" type="checkbox" checked />
-            <span>Auto refresh</span>
-          </label>
-          <button id="refresh-button" type="button">Refresh now</button>
-        </section>
       </header>
 
-      <section class="status-strip" aria-live="polite">
-        <article>
-          <span class="status-label">Feed Path</span>
-          <strong id="feed-path">Loading…</strong>
+      <section class="module-grid" aria-label="viewer modules">
+        <article class="module-card module-card--primary">
+          <p class="eyebrow">Available Now</p>
+          <h2>Battle Log Explorer</h2>
+          <p class="page-copy">Inspect the live JSONL feed, drill into canonical <code>battle.capture</code> payloads, and review compatibility <code>battle.report</code> bundles.</p>
+          <ul class="module-list">
+            <li>Recent feed events and raw JSON</li>
+            <li>Lossless token stream inspection</li>
+            <li>Participant and reward tables</li>
+          </ul>
+          <a class="link-button" href="/battle-log/">Open Battle Log</a>
         </article>
-        <article>
-          <span class="status-label">Last Modified</span>
-          <strong id="last-modified">Loading…</strong>
-        </article>
-        <article>
-          <span class="status-label">Events</span>
-          <strong id="event-count">0</strong>
-        </article>
-        <article>
-          <span class="status-label">Status</span>
-          <strong id="viewer-status">Starting…</strong>
-        </article>
-      </section>
 
-      <section class="content">
-        <aside class="feed-column">
-          <div class="panel-heading">
-            <h2>Recent Events</h2>
-            <p>Latest lines from the configured JSONL feed.</p>
-          </div>
-          <div id="event-list" class="event-list"></div>
-        </aside>
+        <article class="module-card">
+          <p class="eyebrow">Next Focus</p>
+          <h2>Parser And Analyzer Workbench</h2>
+          <p class="page-copy">Deterministic parse stages and reviewable analytics on top of canonical capture data.</p>
+          <ul class="module-list">
+            <li>Segment and record boundary validation</li>
+            <li>Round and attack timeline derivation</li>
+            <li>Confidence and provenance surfacing</li>
+          </ul>
+          <a class="link-button link-button--secondary" href="/battle-log/workbench/">Open Workbench</a>
+        </article>
 
-        <section class="detail-column">
-          <div class="panel-heading">
-            <h2>Selected Event</h2>
-            <p>Battle summary, participant data, and raw JSON.</p>
-          </div>
-          <div id="detail-view" class="detail-view">
-            <div class="empty-state">Select a feed event to inspect its payload.</div>
-          </div>
-        </section>
+        <article class="module-card">
+          <p class="eyebrow">Planned</p>
+          <h2>Additional Pages</h2>
+          <p class="page-copy">This root page is now the viewer home so future modules can land without overloading the battle-log route.</p>
+          <ul class="module-list">
+            <li>Battle parser diagnostics</li>
+            <li>Export and integration status</li>
+            <li>Session and feed health pages</li>
+          </ul>
+        </article>
       </section>
     </main>
-
-    <script type="module" src="/app.js"></script>
+    <script type="module" src="/shared/shell.js"></script>
   </body>
 </html>

@@ -1,5 +1,9 @@
 # Battle-Log Parser
 
+This document covers the conservative text-line parser in the core package.
+
+The newer viewer-side requirements for parsing and analyzing canonical `battle.capture` payloads live in `docs/11-battle-log-parser-analyzer-requirements.md`.
+
 The v0 parser is deliberately conservative. It accepts plain text lines, preserves raw input, and emits structured fields only when the text is explicit enough.
 
 ## Parser Rules

@@ -78,16 +78,9 @@ const server = createServer(async (request, response) => {
         return;
     }
 
-    if (requestUrl.pathname === "/") {
-        return sendFile(response, path.join(publicDir, "index.html"), "text/html; charset=utf-8");
-    }
-
-    if (requestUrl.pathname === "/app.js") {
-        return sendFile(response, path.join(publicDir, "app.js"), "text/javascript; charset=utf-8");
-    }
-
-    if (requestUrl.pathname === "/styles.css") {
-        return sendFile(response, path.join(publicDir, "styles.css"), "text/css; charset=utf-8");
+    const publicAsset = await resolvePublicAsset(requestUrl.pathname);
+    if (publicAsset) {
+        return sendFile(response, publicAsset.filePath, publicAsset.contentType);
     }
 
     return sendJson(response, 404, { ok: false, error: "Not found" });
@@ -266,6 +259,36 @@ function summarizeEvent(event) {
         };
     }
 
+    if (event.type === "battle.analytics") {
+        const analytics = asRecord(event.analytics);
+        const csvParity = asRecord(analytics.csvParity);
+        const rows = Array.isArray(csvParity.rows) ? csvParity.rows : [];
+        const summary = asRecord(analytics.summary);
+        const targetLabel = asText(summary.targetId) || asText(event.battleId) || `Battle analytics ${event.journalId}`;
+
+        return {
+            title: targetLabel,
+            subtitle: `${rows.length} Prime CSV parity row${rows.length === 1 ? "" : "s"}`,
+            chips: [event.type, `battleType ${event.battleType ?? "?"}`, asText(csvParity.status) || "analytics"],
+            timestamp: event.timestamp,
+        };
+    }
+
+    if (event.type === "catalog.snapshot") {
+        const catalog = asRecord(event.catalog);
+        const coverage = asRecord(catalog.coverage);
+        const present = Array.isArray(coverage.domainsPresent) ? coverage.domainsPresent : [];
+        const total = Number(coverage.totalEntries ?? 0);
+        const resolved = Number(coverage.resolvedEntries ?? 0);
+
+        return {
+            title: `Catalog snapshot for battle ${event.battleId ?? event.journalId}`,
+            subtitle: `${present.length} domain${present.length === 1 ? "" : "s"} | ${resolved}/${total} entries resolved`,
+            chips: [event.type, asText(event.scope) || "battle", `battleType ${event.battleType ?? "?"}`],
+            timestamp: event.timestamp,
+        };
+    }
+
     if (event.type === "debug.event") {
         return {
             title: event.message,
@@ -320,6 +343,75 @@ function asRecord(value) {
 
 function asText(value) {
     return typeof value === "string" ? value : "";
+}
+
+async function resolvePublicAsset(pathname) {
+    for (const relativePath of publicPathCandidates(pathname)) {
+        const filePath = path.resolve(publicDir, `.${relativePath}`);
+        if (!isWithinPublicDir(filePath)) {
+            continue;
+        }
+
+        try {
+            const fileStat = await stat(filePath);
+            if (!fileStat.isFile()) {
+                continue;
+            }
+
+            return {
+                filePath,
+                contentType: contentTypeForPath(filePath),
+            };
+        } catch {
+            continue;
+        }
+    }
+
+    return null;
+}
+
+function publicPathCandidates(pathname) {
+    const decodedPathname = decodeURIComponent(pathname);
+    if (decodedPathname === "/") {
+        return ["/index.html"];
+    }
+
+    if (path.extname(decodedPathname)) {
+        return [decodedPathname];
+    }
+
+    const normalizedPathname = decodedPathname.endsWith("/") ? decodedPathname.slice(0, -1) : decodedPathname;
+    return [`${normalizedPathname}/index.html`, decodedPathname];
+}
+
+function isWithinPublicDir(filePath) {
+    const relativePath = path.relative(publicDir, filePath);
+    return relativePath !== "" && !relativePath.startsWith("..") && !path.isAbsolute(relativePath);
+}
+
+function contentTypeForPath(filePath) {
+    switch (path.extname(filePath).toLowerCase()) {
+        case ".html":
+            return "text/html; charset=utf-8";
+        case ".js":
+        case ".mjs":
+            return "text/javascript; charset=utf-8";
+        case ".css":
+            return "text/css; charset=utf-8";
+        case ".json":
+            return "application/json; charset=utf-8";
+        case ".svg":
+            return "image/svg+xml";
+        case ".png":
+            return "image/png";
+        case ".jpg":
+        case ".jpeg":
+            return "image/jpeg";
+        case ".ico":
+            return "image/x-icon";
+        default:
+            return "application/octet-stream";
+    }
 }
 
 function isAuthorizedShutdownRequest(request) {

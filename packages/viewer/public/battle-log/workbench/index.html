@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>STFC Sidecar Viewer | Battle Workbench</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell site-shell">
+      <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="battle-log-workbench"></nav>
+
+      <header class="hero workbench-hero">
+        <div>
+          <p class="eyebrow">Battle Log</p>
+          <h1>Battle Report Workbench</h1>
+          <p class="hero-copy">Structured battle details, combatants, rewards, decoded segments, and source-token evidence from the sidecar feed.</p>
+        </div>
+        <section class="hero-controls" aria-label="battle workbench controls">
+          <label class="control">
+            <span>Lines</span>
+            <input id="line-limit" type="number" min="10" max="500" step="10" value="200" />
+          </label>
+          <label class="control control--wide">
+            <span>Battle</span>
+            <select id="battle-select" aria-label="battle report"></select>
+          </label>
+          <label class="toggle">
+            <input id="auto-refresh" type="checkbox" checked />
+            <span>Auto refresh</span>
+          </label>
+          <button id="refresh-button" type="button">Refresh now</button>
+        </section>
+      </header>
+
+      <section class="status-strip workbench-status" aria-live="polite">
+        <article>
+          <span class="status-label">Feed Path</span>
+          <strong id="feed-path">Loading…</strong>
+        </article>
+        <article>
+          <span class="status-label">Events</span>
+          <strong id="event-count">0</strong>
+        </article>
+        <article>
+          <span class="status-label">Battles</span>
+          <strong id="battle-count">0</strong>
+        </article>
+        <article>
+          <span class="status-label">Status</span>
+          <strong id="viewer-status">Starting…</strong>
+        </article>
+      </section>
+
+      <section id="report-view" class="report-workbench" aria-busy="false">
+        <div class="empty-state">Loading battle reports…</div>
+      </section>
+    </main>
+    <script type="module" src="/battle-log/workbench/app.js"></script>
+    <script type="module" src="/shared/shell.js"></script>
+  </body>
+</html>
