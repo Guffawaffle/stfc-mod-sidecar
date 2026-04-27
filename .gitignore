@@ -11,6 +11,7 @@ coverage/
 diagnostic-bundles/
 samples/private/
 tmp/
+.sidecar/
 
 .DS_Store
 Thumbs.db

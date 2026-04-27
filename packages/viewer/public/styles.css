@@ -240,6 +240,18 @@ button {
   font-size: 0.92rem;
 }
 
+.token-table th:first-child,
+.token-table td:first-child,
+.token-table th:last-child,
+.token-table td:last-child {
+  width: 90px;
+}
+
+.token-table td:nth-child(2) {
+  font-family: Consolas, "Courier New", monospace;
+  word-break: break-all;
+}
+
 .reward-list {
   margin: 0;
   padding-left: 20px;

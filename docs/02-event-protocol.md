@@ -29,6 +29,10 @@ Recommended envelope fields:
 - `modVersion`: community mod version or build identifier.
 - `source`: module or subsystem that emitted the event.
 
+Security rule:
+
+- Event payloads must not contain bearer tokens, API keys, cookies, Scopely session headers, or other secret values. If an event needs to identify which credential was used, emit only safe metadata such as a provider name or profile reference.
+
 ## `debug.event`
 
 ```json
@@ -112,9 +116,51 @@ Fields:
 
 The parser may emit `phase: "unknown"` with `parseStatus: "unparsed"` to preserve a line without inventing details.
 
+## `battle.capture`
+
+`battle.capture` is the canonical lossless battle payload emitted by STFC Community Mod. It carries raw battle-log tokens as strings so JavaScript consumers do not lose 64-bit precision.
+
+```json
+{
+  "protocolVersion": "stfc.sidecar.events.v0",
+  "type": "battle.capture",
+  "schemaVersion": "stfc.battle.capture.v1",
+  "timestamp": "2026-04-26T20:54:44",
+  "source": "stfc-community-mod",
+  "journalId": "2709118446356718841",
+  "battleId": "2709118446356718841",
+  "battleType": 8,
+  "capture": {
+    "sourceKind": "scopely.journal.battle",
+    "summary": {
+      "battleType": 8,
+      "targetId": "mar_45",
+      "systemId": "2682660367670527124"
+    },
+    "participants": [],
+    "battleLog": {
+      "encoding": "string_tokens.v1",
+      "tokenCount": 3,
+      "tokens": ["-96", "2682660367670527124", "-97"]
+    },
+    "journal": {
+      "encoding": "lossless_integer_strings.v1",
+      "omittedKeys": ["battle_log"],
+      "data": {
+        "id": "2709118446356718841"
+      }
+    }
+  }
+}
+```
+
+Consumers should treat `capture.battleLog.tokens` as the authoritative raw token stream. `capture.journal.data` preserves the rest of the journal with integer values encoded as strings; `battle_log` is omitted there to avoid duplicating the large token array.
+
 ## `battle.report`
 
-`battle.report` is the parity+ structured battle feed emitted by STFC Community Mod for sidecar ingestion.
+`battle.report` is the v0 compatibility bundle emitted by STFC Community Mod for sidecar ingestion.
+
+It is useful for viewers and transitional consumers, but it is not the long-term canonical ingest contract. The layered canonical plan lives in `docs/08-canonical-battle-schema.md`.
 
 ```json
 {
@@ -131,6 +177,8 @@ The parser may emit `phase: "unknown"` with `parseStatus: "unparsed"` to preserv
     "rewards": [],
     "fleets": [],
     "events": [],
+    "rounds": [],
+    "attackRows": [],
     "decode": {},
     "parity": {
       "reference": "stfc_client_csv_export",
@@ -145,7 +193,9 @@ The parser may emit `phase: "unknown"` with `parseStatus: "unparsed"` to preserv
 }
 ```
 
-The first version favors reliable structured IDs over guessed display text. CSV-style battle-event rows are represented as decoded `battle_log` segments until marker semantics are fully mapped.
+The first version favors reliable structured IDs over guessed display text. CSV-style battle-event rows began as decoded `battle_log` segments; additive fields such as `rounds` and `attackRows` may appear as higher-order structure is derived.
+
+Consumers should treat `battle.report` as a convenience bundle and ignore unknown additive properties.
 
 Fleet entries may include additive display metadata such as `display_name`, `display_name_source`, `participant_kind`, `ship_level`, and `fleet_type`. Hostile names from the game may arrive as empty or placeholder text such as `Retrieving...`; emitters should preserve raw IDs while using `display_name` for derived, reviewable labels.
 
@@ -196,3 +246,7 @@ Fields:
 ## Versioning Notes
 
 V0 should favor additive changes. Avoid renaming fields until real sidecar and mod emitters have both used the protocol enough to expose bad names.
+
+For battle data specifically, treat `protocolVersion` as the transport-envelope version and `schemaVersion` as the payload-family version. Future canonical battle families should version independently from the compatibility bundle.
+
+For security, the event protocol should remain a secret-free observation channel even after future integration credentials exist.

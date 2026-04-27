@@ -19,8 +19,12 @@ This project must stay read-only with respect to STFC gameplay.
 - Local-first by default.
 - No credential collection except explicit future user-configured integration tokens.
 - Integration tokens must be stored only after clear user action and should be scoped to the provider.
+- Integration tokens must not be written into JSONL events, battle payloads, or ordinary config files.
+- Scopely game session headers used by the mod are a separate secret class and must never be reused as sidecar integration credentials.
+- Sidecar credentials should live in OS-backed secret storage behind a provider-scoped credential abstraction.
 - Integrations must be user-initiated.
 - Diagnostic exports must be explicit and reviewable.
+- Diagnostic exports must exclude secret material by default.
 
 ## Privacy Notes
 
@@ -29,3 +33,5 @@ Logs may contain sensitive account, alliance, session, location, timing, or batt
 ## Process Boundary
 
 The sidecar should read files or local event APIs. It must not inject into STFC, patch the game process, synthesize input, or bypass gameplay.
+
+If the sidecar later exposes a local API for UI clients, privileged routes should use an ephemeral local capability token rather than assuming loopback alone is a sufficient trust boundary.

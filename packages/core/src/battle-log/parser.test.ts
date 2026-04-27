@@ -96,4 +96,41 @@ describe("battle-log parser", () => {
       expect(parsed.event.journalId).toBe("2709118446356718841");
     }
   });
+
+  it("accepts mod-emitted battle capture feed events with string tokens", () => {
+    const line = JSON.stringify({
+      protocolVersion: "stfc.sidecar.events.v0",
+      type: "battle.capture",
+      schemaVersion: "stfc.battle.capture.v1",
+      timestamp,
+      source: "stfc-community-mod",
+      journalId: "2709118446356718841",
+      battleId: "2709118446356718841",
+      battleType: 8,
+      capturedAtUnixMs: 222,
+      capture: {
+        sourceKind: "scopely.journal.battle",
+        summary: { targetId: "mar_45" },
+        battleLog: {
+          encoding: "string_tokens.v1",
+          tokenCount: 3,
+          tokens: ["-96", "2682660367670527124", "-97"],
+        },
+        journal: {
+          encoding: "lossless_integer_strings.v1",
+          omittedKeys: ["battle_log"],
+          data: { id: "2709118446356718841" },
+        },
+      },
+    });
+
+    const parsed = parseEventJsonLine(line);
+
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.event.type).toBe("battle.capture");
+      expect(parsed.event.journalId).toBe("2709118446356718841");
+      expect(parsed.event.capture.battleLog?.tokens[1]).toBe("2682660367670527124");
+    }
+  });
 });

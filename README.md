@@ -97,7 +97,7 @@ npm run check
 
 ## Log Viewer
 
-Start the local viewer against the live STFC feed:
+Start the managed local viewer against the live STFC feed:
 
 ```bash
 npm run viewer
@@ -105,16 +105,33 @@ npm run viewer
 
 Then open `http://127.0.0.1:43127`.
 
+Server control commands:
+
+```bash
+npm run server:status
+npm run server:stop
+npm run server:kill
+npm run server:restart
+npm run server:logs
+```
+
 Run the same UI against the sample feed:
 
 ```bash
 npm run viewer:sample
 ```
 
-Override the feed path or port:
+Override the feed path or port on start or restart:
 
 ```bash
 npm run viewer -- --feed-path "C:\Games\Star Trek Fleet Command\default\game\community_patch_battle_feed.jsonl" --port 43128 --limit 250
+npm run server:restart -- --port 43128 --limit 250
+```
+
+Run the viewer in the foreground for direct debugging:
+
+```bash
+npm run viewer:run
 ```
 
 Detailed operating notes live in `docs/07-log-viewer.md`.

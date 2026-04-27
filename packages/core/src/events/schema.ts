@@ -1,7 +1,9 @@
 import {
   SIDECAR_EVENT_PROTOCOL_VERSION,
+  BATTLE_CAPTURE_SCHEMA_VERSION,
   BATTLE_REPORT_SCHEMA_VERSION,
   type BattleEvent,
+  type BattleCaptureEvent,
   type BattleReportEvent,
   type DebugEvent,
   type HookEvent,
@@ -16,6 +18,7 @@ const EVENT_TYPES = new Set<SidecarEventType>([
   "debug.event",
   "hook.event",
   "battle.event",
+  "battle.capture",
   "battle.report",
   "session.event",
   "integration.event",
@@ -53,6 +56,8 @@ export function isSidecarEvent(value: unknown): value is SidecarEvent {
       return isHookEvent(value);
     case "battle.event":
       return isBattleEvent(value);
+    case "battle.capture":
+      return isBattleCaptureEvent(value);
     case "battle.report":
       return isBattleReportEvent(value);
     case "session.event":
@@ -78,6 +83,25 @@ export function isHookEvent(value: unknown): value is HookEvent {
 
 export function isBattleEvent(value: unknown): value is BattleEvent {
   return isRecord(value) && value.type === "battle.event" && isString(value.phase);
+}
+
+export function isBattleCaptureEvent(value: unknown): value is BattleCaptureEvent {
+  if (
+    !isRecord(value) ||
+    value.type !== "battle.capture" ||
+    value.schemaVersion !== BATTLE_CAPTURE_SCHEMA_VERSION ||
+    !isString(value.journalId) ||
+    !isRecord(value.capture)
+  ) {
+    return false;
+  }
+
+  const battleLog = value.capture.battleLog;
+  if (battleLog === undefined) {
+    return true;
+  }
+
+  return isRecord(battleLog) && Array.isArray(battleLog.tokens) && battleLog.tokens.every(isString);
 }
 
 export function isBattleReportEvent(value: unknown): value is BattleReportEvent {
