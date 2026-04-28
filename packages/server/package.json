@@ -1,0 +1,27 @@
+{
+  "name": "@stfc-mod-sidecar/server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "HTTP server: SSE event stream, REST control surface, mod ingest, settings, Majel bridge.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "stfc-sidecar-server": "dist/cli.js"
+  },
+  "dependencies": {
+    "@stfc-mod-sidecar/core": "*"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "start": "node dist/cli.js"
+  }
+}
