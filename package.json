@@ -17,11 +17,14 @@
     "server:status": "node ./scripts/viewer-server-control.mjs status",
     "server:restart": "node ./scripts/viewer-server-control.mjs restart",
     "server:logs": "node ./scripts/viewer-server-control.mjs logs",
+    "analyze:attack-scalars": "node ./scripts/analyze-attack-scalars.mjs",
     "viewer": "npm run server:start",
     "viewer:run": "npm run build --workspace @stfc-mod-sidecar/core && node packages/viewer/server.mjs",
     "viewer:sample": "npm run server:start -- --feed-path ./examples/sample-battle-events.jsonl"
   },
   "devDependencies": {
+    "@types/node": "^22.15.30",
+    "@types/pg": "^8.15.6",
     "typescript": "^5.9.3",
     "vitest": "^4.0.0"
   },

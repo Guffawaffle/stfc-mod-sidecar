@@ -1,6 +1,7 @@
 const state = {
     snapshot: null,
     selectedLineNumber: null,
+    detailsByLine: new Map(),
     refreshTimer: null,
 };
 
@@ -27,13 +28,13 @@ async function refreshSnapshot() {
     setStatus("Refreshing…");
 
     const limit = Number.parseInt(elements.lineLimit.value, 10) || 150;
-    const response = await fetch(`/api/events?limit=${limit}`, { cache: "no-store" });
+    const response = await fetch(`/api/events?limit=${limit}&detail=summary`, { cache: "no-store" });
     const snapshot = await response.json();
     state.snapshot = snapshot;
 
     renderStatus(snapshot);
     renderEventList(snapshot);
-    renderSelectedEvent();
+    void renderSelectedEvent();
 }
 
 function updateRefreshLoop() {
@@ -99,14 +100,14 @@ function renderEventList(snapshot) {
         button.addEventListener("click", () => {
             state.selectedLineNumber = entry.lineNumber;
             renderEventList(state.snapshot);
-            renderSelectedEvent();
+            void renderSelectedEvent();
         });
 
         elements.eventList.appendChild(button);
     }
 }
 
-function renderSelectedEvent() {
+async function renderSelectedEvent() {
     elements.detailView.textContent = "";
 
     if (!state.snapshot?.ok || !Array.isArray(state.snapshot.events)) {
@@ -120,21 +121,33 @@ function renderSelectedEvent() {
         return;
     }
 
-    if (!entry.parsed) {
+    let detailEntry;
+    try {
+        detailEntry = await loadEntryDetail(entry);
+    } catch (error) {
+        elements.detailView.appendChild(renderEmpty(error instanceof Error ? error.message : "Unable to load event detail."));
+        return;
+    }
+
+    if (state.selectedLineNumber !== entry.lineNumber) {
+        return;
+    }
+
+    if (!detailEntry.parsed) {
         elements.detailView.innerHTML = `
       <section class="detail-panel">
         <h3>Unrecognized JSONL line</h3>
-        <p>${escapeHtml(entry.error ?? "Unknown parsing error")}</p>
+        <p>${escapeHtml(detailEntry.error ?? "Unknown parsing error")}</p>
       </section>
       <section class="detail-panel">
         <h3>Raw Line</h3>
-        <pre>${escapeHtml(entry.rawLine)}</pre>
+        <pre>${escapeHtml(detailEntry.rawLine ?? detailEntry.rawPreview ?? "")}</pre>
       </section>
     `;
         return;
     }
 
-    const event = entry.event;
+    const event = detailEntry.event;
     const summaryRows = buildSummaryRows(event);
     const summaryTable = summaryRows.map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join("");
 
@@ -155,6 +168,27 @@ function renderSelectedEvent() {
       <pre>${escapeHtml(JSON.stringify(event, null, 2))}</pre>
     </section>
   `;
+}
+
+async function loadEntryDetail(entry) {
+    if (entry.event || !entry.parsed) {
+        return entry;
+    }
+
+    const cached = state.detailsByLine.get(entry.lineNumber);
+    if (cached) {
+        return cached;
+    }
+
+    elements.detailView.appendChild(renderEmpty("Loading event detail..."));
+    const response = await fetch(`/api/events/${entry.lineNumber}`, { cache: "no-store" });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok || !payload.event) {
+        throw new Error(payload.error ?? `Unable to load line ${entry.lineNumber}.`);
+    }
+
+    state.detailsByLine.set(entry.lineNumber, payload.event);
+    return payload.event;
 }
 
 function buildSummaryRows(event) {

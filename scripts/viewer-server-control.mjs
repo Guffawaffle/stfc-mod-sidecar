@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { closeSync, existsSync, openSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 const DEFAULT_FEED_PATH = "C:\\Games\\Star Trek Fleet Command\\default\\game\\community_patch_battle_feed.jsonl";
 const DEFAULT_PORT = 43127;
 const DEFAULT_LIMIT = 150;
+const DEFAULT_SYNC_TOKEN = "testtoken123";
 const DEFAULT_LOG_LINES = 80;
 const READY_TIMEOUT_MS = 15000;
 const STOP_TIMEOUT_MS = 10000;
@@ -85,6 +86,7 @@ async function startServer(commandArgs) {
         env: {
             ...process.env,
             STFC_SIDECAR_SHUTDOWN_TOKEN: shutdownToken,
+            STFC_SIDECAR_SYNC_TOKEN: process.env.STFC_SIDECAR_SYNC_TOKEN ?? DEFAULT_SYNC_TOKEN,
         },
     });
     closeSync(logFd);
@@ -298,8 +300,38 @@ function resolveServerConfig(commandArgs) {
         launchArgs: [...commandArgs],
         port: selectedPort,
         limit: selectedLimit,
-        feedPath: path.resolve(repoRoot, selectedFeedPath),
+        feedPath: resolveFeedPath(selectedFeedPath, repoRoot),
     };
+}
+
+function resolveFeedPath(feedPath, baseDir) {
+    const platformPath = normalizeWindowsPathForWsl(feedPath);
+    return path.isAbsolute(platformPath) ? platformPath : path.resolve(baseDir, platformPath);
+}
+
+function normalizeWindowsPathForWsl(feedPath) {
+    if (process.platform !== "linux" || !isWsl()) {
+        return feedPath;
+    }
+
+    const match = /^([A-Za-z]):[\\/](.*)$/.exec(feedPath);
+    if (!match) {
+        return feedPath;
+    }
+
+    return `/mnt/${match[1].toLowerCase()}/${match[2].replaceAll("\\", "/")}`;
+}
+
+function isWsl() {
+    if (process.env.WSL_DISTRO_NAME) {
+        return true;
+    }
+
+    try {
+        return readFileSync("/proc/version", "utf8").toLowerCase().includes("microsoft");
+    } catch {
+        return false;
+    }
 }
 
 function resolveStatusPort(commandArgs) {

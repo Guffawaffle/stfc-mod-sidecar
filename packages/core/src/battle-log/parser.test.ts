@@ -196,6 +196,14 @@ describe("battle-log parser", () => {
         domains: {
           hulls: { "77": { id: "77", unresolved: true } },
           ships: { "111": { id: "111", unresolved: true } },
+          components: {
+            "900": {
+              id: "900",
+              unresolved: true,
+              locaId: "12345",
+              locaKey: "component_phaser_bank",
+            },
+          },
           players: {
             "player-1": {
               id: "player-1",
@@ -211,10 +219,10 @@ describe("battle-log parser", () => {
           },
         },
         coverage: {
-          domainsPresent: ["hulls", "ships", "players", "alliances"],
+          domainsPresent: ["hulls", "ships", "components", "players", "alliances"],
           domainsResolved: ["players", "alliances"],
-          domainsUnresolved: ["hulls", "ships"],
-          totalEntries: 4,
+          domainsUnresolved: ["hulls", "ships", "components"],
+          totalEntries: 5,
           resolvedEntries: 2,
         },
         provenance: {
@@ -233,7 +241,8 @@ describe("battle-log parser", () => {
       expect(parsed.event.scope).toBe("battle");
       expect(parsed.event.catalog.domains.players?.["player-1"]?.name).toBe("Guffawaffle");
       expect(parsed.event.catalog.domains.hulls?.["77"]?.unresolved).toBe(true);
-      expect(parsed.event.catalog.coverage.totalEntries).toBe(4);
+      expect(parsed.event.catalog.domains.components?.["900"]?.locaKey).toBe("component_phaser_bank");
+      expect(parsed.event.catalog.coverage.totalEntries).toBe(5);
     }
   });
 });

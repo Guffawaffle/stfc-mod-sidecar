@@ -1,51 +1,87 @@
 import { createServer } from "node:http";
-import { existsSync } from "node:fs";
-import { readFile, stat } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import { open, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DEFAULT_FEED_PATH = "C:\\Games\\Star Trek Fleet Command\\default\\game\\community_patch_battle_feed.jsonl";
 const DEFAULT_PORT = 43127;
 const DEFAULT_LIMIT = 150;
+const DETAIL_CACHE_LIMIT = 128;
+const DEFAULT_STORE_PATH = "./.sidecar/sidecar-events.sqlite";
+const DEFAULT_SYNC_TOKEN = "testtoken123";
+const MAX_EVENT_INGEST_BYTES = 5 * 1024 * 1024;
 const POLL_HINT_MS = 2000;
 const SHUTDOWN_GRACE_MS = 5000;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, "..", "..");
 const publicDir = path.join(__dirname, "public");
 
 const { feedPath, port, defaultLimit } = parseArgs(process.argv.slice(2));
 const startedAt = new Date();
 const shutdownToken = process.env.STFC_SIDECAR_SHUTDOWN_TOKEN ?? "";
+const syncToken = process.env.STFC_SIDECAR_SYNC_TOKEN ?? DEFAULT_SYNC_TOKEN;
+let feedIndex = createEmptyFeedIndex();
 
 let shutdownRequested = false;
 let exitTimer;
 
+let createSqlSidecarEventStore;
+let isSidecarEvent;
 let parseEventJsonLine;
 try {
-    ({ parseEventJsonLine } = await import(new URL("../core/dist/index.js", import.meta.url)));
+    ({ createSqlSidecarEventStore, isSidecarEvent, parseEventJsonLine } = await import(new URL("../core/dist/index.js", import.meta.url)));
 } catch (error) {
     console.error("Unable to load @stfc-mod-sidecar/core. Run `npm run build --workspace @stfc-mod-sidecar/core` first.");
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
 }
 
+const eventStore = await createConfiguredEventStore();
+
 const server = createServer(async (request, response) => {
     const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? `127.0.0.1:${port}`}`);
 
     if (requestUrl.pathname === "/api/events") {
+        if (request.method === "POST") {
+            return handleEventIngest(request, response);
+        }
+
+        if (request.method && request.method !== "GET") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
         const limitValue = Number.parseInt(requestUrl.searchParams.get("limit") ?? `${defaultLimit}`, 10);
-        const snapshot = await readFeedSnapshot(feedPath, Number.isFinite(limitValue) ? limitValue : defaultLimit);
+        const detailMode = requestUrl.searchParams.get("detail") ?? "full";
+        const snapshot = await readEventsSnapshot(Number.isFinite(limitValue) ? limitValue : defaultLimit, {
+            includeDetails: detailMode !== "summary",
+        });
         return sendJson(response, 200, snapshot);
     }
 
+    const eventLineMatch = /^\/api\/events\/([0-9]+)$/.exec(requestUrl.pathname);
+    if (eventLineMatch) {
+        if (request.method && request.method !== "GET") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        const lineNumber = Number.parseInt(eventLineMatch[1], 10);
+        const detail = await readEventDetail(lineNumber);
+        return sendJson(response, detail.ok ? 200 : detail.statusCode ?? 404, detail);
+    }
+
     if (requestUrl.pathname === "/api/health") {
+        const storedEvents = eventStore ? await eventStore.count() : 0;
         return sendJson(response, 200, {
             ok: true,
             pid: process.pid,
             feedPath,
             port,
             defaultLimit,
+            eventStoreBackend: eventStore?.backend ?? "none",
+            storedEvents,
             startedAt: startedAt.toISOString(),
             uptimeMs: Date.now() - startedAt.getTime(),
             shuttingDown: shutdownRequested,
@@ -105,6 +141,34 @@ process.on("SIGTERM", () => {
     void shutdownServer("SIGTERM");
 });
 
+async function createConfiguredEventStore() {
+    const backend = (process.env.STFC_SIDECAR_STORE_BACKEND ?? "sqlite").trim().toLowerCase();
+    if (backend === "none") {
+        return null;
+    }
+
+    if (backend === "sqlite") {
+        return createSqlSidecarEventStore({
+            backend: "sqlite",
+            connection: resolveStoreConnection(process.env.STFC_SIDECAR_STORE_CONNECTION ?? DEFAULT_STORE_PATH),
+        });
+    }
+
+    if (backend === "postgres") {
+        const connection = process.env.STFC_SIDECAR_STORE_CONNECTION ?? process.env.DATABASE_URL ?? "";
+        if (!connection) {
+            throw new Error("STFC_SIDECAR_STORE_CONNECTION or DATABASE_URL is required when STFC_SIDECAR_STORE_BACKEND=postgres");
+        }
+
+        return createSqlSidecarEventStore({
+            backend: "postgres",
+            connection,
+        });
+    }
+
+    throw new Error(`Unsupported STFC_SIDECAR_STORE_BACKEND: ${backend}`);
+}
+
 function parseArgs(args) {
     let selectedFeedPath = process.env.STFC_SIDECAR_FEED_PATH ?? DEFAULT_FEED_PATH;
     let selectedPort = parseInteger(process.env.STFC_SIDECAR_PORT, DEFAULT_PORT);
@@ -147,10 +211,44 @@ function parseArgs(args) {
     }
 
     return {
-        feedPath: path.resolve(selectedFeedPath),
+        feedPath: resolveFeedPath(selectedFeedPath),
         port: selectedPort,
         defaultLimit: selectedLimit,
     };
+}
+
+function resolveFeedPath(feedPath) {
+    const platformPath = normalizeWindowsPathForWsl(feedPath);
+    return path.resolve(platformPath);
+}
+
+function resolveStoreConnection(connection) {
+    return path.isAbsolute(connection) ? connection : path.resolve(repoRoot, connection);
+}
+
+function normalizeWindowsPathForWsl(feedPath) {
+    if (process.platform !== "linux" || !isWsl()) {
+        return feedPath;
+    }
+
+    const match = /^([A-Za-z]):[\\/](.*)$/.exec(feedPath);
+    if (!match) {
+        return feedPath;
+    }
+
+    return `/mnt/${match[1].toLowerCase()}/${match[2].replaceAll("\\", "/")}`;
+}
+
+function isWsl() {
+    if (process.env.WSL_DISTRO_NAME) {
+        return true;
+    }
+
+    try {
+        return readFileSync("/proc/version", "utf8").toLowerCase().includes("microsoft");
+    } catch {
+        return false;
+    }
 }
 
 function parseInteger(value, fallback) {
@@ -158,9 +256,177 @@ function parseInteger(value, fallback) {
     return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-async function readFeedSnapshot(selectedFeedPath, limit) {
+function createEmptyFeedIndex(selectedFeedPath = "") {
+    return {
+        feedPath: selectedFeedPath,
+        fileSize: 0,
+        lastModifiedMs: 0,
+        entries: [],
+        pendingBuffer: Buffer.alloc(0),
+        pendingStartOffset: 0,
+        detailCache: new Map(),
+    };
+}
+
+async function handleEventIngest(request, response) {
+    if (!eventStore) {
+        return sendJson(response, 503, { ok: false, error: "Event store is disabled for this process." });
+    }
+
+    if (!isAuthorizedSyncRequest(request)) {
+        return sendJson(response, 401, { ok: false, error: "Unauthorized sidecar sync request" });
+    }
+
+    try {
+        const payload = await readJsonBody(request);
+        const events = normalizeIncomingEvents(payload);
+        const result = await eventStore.append(events);
+        return sendJson(response, 202, {
+            ok: true,
+            backend: eventStore.backend,
+            ...result,
+        });
+    } catch (error) {
+        return sendJson(response, 400, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+}
+
+async function readEventsSnapshot(limit, options = {}) {
+    if (eventStore) {
+        const snapshot = await readStoredSnapshot(limit, options);
+        if (snapshot) {
+            return snapshot;
+        }
+    }
+
+    return readFeedSnapshot(feedPath, limit, options);
+}
+
+async function readEventDetail(lineNumber) {
+    if (eventStore) {
+        const detail = await readStoredEvent(lineNumber);
+        if (detail) {
+            return detail;
+        }
+    }
+
+    return readFeedLine(feedPath, lineNumber);
+}
+
+async function readStoredSnapshot(limit, options = {}) {
+    if (!eventStore) {
+        return null;
+    }
+
     const generatedAt = new Date().toISOString();
     const resolvedLimit = Math.min(Math.max(limit, 10), 500);
+    const includeDetails = options.includeDetails !== false;
+    const [totalLines, storedEvents] = await Promise.all([
+        eventStore.count(),
+        eventStore.listRecent(resolvedLimit),
+    ]);
+
+    if (storedEvents.length === 0) {
+        return null;
+    }
+
+    const events = storedEvents.map((entry) => includeDetails
+        ? normalizeLine(entry.rawJson, entry.sequenceId)
+        : summarizeLine(entry.rawJson, entry.sequenceId));
+
+    return {
+        ok: true,
+        source: "store",
+        storageBackend: eventStore.backend,
+        exists: true,
+        detail: includeDetails ? "full" : "summary",
+        generatedAt,
+        pollHintMs: POLL_HINT_MS,
+        totalLines,
+        returnedLines: storedEvents.length,
+        events,
+    };
+}
+
+async function readStoredEvent(lineNumber) {
+    if (!eventStore) {
+        return null;
+    }
+
+    const generatedAt = new Date().toISOString();
+    const storedEvent = await eventStore.getBySequenceId(lineNumber);
+    if (!storedEvent) {
+        return null;
+    }
+
+    return {
+        ok: true,
+        source: "store",
+        storageBackend: eventStore.backend,
+        exists: true,
+        detail: "full",
+        generatedAt,
+        totalLines: await eventStore.count(),
+        event: normalizeLine(storedEvent.rawJson, storedEvent.sequenceId),
+    };
+}
+
+function isAuthorizedSyncRequest(request) {
+    if (!syncToken) {
+        return true;
+    }
+
+    const authorization = request.headers.authorization;
+    if (authorization === `Bearer ${syncToken}`) {
+        return true;
+    }
+
+    return request.headers["stfc-sync-token"] === syncToken;
+}
+
+async function readJsonBody(request) {
+    let totalBytes = 0;
+    const chunks = [];
+
+    for await (const chunk of request) {
+        const buffer = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+        totalBytes += buffer.length;
+        if (totalBytes > MAX_EVENT_INGEST_BYTES) {
+            throw new Error(`Request body exceeds ${MAX_EVENT_INGEST_BYTES} bytes.`);
+        }
+
+        chunks.push(buffer);
+    }
+
+    if (chunks.length === 0) {
+        throw new Error("Request body is empty.");
+    }
+
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+function normalizeIncomingEvents(payload) {
+    const items = Array.isArray(payload) ? payload : [payload];
+    if (items.length === 0) {
+        throw new Error("Expected at least one sidecar event.");
+    }
+
+    return items.map((item, index) => {
+        if (!isSidecarEvent(item)) {
+            throw new Error(`Item ${index + 1} is not a recognized sidecar event.`);
+        }
+
+        return item;
+    });
+}
+
+async function readFeedSnapshot(selectedFeedPath, limit, options = {}) {
+    const generatedAt = new Date().toISOString();
+    const resolvedLimit = Math.min(Math.max(limit, 10), 500);
+    const includeDetails = options.includeDetails !== false;
 
     if (!existsSync(selectedFeedPath)) {
         return {
@@ -174,27 +440,254 @@ async function readFeedSnapshot(selectedFeedPath, limit) {
         };
     }
 
-    const [fileContents, fileStat] = await Promise.all([
-        readFile(selectedFeedPath, "utf8"),
-        stat(selectedFeedPath),
-    ]);
-
-    const lines = fileContents.split(/\r?\n/).filter((line) => line.trim().length > 0);
-    const selectedLines = lines.slice(-resolvedLimit);
-    const firstLineNumber = lines.length - selectedLines.length + 1;
-
-    const events = selectedLines.map((rawLine, index) => normalizeLine(rawLine, firstLineNumber + index)).reverse();
+    const { fileStat, visibleEntries } = await refreshFeedIndex(selectedFeedPath);
+    const selectedEntries = visibleEntries.slice(-resolvedLimit);
+    const events = includeDetails
+        ? (await Promise.all(selectedEntries.map((entry) => hydrateIndexedEntry(selectedFeedPath, fileStat.size, entry)))).reverse()
+        : selectedEntries.map(publicEntry).reverse();
 
     return {
         ok: true,
         feedPath: selectedFeedPath,
         exists: true,
+        detail: includeDetails ? "full" : "summary",
         generatedAt,
         pollHintMs: POLL_HINT_MS,
         lastModified: fileStat.mtime.toISOString(),
-        totalLines: lines.length,
-        returnedLines: selectedLines.length,
+        totalLines: visibleEntries.length,
+        returnedLines: selectedEntries.length,
         events,
+    };
+}
+
+async function readFeedLine(selectedFeedPath, lineNumber) {
+    const generatedAt = new Date().toISOString();
+    if (!existsSync(selectedFeedPath)) {
+        return {
+            ok: false,
+            statusCode: 404,
+            feedPath: selectedFeedPath,
+            exists: false,
+            generatedAt,
+            error: "Feed file not found.",
+        };
+    }
+
+    const { fileStat, visibleEntries } = await refreshFeedIndex(selectedFeedPath);
+    const indexedEntry = visibleEntries.find((entry) => entry.lineNumber === lineNumber);
+
+    if (!indexedEntry) {
+        return {
+            ok: false,
+            statusCode: 404,
+            feedPath: selectedFeedPath,
+            exists: true,
+            generatedAt,
+            totalLines: visibleEntries.length,
+            error: `Line ${lineNumber} is not available in the feed.`,
+        };
+    }
+
+    return {
+        ok: true,
+        feedPath: selectedFeedPath,
+        exists: true,
+        detail: "full",
+        generatedAt,
+        lastModified: fileStat.mtime.toISOString(),
+        totalLines: visibleEntries.length,
+        event: await hydrateIndexedEntry(selectedFeedPath, fileStat.size, indexedEntry),
+    };
+}
+
+async function refreshFeedIndex(selectedFeedPath) {
+    const fileStat = await stat(selectedFeedPath);
+    const needsReset = feedIndex.feedPath !== selectedFeedPath
+        || fileStat.size < feedIndex.fileSize
+        || fileStat.mtimeMs < feedIndex.lastModifiedMs;
+
+    if (needsReset) {
+        feedIndex = createEmptyFeedIndex(selectedFeedPath);
+    }
+
+    if (feedIndex.feedPath !== selectedFeedPath) {
+        feedIndex.feedPath = selectedFeedPath;
+    }
+
+    if (fileStat.size > feedIndex.fileSize) {
+        const chunk = await readFeedChunk(selectedFeedPath, feedIndex.fileSize, fileStat.size - feedIndex.fileSize);
+        ingestFeedChunk(feedIndex, chunk, feedIndex.fileSize);
+    }
+
+    feedIndex.fileSize = fileStat.size;
+    feedIndex.lastModifiedMs = fileStat.mtimeMs;
+
+    return {
+        fileStat,
+        visibleEntries: visibleFeedEntries(feedIndex, fileStat.size),
+    };
+}
+
+function ingestFeedChunk(index, chunk, chunkStartOffset) {
+    const hasPending = index.pendingBuffer.length > 0;
+    const combinedBuffer = hasPending ? Buffer.concat([index.pendingBuffer, chunk]) : chunk;
+    const combinedStartOffset = hasPending ? index.pendingStartOffset : chunkStartOffset;
+
+    let lineStart = 0;
+
+    for (let cursor = 0; cursor < combinedBuffer.length; cursor += 1) {
+        if (combinedBuffer[cursor] !== 0x0a) {
+            continue;
+        }
+
+        let contentEnd = cursor;
+        if (contentEnd > lineStart && combinedBuffer[contentEnd - 1] === 0x0d) {
+            contentEnd -= 1;
+        }
+
+        appendIndexedLine(
+            index,
+            combinedBuffer.subarray(lineStart, contentEnd),
+            combinedStartOffset + lineStart,
+            combinedStartOffset + contentEnd,
+        );
+        lineStart = cursor + 1;
+    }
+
+    index.pendingBuffer = combinedBuffer.subarray(lineStart);
+    index.pendingStartOffset = combinedStartOffset + lineStart;
+}
+
+function appendIndexedLine(index, rawLineBuffer, startOffset, endOffset) {
+    const rawLine = rawLineBuffer.toString("utf8");
+    if (rawLine.trim().length === 0) {
+        return;
+    }
+
+    const summaryEntry = summarizeLine(rawLine, index.entries.length + 1);
+    index.entries.push({
+        ...summaryEntry,
+        startOffset,
+        endOffset,
+    });
+}
+
+function visibleFeedEntries(index, fileSize) {
+    const entries = [...index.entries];
+    const pendingEntry = pendingFeedEntry(index, fileSize);
+    if (pendingEntry) {
+        entries.push(pendingEntry);
+    }
+    return entries;
+}
+
+function pendingFeedEntry(index, fileSize) {
+    if (index.pendingBuffer.length === 0) {
+        return null;
+    }
+
+    const rawLine = index.pendingBuffer.toString("utf8");
+    if (rawLine.trim().length === 0) {
+        return null;
+    }
+
+    return {
+        ...summarizeLine(rawLine, index.entries.length + 1),
+        startOffset: index.pendingStartOffset,
+        endOffset: fileSize,
+    };
+}
+
+async function hydrateIndexedEntry(selectedFeedPath, fileSize, entry) {
+    if (!entry.parsed) {
+        const rawLine = await readIndexedRawLine(selectedFeedPath, fileSize, entry);
+        return normalizeLine(rawLine, entry.lineNumber);
+    }
+
+    const cached = feedIndex.detailCache.get(entry.lineNumber);
+    if (cached) {
+        return cached;
+    }
+
+    const rawLine = await readIndexedRawLine(selectedFeedPath, fileSize, entry);
+    const normalizedEntry = normalizeLine(rawLine, entry.lineNumber);
+    rememberDetailEntry(normalizedEntry);
+    return normalizedEntry;
+}
+
+async function readIndexedRawLine(selectedFeedPath, fileSize, entry) {
+    const pendingEntry = pendingFeedEntry(feedIndex, fileSize);
+    if (pendingEntry && pendingEntry.lineNumber === entry.lineNumber) {
+        return feedIndex.pendingBuffer.toString("utf8");
+    }
+
+    const length = Math.max(0, entry.endOffset - entry.startOffset);
+    const lineBuffer = await readFeedChunk(selectedFeedPath, entry.startOffset, length);
+    return lineBuffer.toString("utf8");
+}
+
+async function readFeedChunk(selectedFeedPath, offset, length) {
+    if (length <= 0) {
+        return Buffer.alloc(0);
+    }
+
+    const handle = await open(selectedFeedPath, "r");
+    try {
+        const buffer = Buffer.alloc(length);
+        let totalBytesRead = 0;
+
+        while (totalBytesRead < length) {
+            const { bytesRead } = await handle.read(buffer, totalBytesRead, length - totalBytesRead, offset + totalBytesRead);
+            if (bytesRead === 0) {
+                break;
+            }
+
+            totalBytesRead += bytesRead;
+        }
+
+        return totalBytesRead === buffer.length ? buffer : buffer.subarray(0, totalBytesRead);
+    } finally {
+        await handle.close();
+    }
+}
+
+function rememberDetailEntry(entry) {
+    feedIndex.detailCache.delete(entry.lineNumber);
+    feedIndex.detailCache.set(entry.lineNumber, entry);
+
+    while (feedIndex.detailCache.size > DETAIL_CACHE_LIMIT) {
+        const oldestLineNumber = feedIndex.detailCache.keys().next().value;
+        feedIndex.detailCache.delete(oldestLineNumber);
+    }
+}
+
+function publicEntry(entry) {
+    const { startOffset: _startOffset, endOffset: _endOffset, ...value } = entry;
+    return value;
+}
+
+function summarizeLine(rawLine, lineNumber) {
+    const parsed = parseEventJsonLine(rawLine);
+    if (!parsed.ok) {
+        return {
+            lineNumber,
+            parsed: false,
+            error: parsed.error,
+            rawPreview: rawLine.slice(0, 240),
+            summary: {
+                title: "Unrecognized JSONL line",
+                subtitle: parsed.error,
+                chips: ["invalid"],
+            },
+        };
+    }
+
+    return {
+        lineNumber,
+        parsed: true,
+        detail: "summary",
+        ...eventIndex(parsed.event),
+        summary: summarizeEvent(parsed.event),
     };
 }
 
@@ -218,8 +711,20 @@ function normalizeLine(rawLine, lineNumber) {
         lineNumber,
         rawLine,
         parsed: true,
+        detail: "full",
+        ...eventIndex(parsed.event),
         event: parsed.event,
         summary: summarizeEvent(parsed.event),
+    };
+}
+
+function eventIndex(event) {
+    return {
+        eventType: event.type,
+        battleId: event.battleId ?? null,
+        journalId: event.journalId ?? null,
+        battleType: event.battleType ?? null,
+        timestamp: event.timestamp ?? null,
     };
 }
 

@@ -3,6 +3,7 @@ const state = {
     battleGroups: [],
     selectedBattleKey: null,
     selectedCombatantKey: null,
+    detailsByLine: new Map(),
     refreshTimer: null,
     lastReportHtml: "",
     lastBattleSelectKey: null,
@@ -26,7 +27,7 @@ elements.autoRefresh.addEventListener("change", updateRefreshLoop);
 elements.battleSelect.addEventListener("change", () => {
     state.selectedBattleKey = elements.battleSelect.value;
     state.selectedCombatantKey = null;
-    renderReport();
+    void renderReport();
 });
 
 await refreshSnapshot();
@@ -37,7 +38,7 @@ async function refreshSnapshot() {
 
     try {
         const limit = Number.parseInt(elements.lineLimit.value, 10) || 200;
-        const response = await fetch(`/api/events?limit=${limit}`, { cache: "no-store" });
+        const response = await fetch(`/api/events?limit=${limit}&detail=summary`, { cache: "no-store" });
         const snapshot = await response.json();
 
         state.snapshot = snapshot;
@@ -50,7 +51,7 @@ async function refreshSnapshot() {
 
         renderStatus(snapshot);
         renderBattleSelect();
-        renderReport();
+        void renderReport();
     } catch (error) {
         setStatus("Unavailable");
         elements.reportView.innerHTML = `<div class="empty-state">${escapeHtml(error instanceof Error ? error.message : "Unable to load battle feed.")}</div>`;
@@ -91,50 +92,62 @@ function buildBattleGroups(snapshot) {
     const groups = new Map();
 
     for (const entry of snapshot.events) {
-        if (!entry.parsed || !entry.event) {
+        if (!entry.parsed) {
             continue;
         }
 
-        const eventType = String(entry.event.type ?? "");
+        const eventType = entryEventType(entry);
         if (!eventType.startsWith("battle.") && eventType !== "catalog.snapshot") {
             continue;
         }
 
-        const event = entry.event;
-        const key = String(event.battleId ?? event.journalId ?? `line-${entry.lineNumber}`);
+        const hydratedEntry = state.detailsByLine.get(entry.lineNumber) ?? entry;
+        const key = entryBattleKey(hydratedEntry);
         const group = groups.get(key) ?? {
             key,
             lineNumber: entry.lineNumber,
             entries: [],
+            title: entry.summary?.title ?? `Battle ${key}`,
+            timestamp: entry.timestamp ?? entry.summary?.timestamp ?? "",
             captureEntry: null,
             reportEntry: null,
             analyticsEntry: null,
             catalogEntry: null,
         };
 
-        group.entries.push(entry);
+        group.entries.push(hydratedEntry);
         group.lineNumber = Math.max(group.lineNumber, entry.lineNumber);
+        group.title = entry.summary?.title ?? group.title;
+        group.timestamp = entry.timestamp ?? entry.summary?.timestamp ?? group.timestamp;
 
-        if (event.type === "battle.capture" && (!group.captureEntry || entry.lineNumber > group.captureEntry.lineNumber)) {
-            group.captureEntry = entry;
+        if (eventType === "battle.capture" && (!group.captureEntry || hydratedEntry.lineNumber > group.captureEntry.lineNumber)) {
+            group.captureEntry = hydratedEntry;
         }
 
-        if (event.type === "battle.report" && (!group.reportEntry || entry.lineNumber > group.reportEntry.lineNumber)) {
-            group.reportEntry = entry;
+        if (eventType === "battle.report" && (!group.reportEntry || hydratedEntry.lineNumber > group.reportEntry.lineNumber)) {
+            group.reportEntry = hydratedEntry;
         }
 
-        if (event.type === "battle.analytics" && (!group.analyticsEntry || entry.lineNumber > group.analyticsEntry.lineNumber)) {
-            group.analyticsEntry = entry;
+        if (eventType === "battle.analytics" && (!group.analyticsEntry || hydratedEntry.lineNumber > group.analyticsEntry.lineNumber)) {
+            group.analyticsEntry = hydratedEntry;
         }
 
-        if (event.type === "catalog.snapshot" && (!group.catalogEntry || entry.lineNumber > group.catalogEntry.lineNumber)) {
-            group.catalogEntry = entry;
+        if (eventType === "catalog.snapshot" && (!group.catalogEntry || hydratedEntry.lineNumber > group.catalogEntry.lineNumber)) {
+            group.catalogEntry = hydratedEntry;
         }
 
         groups.set(key, group);
     }
 
     return [...groups.values()].sort((left, right) => right.lineNumber - left.lineNumber);
+}
+
+function entryEventType(entry) {
+    return String(entry.event?.type ?? entry.eventType ?? "");
+}
+
+function entryBattleKey(entry) {
+    return String(entry.event?.battleId ?? entry.battleId ?? entry.event?.journalId ?? entry.journalId ?? `line-${entry.lineNumber}`);
 }
 
 function renderBattleSelect() {
@@ -161,10 +174,9 @@ function renderBattleSelect() {
     elements.battleSelect.disabled = false;
 
     for (const group of state.battleGroups) {
-        const model = buildReportModel(group);
         const option = document.createElement("option");
         option.value = group.key;
-        option.textContent = `${formatDateTime(model.timestamp)} | ${model.title}`;
+        option.textContent = `${formatDateTime(group.timestamp)} | ${group.title}`;
         option.selected = group.key === state.selectedBattleKey;
         elements.battleSelect.appendChild(option);
     }
@@ -176,7 +188,7 @@ function renderBattleSelect() {
     state.lastBattleSelectKey = signature;
 }
 
-function renderReport() {
+async function renderReport() {
     if (!state.snapshot?.ok) {
         const html = `<div class="empty-state">${escapeHtml(state.snapshot?.error ?? "No battle feed available.")}</div>`;
         if (html !== state.lastReportHtml) {
@@ -194,6 +206,30 @@ function renderReport() {
             state.lastReportHtml = html;
         }
         return;
+    }
+
+    const selectedBattleKey = state.selectedBattleKey;
+    if (group.entries.some((entry) => entry.parsed && !entry.event)) {
+        const html = `<div class="empty-state">Loading selected battle detail...</div>`;
+        if (html !== state.lastReportHtml) {
+            elements.reportView.innerHTML = html;
+            state.lastReportHtml = html;
+        }
+
+        try {
+            await hydrateBattleGroup(group);
+        } catch (error) {
+            const errorHtml = `<div class="empty-state">${escapeHtml(error instanceof Error ? error.message : "Unable to load selected battle detail.")}</div>`;
+            elements.reportView.innerHTML = errorHtml;
+            state.lastReportHtml = errorHtml;
+            return;
+        }
+
+        if (state.selectedBattleKey !== selectedBattleKey) {
+            return;
+        }
+
+        renderBattleSelect();
     }
 
     const model = buildReportModel(group);
@@ -243,7 +279,7 @@ function renderReport() {
     for (const button of elements.reportView.querySelectorAll("[data-combatant-key]")) {
         button.addEventListener("click", () => {
             state.selectedCombatantKey = button.getAttribute("data-combatant-key");
-            renderReport();
+            void renderReport();
         });
     }
 
@@ -251,6 +287,50 @@ function renderReport() {
         const restored = elements.reportView.querySelector(`[data-combatant-key="${cssEscapeAttr(focusedCombatantKey)}"]`);
         restored?.focus?.({ preventScroll: true });
     }
+}
+
+async function hydrateBattleGroup(group) {
+    group.entries = await Promise.all(group.entries.map((entry) => loadEntryDetail(entry)));
+    group.captureEntry = null;
+    group.reportEntry = null;
+    group.analyticsEntry = null;
+    group.catalogEntry = null;
+
+    for (const entry of group.entries) {
+        const eventType = entryEventType(entry);
+        if (eventType === "battle.capture" && (!group.captureEntry || entry.lineNumber > group.captureEntry.lineNumber)) {
+            group.captureEntry = entry;
+        }
+        if (eventType === "battle.report" && (!group.reportEntry || entry.lineNumber > group.reportEntry.lineNumber)) {
+            group.reportEntry = entry;
+        }
+        if (eventType === "battle.analytics" && (!group.analyticsEntry || entry.lineNumber > group.analyticsEntry.lineNumber)) {
+            group.analyticsEntry = entry;
+        }
+        if (eventType === "catalog.snapshot" && (!group.catalogEntry || entry.lineNumber > group.catalogEntry.lineNumber)) {
+            group.catalogEntry = entry;
+        }
+    }
+}
+
+async function loadEntryDetail(entry) {
+    if (entry.event || !entry.parsed) {
+        return entry;
+    }
+
+    const cached = state.detailsByLine.get(entry.lineNumber);
+    if (cached) {
+        return cached;
+    }
+
+    const response = await fetch(`/api/events/${entry.lineNumber}`, { cache: "no-store" });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok || !payload.event) {
+        throw new Error(payload.error ?? `Unable to load line ${entry.lineNumber}.`);
+    }
+
+    state.detailsByLine.set(entry.lineNumber, payload.event);
+    return payload.event;
 }
 
 function buildReportModel(group) {
