@@ -20,6 +20,10 @@ This project is intentionally separate from the community mod repo because it ha
 - No hidden advantage logic.
 - No sidecar commands that control gameplay.
 
+## Architecture Boundary
+
+The C++ community mod remains the production mod until a managed BepInEx port proves replacement parity in writing. The sidecar stays mod-agnostic and communicates through local files and documented APIs, not implementation internals. See [docs/12-production-mod-boundary.md](docs/12-production-mod-boundary.md).
+
 ## V0 Goals
 
 - Ingest JSONL events emitted by the community mod.

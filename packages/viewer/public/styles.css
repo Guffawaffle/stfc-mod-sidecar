@@ -252,10 +252,12 @@ button {
   grid-template-columns: minmax(320px, 430px) minmax(0, 1fr);
   gap: 18px;
   margin-top: 18px;
+  min-width: 0;
 }
 
 .feed-column,
 .detail-column {
+  min-width: 0;
   padding: 18px;
 }
 
@@ -312,12 +314,14 @@ button {
 }
 
 .detail-panel {
+  min-width: 0;
   padding: 18px;
 }
 
 .detail-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .detail-table th,
@@ -326,12 +330,42 @@ button {
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: top;
+  overflow-wrap: anywhere;
 }
 
 .detail-table th {
   width: 180px;
   color: var(--muted);
   font-weight: 600;
+}
+
+.detail-table-scroll {
+  max-width: 100%;
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+.detail-table-scroll .data-table {
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
+}
+
+.detail-table-scroll .detail-table th,
+.detail-table-scroll .detail-table td {
+  white-space: nowrap;
+}
+
+.data-table th,
+.data-table td {
+  font-size: 0.88rem;
+}
+
+.detail-note {
+  margin: 0;
+  color: var(--muted);
 }
 
 .participant-table th,
@@ -354,6 +388,12 @@ button {
 .reward-list {
   margin: 0;
   padding-left: 20px;
+}
+
+.note-list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
 }
 
 .raw-panel pre,

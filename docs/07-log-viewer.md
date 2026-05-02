@@ -7,7 +7,7 @@ The sidecar now includes a multipage local viewer for the JSONL data emitted by 
 - Reads the mod feed file directly from disk.
 - Uses `/` as a viewer home page and `/battle-log/` as the dedicated battle-log tool route.
 - Shows the most recent JSONL events in a browser.
-- Highlights `battle.report` summaries, participants, rewards, and raw JSON.
+- Highlights `battle.capture`, `battle.report`, `battle.analytics`, and `catalog.snapshot` payloads with focused detail panels plus raw JSON.
 - Stays read-only. It does not send commands to the game or the mod.
 
 ## Default Feed Path
@@ -106,8 +106,8 @@ npm run viewer
 3. Use `npm run server:status` to confirm the managed pid, port, and feed path.
 4. Open the Battle Log page from the home page, or jump directly to `/battle-log/`.
 5. Kill hostiles or trigger battle activity in STFC.
-6. Watch new `battle.capture` and `battle.report` lines appear in the event list.
-7. Click an event to inspect tokens, participants, rewards, and raw JSON.
+6. Watch new `battle.capture`, `battle.report`, `battle.analytics`, and `catalog.snapshot` lines appear in the event list.
+7. Click an event to inspect tokens, participants, rewards, CSV parity rows, catalog coverage, and raw JSON.
 
 ## Multipage Direction
 
