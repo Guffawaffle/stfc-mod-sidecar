@@ -24,6 +24,8 @@ This project is intentionally separate from the community mod repo because it ha
 
 The C++ community mod remains the production mod until a managed BepInEx port proves replacement parity in writing. The sidecar stays mod-agnostic and communicates through local files and documented APIs, not implementation internals. See [docs/12-production-mod-boundary.md](docs/12-production-mod-boundary.md).
 
+The current C++ mod feed contract is documented in [docs/13-cpp-mod-feed-contract.md](docs/13-cpp-mod-feed-contract.md).
+
 ## V0 Goals
 
 - Ingest JSONL events emitted by the community mod.
