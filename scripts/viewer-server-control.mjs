@@ -102,6 +102,7 @@ async function startServer(commandArgs) {
         url: serverUrl(serverConfig.port),
         port: serverConfig.port,
         feedPath: serverConfig.feedPath,
+        settingsPath: serverConfig.settingsPath,
         limit: serverConfig.limit,
         launchArgs: serverConfig.launchArgs,
         shutdownToken,
@@ -183,6 +184,7 @@ async function showStatus(commandArgs) {
         console.log(`url: ${managedState.url}`);
         console.log(`port: ${managedState.port}`);
         console.log(`feed: ${managedState.feedPath}`);
+        console.log(`settings: ${managedState.settingsPath ?? "default beside feed"}`);
         console.log(`limit: ${managedState.limit}`);
         console.log(`started: ${managedState.startedAt}`);
         console.log(`health: ${health?.ok ? "ok" : "unreachable"}`);
@@ -202,6 +204,7 @@ async function showStatus(commandArgs) {
         console.log(`pid: ${health.pid ?? "unknown"}`);
         console.log(`url: ${serverUrl(requestedPort)}`);
         console.log(`feed: ${health.feedPath ?? "unknown"}`);
+        console.log(`settings: ${health.settingsPath ?? "unknown"}`);
         return;
     }
 
@@ -229,7 +232,7 @@ async function showLogs(commandArgs) {
 
 function printUsage() {
     console.log("Usage: node scripts/viewer-server-control.mjs <start|stop|kill|status|restart|logs> [viewer args]");
-    console.log("Viewer args: --feed-path <jsonl> --port <number> --limit <number>");
+    console.log("Viewer args: --feed-path <jsonl> --settings-path <toml> --port <number> --limit <number>");
     console.log("Log args: logs [--lines <count>]");
 }
 
@@ -267,6 +270,7 @@ function resolveNpmInvocation(args) {
 
 function resolveServerConfig(commandArgs) {
     let selectedFeedPath = process.env.STFC_SIDECAR_FEED_PATH ?? DEFAULT_FEED_PATH;
+    let selectedSettingsPath = process.env.STFC_SIDECAR_SETTINGS_PATH ?? "";
     let selectedPort = parseInteger(process.env.STFC_SIDECAR_PORT, DEFAULT_PORT);
     let selectedLimit = parseInteger(process.env.STFC_SIDECAR_LIMIT, DEFAULT_LIMIT);
 
@@ -274,12 +278,18 @@ function resolveServerConfig(commandArgs) {
         const arg = commandArgs[index];
         const value = commandArgs[index + 1];
 
-        if ((arg === "--feed-path" || arg === "--port" || arg === "--limit") && value === undefined) {
+        if ((arg === "--feed-path" || arg === "--settings-path" || arg === "--port" || arg === "--limit") && value === undefined) {
             throw new Error(`missing value for ${arg}`);
         }
 
         if (arg === "--feed-path") {
             selectedFeedPath = value;
+            index += 1;
+            continue;
+        }
+
+        if (arg === "--settings-path") {
+            selectedSettingsPath = value;
             index += 1;
             continue;
         }
@@ -296,11 +306,13 @@ function resolveServerConfig(commandArgs) {
         }
     }
 
+    const resolvedFeedPath = resolveFeedPath(selectedFeedPath, repoRoot);
     return {
         launchArgs: [...commandArgs],
         port: selectedPort,
         limit: selectedLimit,
-        feedPath: resolveFeedPath(selectedFeedPath, repoRoot),
+        feedPath: resolvedFeedPath,
+        settingsPath: selectedSettingsPath ? resolveFeedPath(selectedSettingsPath, repoRoot) : path.join(path.dirname(resolvedFeedPath), "community_patch_settings.toml"),
     };
 }
 

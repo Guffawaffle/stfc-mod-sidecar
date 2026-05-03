@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>STFC Sidecar Viewer | About</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell site-shell about-shell">
+      <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="about"></nav>
+
+      <header class="hero home-hero">
+        <div>
+          <p class="eyebrow">STFC Mod Sidecar</p>
+          <h1>Companion Console</h1>
+          <p class="hero-copy">A local-first companion surface for diagnostics, settings, event review, and future install/update workflows.</p>
+        </div>
+      </header>
+
+      <section class="module-grid module-grid--two about-grid" aria-label="sidecar companion details">
+        <article class="module-card module-card--primary">
+          <p class="eyebrow">Boundary</p>
+          <h2>Outside The Game Process</h2>
+          <p class="page-copy">The sidecar reads local files and documented local APIs. It does not inject into STFC, synthesize input, automate gameplay, or send arbitrary commands to the mod.</p>
+        </article>
+
+        <article class="module-card">
+          <p class="eyebrow">Configuration</p>
+          <h2>Schema First</h2>
+          <p class="page-copy">The companion UI should render settings from the shared schema, persist sparse startup config, and live-apply only schema-approved runtime settings.</p>
+        </article>
+
+        <article class="module-card">
+          <p class="eyebrow">Packaging</p>
+          <h2>Optional Installer</h2>
+          <p class="page-copy">Manual DLL/dylib installs stay available. The companion installer can add update, launch, diagnostics, and local viewer workflows for users who want them.</p>
+        </article>
+
+        <article class="module-card module-card--accent">
+          <p class="eyebrow">Visual Credit</p>
+          <h2>LCARS Inspired</h2>
+          <p class="page-copy">This interface uses original project-authored styling inspired by LCARS interface language. It does not bundle TheLCARS.com template files.</p>
+          <p class="page-copy">Star Trek and related marks belong to their respective owners. This project is not affiliated with, endorsed by, or sponsored by CBS Studios Inc. or Scopely.</p>
+        </article>
+      </section>
+    </main>
+
+    <script type="module" src="/shared/shell.js"></script>
+  </body>
+</html>

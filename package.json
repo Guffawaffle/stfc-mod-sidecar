@@ -1,6 +1,6 @@
 {
   "name": "stfc-mod-sidecar",
-  "version": "0.0.0",
+  "version": "0.0.1-Alpha",
   "private": true,
   "description": "Read-only diagnostic sidecar and integration bridge for STFC Community Mod events.",
   "type": "module",
@@ -17,6 +17,10 @@
     "server:status": "node ./scripts/viewer-server-control.mjs status",
     "server:restart": "node ./scripts/viewer-server-control.mjs restart",
     "server:logs": "node ./scripts/viewer-server-control.mjs logs",
+    "desktop:dev": "npm run dev --workspace @stfc-mod-sidecar/desktop",
+    "desktop:pack": "npm run pack --workspace @stfc-mod-sidecar/desktop",
+    "desktop:dist": "npm run dist --workspace @stfc-mod-sidecar/desktop",
+    "desktop:dist:win": "npm run dist:win --workspace @stfc-mod-sidecar/desktop",
     "analyze:attack-scalars": "node ./scripts/analyze-attack-scalars.mjs",
     "viewer": "npm run server:start",
     "viewer:run": "npm run build --workspace @stfc-mod-sidecar/core && node packages/viewer/server.mjs",

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>STFC Sidecar Viewer | Settings</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell site-shell settings-shell">
+      <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="settings"></nav>
+
+      <header class="hero settings-hero">
+        <div>
+          <p class="eyebrow">STFC Mod Sidecar</p>
+          <h1>Settings</h1>
+          <p class="hero-copy">Hotkey bindings and keyboard behavior for the production community mod config.</p>
+        </div>
+        <section class="hero-controls" aria-label="settings actions">
+          <label id="settings-token-control" class="control control--wide" hidden>
+            <span>Settings token</span>
+            <input id="settings-token" type="password" autocomplete="off" placeholder="Required to save" />
+          </label>
+          <button id="reload-settings" type="button">Reload</button>
+          <button id="save-settings" type="button" disabled>Save for next launch</button>
+        </section>
+      </header>
+
+      <section class="status-strip settings-status" aria-live="polite">
+        <article>
+          <span class="status-label">Game Directory</span>
+          <strong id="game-directory">Loading...</strong>
+        </article>
+        <article>
+          <span class="status-label">Settings Path</span>
+          <strong id="settings-path">Loading...</strong>
+        </article>
+        <article>
+          <span class="status-label">Config</span>
+          <strong id="settings-state">Loading...</strong>
+        </article>
+        <article>
+          <span class="status-label">Warnings</span>
+          <strong id="settings-warning-count">0</strong>
+        </article>
+        <article>
+          <span class="status-label">Changes</span>
+          <strong id="settings-change-count">0</strong>
+        </article>
+      </section>
+
+      <section id="desktop-bootstrap" class="settings-panel desktop-bootstrap" hidden>
+        <div class="panel-heading">
+          <h2>Game Directory</h2>
+          <p id="desktop-bootstrap-state">Desktop companion path selection.</p>
+        </div>
+        <div class="path-stack">
+          <div>
+            <span class="status-label">Directory</span>
+            <strong id="desktop-game-directory">Not selected</strong>
+          </div>
+          <div>
+            <span class="status-label">Feed</span>
+            <strong id="desktop-feed-path">Unknown</strong>
+          </div>
+        </div>
+        <div class="bootstrap-actions">
+          <button id="select-game-directory" type="button">Select STFC Game Directory</button>
+          <button id="open-game-directory" type="button" disabled>Open Directory</button>
+        </div>
+      </section>
+
+      <section class="settings-layout">
+        <aside class="settings-panel settings-sidebar">
+          <div class="panel-heading">
+            <h2>Hard Settings</h2>
+            <p>Keyboard router toggles and timing values.</p>
+          </div>
+          <div id="hard-settings" class="hard-settings-list"></div>
+        </aside>
+
+        <section class="settings-main">
+          <section class="settings-panel settings-toolbar" aria-label="hotkey filters">
+            <label class="control control--wide">
+              <span>Search</span>
+              <input id="hotkey-search" type="search" placeholder="Action, group, or key" />
+            </label>
+            <label class="control">
+              <span>Group</span>
+              <select id="hotkey-group"></select>
+            </label>
+            <label class="toggle">
+              <input id="conflicts-only" type="checkbox" />
+              <span>Conflicts only</span>
+            </label>
+          </section>
+
+          <section id="conflict-panel" class="settings-panel conflict-panel" hidden>
+            <div class="panel-heading">
+              <h2>Binding Conflicts</h2>
+              <p>Shared bindings are visible before saving.</p>
+            </div>
+            <div id="conflict-list" class="conflict-list"></div>
+          </section>
+
+          <div id="hotkey-groups" class="hotkey-groups"></div>
+        </section>
+      </section>
+
+      <div id="capture-dialog" class="capture-dialog" hidden>
+        <div id="capture-panel" class="capture-dialog__panel" role="dialog" aria-modal="true" aria-labelledby="capture-title" tabindex="-1">
+          <p class="eyebrow">Capture Binding</p>
+          <h2 id="capture-title">Press a key</h2>
+          <p id="capture-preview" class="page-copy">Waiting for input...</p>
+          <div class="capture-dialog__actions">
+            <button id="capture-ok" type="button" data-capture-control disabled>OK</button>
+            <button id="capture-cancel" type="button" data-capture-control>Cancel</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <script type="module" src="/settings/app.js"></script>
+    <script type="module" src="/shared/shell.js"></script>
+  </body>
+</html>

@@ -1,15 +1,20 @@
 import { createServer } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
-import { open, readFile, stat } from "node:fs/promises";
+import { copyFile, mkdir, open, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const DEFAULT_FEED_PATH = "C:\\Games\\Star Trek Fleet Command\\default\\game\\community_patch_battle_feed.jsonl";
+const DEFAULT_GAME_DIR = "C:\\Games\\Star Trek Fleet Command\\default\\game";
+const DEFAULT_FEED_FILE = "community_patch_battle_feed.jsonl";
+const DEFAULT_FEED_PATH = path.join(DEFAULT_GAME_DIR, DEFAULT_FEED_FILE);
+const DEFAULT_SETTINGS_FILE = "community_patch_settings.toml";
 const DEFAULT_PORT = 43127;
 const DEFAULT_LIMIT = 150;
 const DETAIL_CACHE_LIMIT = 128;
 const DEFAULT_STORE_PATH = "./.sidecar/sidecar-events.sqlite";
 const DEFAULT_SYNC_TOKEN = "testtoken123";
+const SETTINGS_SAVE_MODE_LOCAL_TRUSTED = "local_trusted";
+const SETTINGS_SAVE_MODE_REMOTE_PROTECTED = "remote_protected";
 const MAX_EVENT_INGEST_BYTES = 5 * 1024 * 1024;
 const POLL_HINT_MS = 2000;
 const SHUTDOWN_GRACE_MS = 5000;
@@ -19,20 +24,30 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..");
 const publicDir = path.join(__dirname, "public");
 
-const { feedPath, port, defaultLimit } = parseArgs(process.argv.slice(2));
+const { gameDir, feedPath, settingsPath, port, defaultLimit } = parseArgs(process.argv.slice(2));
 const startedAt = new Date();
 const shutdownToken = process.env.STFC_SIDECAR_SHUTDOWN_TOKEN ?? "";
 const syncToken = process.env.STFC_SIDECAR_SYNC_TOKEN ?? DEFAULT_SYNC_TOKEN;
+const settingsToken = process.env.STFC_SIDECAR_SETTINGS_TOKEN ?? syncToken;
+const settingsSaveMode = parseSettingsSaveMode(process.env.STFC_SIDECAR_SETTINGS_SAVE_MODE);
 let feedIndex = createEmptyFeedIndex();
 
 let shutdownRequested = false;
 let exitTimer;
 
 let createSqlSidecarEventStore;
+let applyCommunityModHotkeySettingsPatch;
+let buildCommunityModHotkeySettingsSnapshot;
 let isSidecarEvent;
 let parseEventJsonLine;
 try {
-    ({ createSqlSidecarEventStore, isSidecarEvent, parseEventJsonLine } = await import(new URL("../core/dist/index.js", import.meta.url)));
+    ({
+        applyCommunityModHotkeySettingsPatch,
+        buildCommunityModHotkeySettingsSnapshot,
+        createSqlSidecarEventStore,
+        isSidecarEvent,
+        parseEventJsonLine,
+    } = await import(new URL("../core/dist/index.js", import.meta.url)));
 } catch (error) {
     console.error("Unable to load @stfc-mod-sidecar/core. Run `npm run build --workspace @stfc-mod-sidecar/core` first.");
     console.error(error instanceof Error ? error.message : String(error));
@@ -61,6 +76,18 @@ const server = createServer(async (request, response) => {
         return sendJson(response, 200, snapshot);
     }
 
+    if (requestUrl.pathname === "/api/settings/hotkeys") {
+        if (request.method === "GET") {
+            return sendJson(response, 200, await readHotkeySettingsSnapshot());
+        }
+
+        if (request.method === "PUT" || request.method === "PATCH" || request.method === "POST") {
+            return handleHotkeySettingsUpdate(request, response);
+        }
+
+        return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+    }
+
     const eventLineMatch = /^\/api\/events\/([0-9]+)$/.exec(requestUrl.pathname);
     if (eventLineMatch) {
         if (request.method && request.method !== "GET") {
@@ -77,7 +104,9 @@ const server = createServer(async (request, response) => {
         return sendJson(response, 200, {
             ok: true,
             pid: process.pid,
+            gameDir,
             feedPath,
+            settingsPath,
             port,
             defaultLimit,
             eventStoreBackend: eventStore?.backend ?? "none",
@@ -169,8 +198,54 @@ async function createConfiguredEventStore() {
     throw new Error(`Unsupported STFC_SIDECAR_STORE_BACKEND: ${backend}`);
 }
 
+async function readHotkeySettingsSnapshot() {
+    const generatedAt = new Date().toISOString();
+    const exists = existsSync(settingsPath);
+    const contents = exists ? await readFile(settingsPath, "utf8") : "";
+    const snapshot = buildCommunityModHotkeySettingsSnapshot(contents);
+
+    return {
+        ...snapshot,
+        generatedAt,
+        settingsPath,
+        exists,
+        saveRequiresToken: settingsSaveMode === SETTINGS_SAVE_MODE_REMOTE_PROTECTED,
+        settingsSaveMode,
+        saveSupported: true,
+        applyMode: "next_launch",
+    };
+}
+
+async function handleHotkeySettingsUpdate(request, response) {
+    if (!isAuthorizedSettingsRequest(request)) {
+        return sendJson(response, 401, { ok: false, error: "Unauthorized settings request" });
+    }
+
+    try {
+        const payload = await readJsonBody(request);
+        const previousContents = existsSync(settingsPath) ? await readFile(settingsPath, "utf8") : "";
+        const nextContents = applyCommunityModHotkeySettingsPatch(previousContents, payload);
+        await mkdir(path.dirname(settingsPath), { recursive: true });
+
+        if (existsSync(settingsPath)) {
+            await copyFile(settingsPath, `${settingsPath}.bak.sidecar`);
+        }
+
+        await writeFile(settingsPath, nextContents, "utf8");
+        console.log(`[sidecar-viewer] updated hotkey settings ${settingsPath}`);
+        return sendJson(response, 200, await readHotkeySettingsSnapshot());
+    } catch (error) {
+        return sendJson(response, 400, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+}
+
 function parseArgs(args) {
-    let selectedFeedPath = process.env.STFC_SIDECAR_FEED_PATH ?? DEFAULT_FEED_PATH;
+    let selectedGameDir = process.env.STFC_SIDECAR_GAME_DIR ?? "";
+    let selectedFeedPath = process.env.STFC_SIDECAR_FEED_PATH ?? "";
+    let selectedSettingsPath = process.env.STFC_SIDECAR_SETTINGS_PATH ?? "";
     let selectedPort = parseInteger(process.env.STFC_SIDECAR_PORT, DEFAULT_PORT);
     let selectedLimit = parseInteger(process.env.STFC_SIDECAR_LIMIT, DEFAULT_LIMIT);
 
@@ -186,8 +261,18 @@ function parseArgs(args) {
             return args[index];
         };
 
+        if (arg === "--game-dir") {
+            selectedGameDir = nextValue();
+            continue;
+        }
+
         if (arg === "--feed-path") {
             selectedFeedPath = nextValue();
+            continue;
+        }
+
+        if (arg === "--settings-path") {
+            selectedSettingsPath = nextValue();
             continue;
         }
 
@@ -202,7 +287,7 @@ function parseArgs(args) {
         }
 
         if (arg === "--help" || arg === "-h") {
-            console.log("Usage: node packages/viewer/server.mjs [--feed-path <jsonl>] [--port <number>] [--limit <number>]");
+            console.log("Usage: node packages/viewer/server.mjs [--game-dir <dir>] [--feed-path <jsonl>] [--settings-path <toml>] [--port <number>] [--limit <number>]");
             process.exit(0);
         }
 
@@ -210,15 +295,30 @@ function parseArgs(args) {
         process.exit(2);
     }
 
+    const resolvedGameDir = resolveGameDir(selectedGameDir);
+    const resolvedFeedPath = resolveFeedPath(selectedFeedPath || path.join(resolvedGameDir, DEFAULT_FEED_FILE));
     return {
-        feedPath: resolveFeedPath(selectedFeedPath),
+        gameDir: resolvedGameDir,
+        feedPath: resolvedFeedPath,
+        settingsPath: resolveSettingsPath(selectedSettingsPath, resolvedFeedPath),
         port: selectedPort,
         defaultLimit: selectedLimit,
     };
 }
 
+function resolveGameDir(gameDir) {
+    const platformPath = normalizeWindowsPathForWsl(gameDir || DEFAULT_GAME_DIR);
+    return path.resolve(platformPath);
+}
+
 function resolveFeedPath(feedPath) {
     const platformPath = normalizeWindowsPathForWsl(feedPath);
+    return path.resolve(platformPath);
+}
+
+function resolveSettingsPath(selectedSettingsPath, selectedFeedPath) {
+    const settingsPathValue = selectedSettingsPath || path.join(path.dirname(selectedFeedPath), DEFAULT_SETTINGS_FILE);
+    const platformPath = normalizeWindowsPathForWsl(settingsPathValue);
     return path.resolve(platformPath);
 }
 
@@ -385,6 +485,37 @@ function isAuthorizedSyncRequest(request) {
     }
 
     return request.headers["stfc-sync-token"] === syncToken;
+}
+
+function isAuthorizedSettingsRequest(request) {
+    if (settingsSaveMode !== SETTINGS_SAVE_MODE_REMOTE_PROTECTED) {
+        return true;
+    }
+
+    if (!settingsToken) {
+        return true;
+    }
+
+    const authorization = request.headers.authorization;
+    if (authorization === `Bearer ${settingsToken}`) {
+        return true;
+    }
+
+    return request.headers["x-sidecar-settings-token"] === settingsToken;
+}
+
+function parseSettingsSaveMode(value) {
+    const mode = String(value ?? "").trim().toLowerCase();
+    if (!mode || mode === "local" || mode === "local_trusted") {
+        return SETTINGS_SAVE_MODE_LOCAL_TRUSTED;
+    }
+
+    if (mode === "remote" || mode === "remote_protected") {
+        return SETTINGS_SAVE_MODE_REMOTE_PROTECTED;
+    }
+
+    console.warn(`[sidecar-viewer] unknown STFC_SIDECAR_SETTINGS_SAVE_MODE '${value}', using ${SETTINGS_SAVE_MODE_LOCAL_TRUSTED}`);
+    return SETTINGS_SAVE_MODE_LOCAL_TRUSTED;
 }
 
 async function readJsonBody(request) {

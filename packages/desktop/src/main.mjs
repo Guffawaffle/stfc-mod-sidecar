@@ -1,0 +1,356 @@
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+
+const DEFAULT_PORT = 43127;
+const READY_TIMEOUT_MS = 15000;
+const SHUTDOWN_TIMEOUT_MS = 5000;
+const DEFAULT_FEED_FILE = "community_patch_battle_feed.jsonl";
+const DEFAULT_SETTINGS_FILE = "community_patch_settings.toml";
+const DESKTOP_SETTINGS_FILE = "desktop-settings.json";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+let mainWindow = null;
+let sidecarProcess = null;
+let sidecarShutdownToken = "";
+let sidecarUrl = "";
+let logPath = "";
+let desktopSettingsPath = "";
+let desktopSettings = {
+    gameDirectory: "",
+};
+
+app.setName("STFC Community Mod Companion");
+
+app.whenReady().then(async () => {
+    logPath = path.join(app.getPath("userData"), "desktop.log");
+    desktopSettingsPath = path.join(app.getPath("userData"), DESKTOP_SETTINGS_FILE);
+    desktopSettings = loadDesktopSettings();
+    registerDesktopIpc();
+    writeLog("log", `[sidecar-desktop] starting packaged=${app.isPackaged} execPath=${process.execPath}`);
+
+    try {
+        const server = await ensureSidecarServer();
+        sidecarUrl = server.url;
+        mainWindow = createMainWindow(server.url);
+    } catch (error) {
+        writeLog("error", `[sidecar-desktop] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+        app.quit();
+    }
+});
+
+app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0 && sidecarUrl) {
+        mainWindow = createMainWindow(sidecarUrl);
+    }
+});
+
+app.on("window-all-closed", () => {
+    mainWindow = null;
+    if (process.platform !== "darwin") {
+        app.quit();
+    }
+});
+
+app.on("before-quit", (event) => {
+    if (!sidecarProcess || !sidecarShutdownToken || !sidecarUrl) {
+        return;
+    }
+
+    event.preventDefault();
+    void stopSidecarServer().finally(() => app.exit(0));
+});
+
+function createMainWindow(url) {
+    const window = new BrowserWindow({
+        width: 1320,
+        height: 860,
+        minWidth: 980,
+        minHeight: 680,
+        title: "STFC Community Mod Companion",
+        backgroundColor: "#050609",
+        show: false,
+        webPreferences: {
+            contextIsolation: true,
+            nodeIntegration: false,
+            preload: path.join(__dirname, "preload.cjs"),
+            sandbox: true,
+        },
+    });
+
+    window.once("ready-to-show", () => window.show());
+    window.webContents.setWindowOpenHandler(({ url: requestedUrl }) => {
+        const requested = new URL(requestedUrl);
+        const current = new URL(url);
+        if (requested.origin !== current.origin) {
+            void shell.openExternal(requestedUrl);
+            return { action: "deny" };
+        }
+
+        return { action: "allow" };
+    });
+
+    void window.loadURL(url);
+    return window;
+}
+
+async function ensureSidecarServer() {
+    const port = Number.parseInt(process.env.STFC_SIDECAR_PORT ?? String(DEFAULT_PORT), 10);
+    const url = `http://127.0.0.1:${Number.isFinite(port) ? port : DEFAULT_PORT}`;
+
+    const existing = await fetchHealth(url, 800);
+    if (existing?.ok) {
+        writeLog("log", `[sidecar-desktop] using existing sidecar server at ${url}`);
+        return { url, owned: false };
+    }
+
+    return startSidecarServer(url);
+}
+
+async function startSidecarServer(url) {
+    const paths = resolveRuntimePaths();
+    sidecarShutdownToken = randomUUID();
+    writeLog(
+        "log",
+        `[sidecar-desktop] starting server cwd=${paths.cwd} serverScript=${paths.serverScript} gameDirectory=${desktopSettings.gameDirectory || "default"} serverExists=${fs.existsSync(paths.serverScript)}`,
+    );
+
+    const args = [paths.serverScript, "--port", new URL(url).port];
+    if (desktopSettings.gameDirectory) {
+        args.push("--game-dir", desktopSettings.gameDirectory);
+    }
+
+    sidecarProcess = spawn(process.execPath, args, {
+        cwd: paths.cwd,
+        stdio: ["ignore", "pipe", "pipe"],
+        env: {
+            ...process.env,
+            ELECTRON_RUN_AS_NODE: "1",
+            STFC_SIDECAR_DESKTOP: "1",
+            STFC_SIDECAR_SHUTDOWN_TOKEN: sidecarShutdownToken,
+        },
+    });
+
+    sidecarProcess.stdout?.on("data", (chunk) => writeLog("log", `[sidecar-server] ${chunk.toString().trimEnd()}`));
+    sidecarProcess.stderr?.on("data", (chunk) => writeLog("error", `[sidecar-server] ${chunk.toString().trimEnd()}`));
+    sidecarProcess.on("exit", (code, signal) => {
+        writeLog("log", `[sidecar-desktop] sidecar server exited code=${code ?? "null"} signal=${signal ?? "null"}`);
+        sidecarProcess = null;
+    });
+
+    await waitForHealth(url, READY_TIMEOUT_MS);
+    writeLog("log", `[sidecar-desktop] started sidecar server at ${url}`);
+    return { url, owned: true };
+}
+
+function resolveRuntimePaths() {
+    if (app.isPackaged) {
+        return {
+            cwd: process.resourcesPath,
+            serverScript: path.join(process.resourcesPath, "viewer", "server.mjs"),
+        };
+    }
+
+    const repoRoot = path.resolve(__dirname, "..", "..", "..");
+    return {
+        cwd: repoRoot,
+        serverScript: path.join(repoRoot, "packages", "viewer", "server.mjs"),
+    };
+}
+
+async function waitForHealth(url, timeoutMs) {
+    const deadline = Date.now() + timeoutMs;
+    let lastError = null;
+
+    while (Date.now() < deadline) {
+        try {
+            const health = await fetchHealth(url, 800);
+            if (health?.ok) {
+                return health;
+            }
+        } catch (error) {
+            lastError = error;
+        }
+
+        await delay(250);
+    }
+
+    throw new Error(`sidecar server did not become ready at ${url}${lastError ? `: ${lastError.message}` : ""}`);
+}
+
+async function fetchHealth(url, timeoutMs) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const response = await fetch(`${url}/api/health`, { signal: controller.signal });
+        if (!response.ok) {
+            return null;
+        }
+
+        return response.json();
+    } catch {
+        return null;
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+async function stopSidecarServer() {
+    const processToStop = sidecarProcess;
+    if (!processToStop || !sidecarUrl || !sidecarShutdownToken) {
+        return;
+    }
+
+    try {
+        await fetch(`${sidecarUrl}/api/admin/shutdown`, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${sidecarShutdownToken}`,
+            },
+        });
+        await waitForExit(processToStop, SHUTDOWN_TIMEOUT_MS);
+    } catch (error) {
+        writeLog("warn", `[sidecar-desktop] graceful shutdown failed: ${error instanceof Error ? error.message : String(error)}`);
+        processToStop.kill();
+    } finally {
+        sidecarProcess = null;
+        sidecarShutdownToken = "";
+    }
+}
+
+function waitForExit(child, timeoutMs) {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("timed out waiting for sidecar server exit")), timeoutMs);
+        child.once("exit", () => {
+            clearTimeout(timer);
+            resolve();
+        });
+    });
+}
+
+function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function writeLog(level, message) {
+    const line = `${new Date().toISOString()} ${message}\n`;
+    if (level === "error") {
+        console.error(message);
+    } else if (level === "warn") {
+        console.warn(message);
+    } else {
+        console.log(message);
+    }
+
+    if (!logPath) {
+        return;
+    }
+
+    try {
+        fs.appendFileSync(logPath, line, "utf8");
+    } catch {
+        // Logging must never prevent the companion app from starting.
+    }
+}
+
+function registerDesktopIpc() {
+    ipcMain.handle("sidecar-bootstrap:get", () => bootstrapSnapshot());
+    ipcMain.handle("sidecar-bootstrap:select-game-directory", async () => {
+        const result = await dialog.showOpenDialog(mainWindow ?? undefined, {
+            title: "Select STFC game directory",
+            buttonLabel: "Use Directory",
+            properties: ["openDirectory"],
+        });
+
+        if (result.canceled || result.filePaths.length === 0) {
+            return bootstrapSnapshot();
+        }
+
+        desktopSettings = {
+            ...desktopSettings,
+            gameDirectory: result.filePaths[0],
+        };
+        saveDesktopSettings(desktopSettings);
+        await restartSidecarServer();
+        return bootstrapSnapshot();
+    });
+    ipcMain.handle("sidecar-bootstrap:open-game-directory", async () => {
+        if (!desktopSettings.gameDirectory) {
+            return { ok: false, error: "No game directory is selected." };
+        }
+
+        const error = await shell.openPath(desktopSettings.gameDirectory);
+        return error ? { ok: false, error } : { ok: true };
+    });
+}
+
+async function restartSidecarServer() {
+    const previousUrl = mainWindow?.webContents.getURL() ?? "";
+    const previousPath = previousUrl ? new URL(previousUrl).pathname : "/settings/";
+    if (sidecarProcess) {
+        await stopSidecarServer();
+    }
+
+    const port = Number.parseInt(process.env.STFC_SIDECAR_PORT ?? String(DEFAULT_PORT), 10);
+    const url = `http://127.0.0.1:${Number.isFinite(port) ? port : DEFAULT_PORT}`;
+    const server = await startSidecarServer(url);
+    sidecarUrl = server.url;
+    if (mainWindow) {
+        await mainWindow.loadURL(`${server.url}${previousPath}`);
+    }
+}
+
+async function bootstrapSnapshot() {
+    const health = sidecarUrl ? await fetchHealth(sidecarUrl, 800) : null;
+    const selectedPaths = resolveSelectedGamePaths(desktopSettings.gameDirectory || health?.gameDir || "");
+    return {
+        ok: true,
+        desktop: true,
+        gameDirectory: desktopSettings.gameDirectory || health?.gameDir || "",
+        gameDirectorySelected: Boolean(desktopSettings.gameDirectory),
+        feedPath: health?.feedPath ?? selectedPaths.feedPath,
+        settingsPath: health?.settingsPath ?? selectedPaths.settingsPath,
+        serverUrl: sidecarUrl,
+        healthOk: Boolean(health?.ok),
+        logPath,
+    };
+}
+
+function resolveSelectedGamePaths(gameDirectory) {
+    if (!gameDirectory) {
+        return {
+            feedPath: "",
+            settingsPath: "",
+        };
+    }
+
+    return {
+        feedPath: path.join(gameDirectory, DEFAULT_FEED_FILE),
+        settingsPath: path.join(gameDirectory, DEFAULT_SETTINGS_FILE),
+    };
+}
+
+function loadDesktopSettings() {
+    try {
+        const parsed = JSON.parse(fs.readFileSync(desktopSettingsPath, "utf8"));
+        return {
+            gameDirectory: typeof parsed.gameDirectory === "string" ? parsed.gameDirectory : "",
+        };
+    } catch {
+        return {
+            gameDirectory: "",
+        };
+    }
+}
+
+function saveDesktopSettings(settings) {
+    fs.mkdirSync(path.dirname(desktopSettingsPath), { recursive: true });
+    fs.writeFileSync(desktopSettingsPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+    writeLog("log", `[sidecar-desktop] saved desktop settings path=${desktopSettingsPath}`);
+}

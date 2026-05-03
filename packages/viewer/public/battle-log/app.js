@@ -175,24 +175,24 @@ async function renderSelectedEvent() {
 }
 
 async function loadEntryDetail(entry) {
-    if (entry.event || !entry.parsed) {
-        return entry;
-    }
+  if (entry.event || !entry.parsed) {
+    return entry;
+  }
 
-    const cached = state.detailsByLine.get(entry.lineNumber);
-    if (cached) {
-        return cached;
-    }
+  const cached = state.detailsByLine.get(entry.lineNumber);
+  if (cached) {
+    return cached;
+  }
 
-    elements.detailView.appendChild(renderEmpty("Loading event detail..."));
-    const response = await fetch(`/api/events/${entry.lineNumber}`, { cache: "no-store" });
-    const payload = await response.json();
-    if (!response.ok || !payload.ok || !payload.event) {
-        throw new Error(payload.error ?? `Unable to load line ${entry.lineNumber}.`);
-    }
+  elements.detailView.appendChild(renderEmpty("Loading event detail..."));
+  const response = await fetch(`/api/events/${entry.lineNumber}`, { cache: "no-store" });
+  const payload = await response.json();
+  if (!response.ok || !payload.ok || !payload.event) {
+    throw new Error(payload.error ?? `Unable to load line ${entry.lineNumber}.`);
+  }
 
-    state.detailsByLine.set(entry.lineNumber, payload.event);
-    return payload.event;
+  state.detailsByLine.set(entry.lineNumber, payload.event);
+  return payload.event;
 }
 
 function buildSummaryRows(event) {

@@ -14,4 +14,14 @@ export const viewerPages = [
         label: "Workbench",
         href: "/battle-log/workbench/",
     },
+    {
+        id: "settings",
+        label: "Settings",
+        href: "/settings/",
+    },
+    {
+        id: "about",
+        label: "About",
+        href: "/about/",
+    },
 ];
