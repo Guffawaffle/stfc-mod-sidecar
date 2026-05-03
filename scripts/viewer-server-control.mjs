@@ -9,7 +9,6 @@ import { fileURLToPath } from "node:url";
 const DEFAULT_FEED_PATH = "C:\\Games\\Star Trek Fleet Command\\default\\game\\community_patch_battle_feed.jsonl";
 const DEFAULT_PORT = 43127;
 const DEFAULT_LIMIT = 150;
-const DEFAULT_SYNC_TOKEN = "testtoken123";
 const DEFAULT_LOG_LINES = 80;
 const READY_TIMEOUT_MS = 15000;
 const STOP_TIMEOUT_MS = 10000;
@@ -76,6 +75,7 @@ async function startServer(commandArgs) {
     await ensureRuntimeDir();
 
     const shutdownToken = randomUUID();
+    const syncToken = process.env.STFC_SIDECAR_SYNC_TOKEN?.trim() || randomUUID();
     await writeFile(logPath, `\n[${new Date().toISOString()}] [sidecar-control] starting viewer server\n`, { flag: "a" });
 
     const logFd = openSync(logPath, "a");
@@ -86,7 +86,7 @@ async function startServer(commandArgs) {
         env: {
             ...process.env,
             STFC_SIDECAR_SHUTDOWN_TOKEN: shutdownToken,
-            STFC_SIDECAR_SYNC_TOKEN: process.env.STFC_SIDECAR_SYNC_TOKEN ?? DEFAULT_SYNC_TOKEN,
+            STFC_SIDECAR_SYNC_TOKEN: syncToken,
         },
     });
     closeSync(logFd);

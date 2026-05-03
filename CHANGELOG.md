@@ -12,7 +12,7 @@
 ### Features
 
 - Added `POST /api/events` ingest endpoint with Bearer token auth
-  (`STFC_SIDECAR_SYNC_TOKEN`, defaults to `testtoken123` for local dev)
+  (`STFC_SIDECAR_SYNC_TOKEN`, or a launch-scoped generated token when unset)
 - Added canonical SQL event store (`packages/core/src/storage/sql-event-store.ts`)
   - SQLite backend via `node:sqlite` (default; no external dependencies)
   - PostgreSQL backend via `pg` (opt-in via `STFC_SIDECAR_STORE_BACKEND=postgres`)

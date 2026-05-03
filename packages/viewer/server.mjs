@@ -11,6 +11,13 @@ import {
     isDeveloperOnlyPublicPath,
     parseDeveloperModeFlag,
 } from "./runtime-mode.mjs";
+import {
+    isAuthorizedSettingsRequest as isSettingsRequestAuthorized,
+    isAuthorizedShutdownRequest as isShutdownRequestAuthorized,
+    isAuthorizedSyncRequest as isSyncRequestAuthorized,
+    resolveSettingsToken,
+    resolveSyncToken,
+} from "./local-auth.mjs";
 import { buildReleaseInfo } from "./release-info.mjs";
 import { buildDiagnosticsBundle, buildDiagnosticsMarkdown } from "./diagnostics-bundle.mjs";
 
@@ -22,7 +29,6 @@ const DEFAULT_PORT = 43127;
 const DEFAULT_LIMIT = 150;
 const DETAIL_CACHE_LIMIT = 128;
 const DEFAULT_STORE_PATH = "./.sidecar/sidecar-events.sqlite";
-const DEFAULT_SYNC_TOKEN = "testtoken123";
 const SETTINGS_SAVE_MODE_LOCAL_TRUSTED = "local_trusted";
 const SETTINGS_SAVE_MODE_REMOTE_PROTECTED = "remote_protected";
 const MAX_EVENT_INGEST_BYTES = 5 * 1024 * 1024;
@@ -39,8 +45,8 @@ const { gameDir, feedPath, settingsPath, port, defaultLimit, developerMode } = p
 const companionMode = companionModeFromDeveloperMode(developerMode);
 const startedAt = new Date();
 const shutdownToken = process.env.STFC_SIDECAR_SHUTDOWN_TOKEN ?? "";
-const syncToken = process.env.STFC_SIDECAR_SYNC_TOKEN ?? DEFAULT_SYNC_TOKEN;
-const settingsToken = process.env.STFC_SIDECAR_SETTINGS_TOKEN ?? syncToken;
+const syncToken = resolveSyncToken(process.env);
+const settingsToken = resolveSettingsToken(process.env);
 const settingsSaveMode = parseSettingsSaveMode(process.env.STFC_SIDECAR_SETTINGS_SAVE_MODE);
 const releaseInfo = buildReleaseInfo({
     version: process.env.STFC_SIDECAR_APP_VERSION ?? readPackageVersion(),
@@ -724,33 +730,11 @@ async function readStoredEvent(lineNumber) {
 }
 
 function isAuthorizedSyncRequest(request) {
-    if (!syncToken) {
-        return true;
-    }
-
-    const authorization = request.headers.authorization;
-    if (authorization === `Bearer ${syncToken}`) {
-        return true;
-    }
-
-    return request.headers["stfc-sync-token"] === syncToken;
+    return isSyncRequestAuthorized(request, syncToken);
 }
 
 function isAuthorizedSettingsRequest(request) {
-    if (settingsSaveMode !== SETTINGS_SAVE_MODE_REMOTE_PROTECTED) {
-        return true;
-    }
-
-    if (!settingsToken) {
-        return true;
-    }
-
-    const authorization = request.headers.authorization;
-    if (authorization === `Bearer ${settingsToken}`) {
-        return true;
-    }
-
-    return request.headers["x-sidecar-settings-token"] === settingsToken;
+    return isSettingsRequestAuthorized(request, { settingsSaveMode, settingsToken });
 }
 
 function parseSettingsSaveMode(value) {
@@ -1300,12 +1284,7 @@ function contentTypeForPath(filePath) {
 }
 
 function isAuthorizedShutdownRequest(request) {
-    const authorization = request.headers.authorization;
-    if (authorization === `Bearer ${shutdownToken}`) {
-        return true;
-    }
-
-    return request.headers["x-sidecar-shutdown-token"] === shutdownToken;
+    return isShutdownRequestAuthorized(request, shutdownToken);
 }
 
 async function shutdownServer(reason) {

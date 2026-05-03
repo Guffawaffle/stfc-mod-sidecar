@@ -105,6 +105,12 @@ Preferred models, in order:
 
 Avoid storing the local capability token in durable config.
 
+The viewer server must not rely on a hardcoded development sync token. When
+`STFC_SIDECAR_SYNC_TOKEN` is not provided, desktop and managed dev launches pass
+a launch-scoped generated token to the server. Settings mutation in
+`remote_protected` mode requires `STFC_SIDECAR_SETTINGS_TOKEN`; it does not
+implicitly reuse the sync ingest token.
+
 ## CORS And Browser Rules
 
 If a browser-rendered UI exists, default policy should be strict.

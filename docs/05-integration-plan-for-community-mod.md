@@ -87,5 +87,7 @@ V0 should support both:
 Local proof-of-concept convention:
 
 - sidecar ingest URL: `http://127.0.0.1:43127/api/events`
-- local token: `testtoken123`
+- local token: external ingest clients should set `STFC_SIDECAR_SYNC_TOKEN`;
+  managed desktop/dev launches generate an internal launch-scoped token when it
+  is unset
 - target toggle: `battlelogs_realtime = true`

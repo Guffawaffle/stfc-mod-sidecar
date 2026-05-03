@@ -24,6 +24,7 @@ const __dirname = path.dirname(__filename);
 let mainWindow = null;
 let sidecarProcess = null;
 let sidecarShutdownToken = "";
+let sidecarSyncToken = "";
 let sidecarUrl = "";
 let logPath = "";
 let desktopSettingsPath = "";
@@ -121,6 +122,7 @@ async function startSidecarServer(url) {
     const paths = resolveRuntimePaths();
     const gameDirectory = await validatedDesktopGameDirectoryForStartup();
     sidecarShutdownToken = randomUUID();
+    sidecarSyncToken = process.env.STFC_SIDECAR_SYNC_TOKEN?.trim() || randomUUID();
     writeLog(
         "log",
         `[sidecar-desktop] starting server cwd=${paths.cwd} serverScript=${paths.serverScript} gameDirectory=${gameDirectory || "default"} mode=${companionMode()} serverExists=${fs.existsSync(paths.serverScript)}`,
@@ -141,6 +143,7 @@ async function startSidecarServer(url) {
             STFC_SIDECAR_DEVELOPER_MODE: desktopSettings.developerMode ? "1" : "0",
             ...releaseEnvironment(),
             STFC_SIDECAR_SHUTDOWN_TOKEN: sidecarShutdownToken,
+            STFC_SIDECAR_SYNC_TOKEN: sidecarSyncToken,
         },
     });
 
@@ -228,6 +231,7 @@ async function stopSidecarServer() {
     } finally {
         sidecarProcess = null;
         sidecarShutdownToken = "";
+        sidecarSyncToken = "";
     }
 }
 
