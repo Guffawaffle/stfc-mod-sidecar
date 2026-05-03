@@ -6,12 +6,17 @@ import { fileURLToPath } from "node:url";
 
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 
+import { initialDeveloperModeFromSources, normalizeDesktopSettings } from "./desktop-settings.mjs";
+import { SECURITY_MOTTO, STFC_GAME_EXECUTABLE, validateStfcGameDirectory } from "./game-directory.mjs";
+import { buildReleaseInfo } from "../../viewer/release-info.mjs";
+
 const DEFAULT_PORT = 43127;
 const READY_TIMEOUT_MS = 15000;
 const SHUTDOWN_TIMEOUT_MS = 5000;
 const DEFAULT_FEED_FILE = "community_patch_battle_feed.jsonl";
 const DEFAULT_SETTINGS_FILE = "community_patch_settings.toml";
 const DESKTOP_SETTINGS_FILE = "desktop-settings.json";
+const DESKTOP_INITIAL_SETTINGS_FILE = "desktop-initial-settings.json";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,9 +27,8 @@ let sidecarShutdownToken = "";
 let sidecarUrl = "";
 let logPath = "";
 let desktopSettingsPath = "";
-let desktopSettings = {
-    gameDirectory: "",
-};
+let bootstrapWarning = "";
+let desktopSettings = normalizeDesktopSettings();
 
 app.setName("STFC Community Mod Companion");
 
@@ -115,15 +119,16 @@ async function ensureSidecarServer() {
 
 async function startSidecarServer(url) {
     const paths = resolveRuntimePaths();
+    const gameDirectory = await validatedDesktopGameDirectoryForStartup();
     sidecarShutdownToken = randomUUID();
     writeLog(
         "log",
-        `[sidecar-desktop] starting server cwd=${paths.cwd} serverScript=${paths.serverScript} gameDirectory=${desktopSettings.gameDirectory || "default"} serverExists=${fs.existsSync(paths.serverScript)}`,
+        `[sidecar-desktop] starting server cwd=${paths.cwd} serverScript=${paths.serverScript} gameDirectory=${gameDirectory || "default"} mode=${companionMode()} serverExists=${fs.existsSync(paths.serverScript)}`,
     );
 
     const args = [paths.serverScript, "--port", new URL(url).port];
-    if (desktopSettings.gameDirectory) {
-        args.push("--game-dir", desktopSettings.gameDirectory);
+    if (gameDirectory) {
+        args.push("--game-dir", gameDirectory);
     }
 
     sidecarProcess = spawn(process.execPath, args, {
@@ -133,6 +138,8 @@ async function startSidecarServer(url) {
             ...process.env,
             ELECTRON_RUN_AS_NODE: "1",
             STFC_SIDECAR_DESKTOP: "1",
+            STFC_SIDECAR_DEVELOPER_MODE: desktopSettings.developerMode ? "1" : "0",
+            ...releaseEnvironment(),
             STFC_SIDECAR_SHUTDOWN_TOKEN: sidecarShutdownToken,
         },
     });
@@ -261,6 +268,37 @@ function writeLog(level, message) {
 
 function registerDesktopIpc() {
     ipcMain.handle("sidecar-bootstrap:get", () => bootstrapSnapshot());
+    ipcMain.handle("sidecar-bootstrap:set-developer-mode", async (_event, enabled) => {
+        const developerMode = Boolean(enabled);
+        if (desktopSettings.developerMode === developerMode) {
+            return bootstrapSnapshot();
+        }
+
+        desktopSettings = normalizeDesktopSettings({
+            ...desktopSettings,
+            developerMode,
+        });
+        saveDesktopSettings(desktopSettings);
+        await restartSidecarServer();
+        return bootstrapSnapshot();
+    });
+    ipcMain.handle("sidecar-devtools:get-status", () => {
+        if (!desktopSettings.developerMode) {
+            return {
+                ok: false,
+                code: "developer_mode_required",
+                error: "Developer Tools are disabled.",
+                developerMode: false,
+                companionMode: "standard",
+            };
+        }
+
+        return {
+            ok: true,
+            developerMode: true,
+            companionMode: "developer",
+        };
+    });
     ipcMain.handle("sidecar-bootstrap:select-game-directory", async () => {
         const result = await dialog.showOpenDialog(mainWindow ?? undefined, {
             title: "Select STFC game directory",
@@ -272,10 +310,17 @@ function registerDesktopIpc() {
             return bootstrapSnapshot();
         }
 
+        const validation = await validateStfcGameDirectory(result.filePaths[0]);
+        if (!validation.ok) {
+            writeLog("warn", `[sidecar-desktop] rejected game directory reason=${validation.code} path=${sanitizeLogValue(result.filePaths[0])}`);
+            return bootstrapSnapshot({ ok: false, error: validation.error });
+        }
+
         desktopSettings = {
             ...desktopSettings,
-            gameDirectory: result.filePaths[0],
+            gameDirectory: validation.gameDirectory,
         };
+        bootstrapWarning = "";
         saveDesktopSettings(desktopSettings);
         await restartSidecarServer();
         return bootstrapSnapshot();
@@ -285,14 +330,18 @@ function registerDesktopIpc() {
             return { ok: false, error: "No game directory is selected." };
         }
 
-        const error = await shell.openPath(desktopSettings.gameDirectory);
+        const validation = await validateStfcGameDirectory(desktopSettings.gameDirectory);
+        if (!validation.ok) {
+            return { ok: false, error: validation.error };
+        }
+
+        const error = await shell.openPath(validation.gameDirectory);
         return error ? { ok: false, error } : { ok: true };
     });
 }
 
 async function restartSidecarServer() {
-    const previousUrl = mainWindow?.webContents.getURL() ?? "";
-    const previousPath = previousUrl ? new URL(previousUrl).pathname : "/settings/";
+    const previousPath = currentWindowPath("/settings/");
     if (sidecarProcess) {
         await stopSidecarServer();
     }
@@ -302,15 +351,24 @@ async function restartSidecarServer() {
     const server = await startSidecarServer(url);
     sidecarUrl = server.url;
     if (mainWindow) {
-        await mainWindow.loadURL(`${server.url}${previousPath}`);
+        await mainWindow.loadURL(`${server.url}${currentWindowPath(previousPath)}`);
     }
 }
 
-async function bootstrapSnapshot() {
+function currentWindowPath(fallback) {
+    try {
+        const currentUrl = mainWindow?.webContents.getURL() ?? "";
+        return currentUrl ? new URL(currentUrl).pathname : fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+async function bootstrapSnapshot(options = {}) {
     const health = sidecarUrl ? await fetchHealth(sidecarUrl, 800) : null;
     const selectedPaths = resolveSelectedGamePaths(desktopSettings.gameDirectory || health?.gameDir || "");
     return {
-        ok: true,
+        ok: options.ok ?? true,
         desktop: true,
         gameDirectory: desktopSettings.gameDirectory || health?.gameDir || "",
         gameDirectorySelected: Boolean(desktopSettings.gameDirectory),
@@ -319,6 +377,13 @@ async function bootstrapSnapshot() {
         serverUrl: sidecarUrl,
         healthOk: Boolean(health?.ok),
         logPath,
+        developerMode: Boolean(desktopSettings.developerMode),
+        companionMode: companionMode(),
+        modeLabel: desktopSettings.developerMode ? "Developer Tools" : "Standard Companion",
+        release: desktopReleaseInfo(health?.release),
+        error: options.error ?? bootstrapWarning,
+        requiredExecutable: STFC_GAME_EXECUTABLE,
+        securityMotto: SECURITY_MOTTO,
     };
 }
 
@@ -339,18 +404,96 @@ function resolveSelectedGamePaths(gameDirectory) {
 function loadDesktopSettings() {
     try {
         const parsed = JSON.parse(fs.readFileSync(desktopSettingsPath, "utf8"));
-        return {
-            gameDirectory: typeof parsed.gameDirectory === "string" ? parsed.gameDirectory : "",
-        };
+        return normalizeDesktopSettings(parsed);
     } catch {
-        return {
-            gameDirectory: "",
-        };
+        const initialSettings = readInitialDesktopSettings();
+        return normalizeDesktopSettings({}, {
+            initialDeveloperMode: initialDeveloperModeFromSources({
+                environmentValue: process.env.STFC_SIDECAR_INITIAL_DEVELOPER_MODE,
+                seedSettings: initialSettings,
+            }),
+        });
+    }
+}
+
+function readInitialDesktopSettings() {
+    const configuredPath = process.env.STFC_SIDECAR_INITIAL_SETTINGS_PATH;
+    const initialSettingsPath = configuredPath
+        ? path.resolve(configuredPath)
+        : app.isPackaged
+            ? path.join(process.resourcesPath, DESKTOP_INITIAL_SETTINGS_FILE)
+            : "";
+
+    if (!initialSettingsPath) {
+        return {};
+    }
+
+    try {
+        return JSON.parse(fs.readFileSync(initialSettingsPath, "utf8"));
+    } catch {
+        return {};
     }
 }
 
 function saveDesktopSettings(settings) {
+    const normalized = normalizeDesktopSettings(settings);
     fs.mkdirSync(path.dirname(desktopSettingsPath), { recursive: true });
-    fs.writeFileSync(desktopSettingsPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+    fs.writeFileSync(desktopSettingsPath, `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
     writeLog("log", `[sidecar-desktop] saved desktop settings path=${desktopSettingsPath}`);
+}
+
+async function validatedDesktopGameDirectoryForStartup() {
+    if (!desktopSettings.gameDirectory) {
+        return "";
+    }
+
+    const validation = await validateStfcGameDirectory(desktopSettings.gameDirectory);
+    if (validation.ok) {
+        if (desktopSettings.gameDirectory !== validation.gameDirectory) {
+            desktopSettings = {
+                ...desktopSettings,
+                gameDirectory: validation.gameDirectory,
+            };
+            saveDesktopSettings(desktopSettings);
+        }
+
+        return validation.gameDirectory;
+    }
+
+    bootstrapWarning = validation.error;
+    writeLog("warn", `[sidecar-desktop] ignoring saved game directory reason=${validation.code} path=${sanitizeLogValue(desktopSettings.gameDirectory)}`);
+    desktopSettings = {
+        ...desktopSettings,
+        gameDirectory: "",
+    };
+    saveDesktopSettings(desktopSettings);
+    return "";
+}
+
+function sanitizeLogValue(value) {
+    return String(value ?? "").replace(/[\r\n\t]/g, " ");
+}
+
+function companionMode() {
+    return desktopSettings.developerMode ? "developer" : "standard";
+}
+
+function releaseEnvironment() {
+    const release = desktopReleaseInfo();
+    return {
+        STFC_SIDECAR_APP_VERSION: release.version,
+        STFC_SIDECAR_RELEASE_CHANNEL: release.channel,
+        STFC_SIDECAR_UPDATE_MODE: release.updateMode,
+        STFC_SIDECAR_SIGNATURE_POLICY: release.signaturePolicy,
+    };
+}
+
+function desktopReleaseInfo(serverRelease = {}) {
+    return buildReleaseInfo({
+        version: app.getVersion() || serverRelease.version,
+        channel: process.env.STFC_SIDECAR_RELEASE_CHANNEL ?? serverRelease.channel,
+        updateMode: process.env.STFC_SIDECAR_UPDATE_MODE ?? serverRelease.updateMode,
+        signaturePolicy: process.env.STFC_SIDECAR_SIGNATURE_POLICY ?? serverRelease.signaturePolicy,
+        packaged: app.isPackaged,
+    });
 }

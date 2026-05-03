@@ -185,6 +185,8 @@ targets Electron 41, which carries Node 24.
 Local desktop artifacts are unsigned by default. Official Windows signing uses
 Azure Artifact Signing through the release workflow and is documented in
 [docs/16-windows-code-signing.md](docs/16-windows-code-signing.md).
+The signed release QA matrix is documented in
+[docs/18-signed-release-qa-matrix.md](docs/18-signed-release-qa-matrix.md).
 
 The desktop app can remember a selected STFC game directory and pass it to the
 bundled sidecar server. User bootstrap/path behavior is documented in

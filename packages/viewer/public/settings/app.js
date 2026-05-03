@@ -15,6 +15,7 @@ const elements = {
   desktopBootstrapState: document.querySelector("#desktop-bootstrap-state"),
   gameDirectory: document.querySelector("#game-directory"),
   desktopGameDirectory: document.querySelector("#desktop-game-directory"),
+  companionMode: document.querySelector("#companion-mode"),
   desktopFeedPath: document.querySelector("#desktop-feed-path"),
   selectGameDirectory: document.querySelector("#select-game-directory"),
   openGameDirectory: document.querySelector("#open-game-directory"),
@@ -135,6 +136,7 @@ function renderSummary() {
 
   elements.gameDirectory.textContent = state.bootstrap?.gameDirectory || gameDirectoryFromSettingsPath(snapshot.settingsPath) || "Unknown";
   elements.settingsPath.textContent = snapshot.settingsPath ?? "Unknown";
+  elements.companionMode.textContent = modeLabel(state.bootstrap?.developerMode);
   elements.settingsState.textContent = snapshot.parseError ? "Invalid TOML" : snapshot.exists ? "Found" : "Not found";
   elements.settingsWarningCount.textContent = String(warnings);
   elements.settingsChangeCount.textContent = String(countChanges());
@@ -142,7 +144,7 @@ function renderSummary() {
 
 async function loadBootstrap() {
   if (!window.stfcDesktop?.getBootstrap) {
-    state.bootstrap = null;
+    state.bootstrap = await loadServerBootstrap();
     renderBootstrap();
     renderSummary();
     return;
@@ -161,6 +163,29 @@ async function loadBootstrap() {
   renderSummary();
 }
 
+async function loadServerBootstrap() {
+  try {
+    const response = await fetch("/api/health", { cache: "no-store" });
+    if (!response.ok) {
+      return null;
+    }
+
+    const health = await response.json();
+    return {
+      desktop: false,
+      developerMode: Boolean(health.developerMode),
+      companionMode: health.companionMode,
+      modeLabel: modeLabel(health.developerMode),
+      gameDirectory: health.gameDir,
+      feedPath: health.feedPath,
+      settingsPath: health.settingsPath,
+      healthOk: Boolean(health.ok),
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function selectGameDirectory() {
   if (!window.stfcDesktop?.selectGameDirectory) {
     return;
@@ -170,6 +195,12 @@ async function selectGameDirectory() {
   elements.desktopBootstrapState.textContent = "Selecting...";
   try {
     state.bootstrap = await window.stfcDesktop.selectGameDirectory();
+    if (state.bootstrap?.ok === false) {
+      renderBootstrap();
+      renderSummary();
+      return;
+    }
+
     await loadSettings();
     await loadBootstrap();
   } catch (error) {
@@ -209,13 +240,15 @@ function renderBootstrap() {
   const gameDirectory = bootstrap?.gameDirectory || "Not selected";
   elements.desktopGameDirectory.textContent = gameDirectory;
   elements.desktopFeedPath.textContent = bootstrap?.feedPath || "Unknown";
-  elements.openGameDirectory.disabled = !bootstrap?.gameDirectory;
+  elements.openGameDirectory.disabled = !bootstrap?.gameDirectorySelected;
   if (bootstrap?.error) {
-    elements.desktopBootstrapState.textContent = bootstrap.error;
+    elements.desktopBootstrapState.textContent = `${bootstrap.securityMotto ?? "Security"}: ${bootstrap.error}`;
   } else if (bootstrap?.gameDirectorySelected) {
     elements.desktopBootstrapState.textContent = bootstrap.healthOk ? "Connected" : "Selected";
   } else {
-    elements.desktopBootstrapState.textContent = "Default path";
+    elements.desktopBootstrapState.textContent = bootstrap?.requiredExecutable
+      ? `${bootstrap.securityMotto}: select a directory containing ${bootstrap.requiredExecutable}`
+      : "Default path";
   }
 }
 
@@ -737,6 +770,10 @@ function snapshotRequiresSaveToken(snapshot) {
 
 function setStatus(text) {
   elements.settingsState.textContent = text;
+}
+
+function modeLabel(developerMode) {
+  return developerMode ? "Developer Tools" : "Standard Companion";
 }
 
 function gameDirectoryFromSettingsPath(settingsPath) {

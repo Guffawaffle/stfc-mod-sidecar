@@ -69,9 +69,26 @@ See `docs/16-windows-code-signing.md`.
 
 The package copies the viewer server/assets and `@stfc-mod-sidecar/core` build
 output as Electron resources. Run `npm run check` before producing release
-artifacts.
+artifacts. Signed release smoke coverage is tracked in
+`docs/18-signed-release-qa-matrix.md`.
 
 The desktop app stores user bootstrap settings in Electron's user-data folder as
 `desktop-settings.json`. The selected STFC game directory is passed to the
 bundled server as `--game-dir`, which derives the battle feed and mod settings
 paths from that directory.
+
+The same file stores `developerMode`. Standard Companion mode is the default.
+When Developer Tools are enabled from About, the main process persists the
+preference, restarts the bundled server with `STFC_SIDECAR_DEVELOPER_MODE=1`,
+and exposes developer-only surfaces. Standard Mode hides those surfaces and the
+server denies `/api/dev/*` routes.
+
+The assisted Windows installer includes a first-launch companion mode page. It
+writes `resources\desktop-initial-settings.json` under the install directory;
+the app reads that file only if the durable user settings file has not been
+created yet. This lets the installer seed Developer Tools without making the
+installer the mode authority.
+
+Security is Paramount: the main process validates the selected game directory
+before saving, opening, or passing it to the server. A selected directory must be
+a canonical local directory and must contain `prime.exe` directly inside it.

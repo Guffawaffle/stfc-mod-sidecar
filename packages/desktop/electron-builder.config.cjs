@@ -1,3 +1,5 @@
+const path = require("node:path");
+
 const ELECTRON_VERSION = "41.5.0";
 const DEFAULT_TIMESTAMP_SERVER = "http://timestamp.digicert.com";
 
@@ -96,6 +98,7 @@ module.exports = {
     },
     nsis: {
         artifactName: "${productName}-Setup-${version}-${arch}.${ext}",
+        include: path.join(__dirname, "build", "installer.nsh"),
         oneClick: false,
         perMachine: false,
         allowToChangeInstallationDirectory: true,

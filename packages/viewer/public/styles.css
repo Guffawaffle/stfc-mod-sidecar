@@ -212,8 +212,31 @@ button {
   box-shadow: var(--shadow);
 }
 
+.module-card--wide {
+  grid-column: 1 / -1;
+}
+
 .module-card--primary {
   background: linear-gradient(180deg, rgba(255, 250, 239, 0.98), rgba(255, 244, 229, 0.95));
+}
+
+.diagnostics-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.diagnostics-preview {
+  max-height: 360px;
+  margin: 0;
+  padding: 16px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.5);
+  white-space: pre-wrap;
 }
 
 .module-list {

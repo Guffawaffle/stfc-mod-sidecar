@@ -54,6 +54,12 @@ tag pushes and manual dispatches in the protected `windows-release` environment,
 then verifies every generated `.exe` with `signtool verify /pa /v` and
 `Get-AuthenticodeSignature`.
 
+The companion also exposes local release metadata through `/api/health` and the
+About page: version, release channel, update mode, and the expected signing
+policy. Local development runs report unsigned local artifacts; packaged release
+builds report that Authenticode signing is required. This is informational and
+does not replace CI signature verification.
+
 Use GitHub Environment variables for non-secret profile metadata:
 
 - `WIN_PUBLISHER_NAME`
@@ -121,6 +127,8 @@ signtool verify /pa /v "packages\desktop\dist\STFC Community Mod Companion-Porta
 - `WIN_SIGN_MODE=azure` in the release workflow.
 - NSIS setup and portable `.exe` are both built.
 - Every `.exe` passes Authenticode verification in CI.
+- The signed release QA matrix in `docs/18-signed-release-qa-matrix.md` is
+  completed with explicit `not run` entries for anything skipped.
 - Release notes mention that signed first releases can still show SmartScreen
   reputation warnings.
 

@@ -13,6 +13,7 @@ export const viewerPages = [
         id: "battle-log-workbench",
         label: "Workbench",
         href: "/battle-log/workbench/",
+        developerOnly: true,
     },
     {
         id: "settings",

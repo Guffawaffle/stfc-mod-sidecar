@@ -132,6 +132,8 @@ Keep this list intentionally small:
 
 - `/api/health`
 - `/api/viewer-config` if fully redacted
+- `/api/diagnostics/bundle` only while it remains redacted, GET-only, and free
+  of raw local paths, tokens, credentials, and raw event payloads
 
 ### Token-Protected Routes
 
@@ -144,6 +146,14 @@ Examples:
 - `/api/integrations/*`
 - `/api/diagnostics/*`
 - `/api/credentials/*`
+
+### Developer-Only Routes
+
+Developer Tools are a runtime mode, not a renderer-only preference. Routes under
+`/api/dev/*` must return `403 developer_mode_required` unless the viewer server
+was started with Developer Tools enabled. Public developer surfaces such as the
+battle workbench are also denied by the server in Standard Mode, even when a
+caller guesses the URL directly.
 
 ### Mutation Rules
 

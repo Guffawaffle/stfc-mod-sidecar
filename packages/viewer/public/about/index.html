@@ -25,6 +25,22 @@
           <p class="page-copy">The sidecar reads local files and documented local APIs. It does not inject into STFC, synthesize input, automate gameplay, or send arbitrary commands to the mod.</p>
         </article>
 
+        <article class="module-card module-card--accent">
+          <p class="eyebrow">Security</p>
+          <h2>Security Is Paramount</h2>
+          <p class="page-copy">Desktop bootstrap accepts only a canonical local game directory with prime.exe directly inside it before the sidecar reads or writes derived mod files.</p>
+        </article>
+
+        <article class="module-card">
+          <p class="eyebrow">Mode Boundary</p>
+          <h2>Standard By Default</h2>
+          <p id="about-developer-mode-state" class="page-copy">Loading companion mode...</p>
+          <label id="about-developer-mode-option" class="toggle" hidden>
+            <input id="about-developer-mode-toggle" type="checkbox" />
+            <span>Developer Tools</span>
+          </label>
+        </article>
+
         <article class="module-card">
           <p class="eyebrow">Configuration</p>
           <h2>Schema First</h2>
@@ -32,9 +48,29 @@
         </article>
 
         <article class="module-card">
+          <p class="eyebrow">Release</p>
+          <h2 id="about-release-version">Version</h2>
+          <p id="about-release-channel" class="page-copy">Loading release channel...</p>
+          <p id="about-signature-policy" class="page-copy">Loading signature expectation...</p>
+          <p id="about-update-mode" class="page-copy">Loading update mode...</p>
+        </article>
+
+        <article class="module-card">
           <p class="eyebrow">Packaging</p>
           <h2>Optional Installer</h2>
           <p class="page-copy">Manual DLL/dylib installs stay available. The companion installer can add update, launch, diagnostics, and local viewer workflows for users who want them.</p>
+        </article>
+
+        <article class="module-card module-card--wide">
+          <p class="eyebrow">Support</p>
+          <h2>Diagnostics Bundle</h2>
+          <p id="diagnostics-state" class="page-copy">Ready</p>
+          <div class="diagnostics-actions">
+            <button id="preview-diagnostics" type="button">Preview JSON</button>
+            <button id="copy-diagnostics" type="button">Copy Markdown</button>
+            <button id="download-diagnostics" type="button">Download JSON</button>
+          </div>
+          <pre id="diagnostics-preview" class="diagnostics-preview" hidden></pre>
         </article>
 
         <article class="module-card module-card--accent">
@@ -46,6 +82,7 @@
       </section>
     </main>
 
+    <script type="module" src="/about/app.js"></script>
     <script type="module" src="/shared/shell.js"></script>
   </body>
 </html>

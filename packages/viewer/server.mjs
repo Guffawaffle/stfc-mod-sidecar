@@ -4,6 +4,16 @@ import { copyFile, mkdir, open, readFile, stat, writeFile } from "node:fs/promis
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+    companionModeFromDeveloperMode,
+    developerModeRequiredPayload,
+    isDeveloperOnlyApiPath,
+    isDeveloperOnlyPublicPath,
+    parseDeveloperModeFlag,
+} from "./runtime-mode.mjs";
+import { buildReleaseInfo } from "./release-info.mjs";
+import { buildDiagnosticsBundle, buildDiagnosticsMarkdown } from "./diagnostics-bundle.mjs";
+
 const DEFAULT_GAME_DIR = "C:\\Games\\Star Trek Fleet Command\\default\\game";
 const DEFAULT_FEED_FILE = "community_patch_battle_feed.jsonl";
 const DEFAULT_FEED_PATH = path.join(DEFAULT_GAME_DIR, DEFAULT_FEED_FILE);
@@ -24,12 +34,20 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..");
 const publicDir = path.join(__dirname, "public");
 
-const { gameDir, feedPath, settingsPath, port, defaultLimit } = parseArgs(process.argv.slice(2));
+const { gameDir, feedPath, settingsPath, port, defaultLimit, developerMode } = parseArgs(process.argv.slice(2));
+const companionMode = companionModeFromDeveloperMode(developerMode);
 const startedAt = new Date();
 const shutdownToken = process.env.STFC_SIDECAR_SHUTDOWN_TOKEN ?? "";
 const syncToken = process.env.STFC_SIDECAR_SYNC_TOKEN ?? DEFAULT_SYNC_TOKEN;
 const settingsToken = process.env.STFC_SIDECAR_SETTINGS_TOKEN ?? syncToken;
 const settingsSaveMode = parseSettingsSaveMode(process.env.STFC_SIDECAR_SETTINGS_SAVE_MODE);
+const releaseInfo = buildReleaseInfo({
+    version: process.env.STFC_SIDECAR_APP_VERSION ?? readPackageVersion(),
+    channel: process.env.STFC_SIDECAR_RELEASE_CHANNEL,
+    updateMode: process.env.STFC_SIDECAR_UPDATE_MODE,
+    signaturePolicy: process.env.STFC_SIDECAR_SIGNATURE_POLICY,
+    packaged: process.env.STFC_SIDECAR_DESKTOP === "1",
+});
 let feedIndex = createEmptyFeedIndex();
 
 let shutdownRequested = false;
@@ -58,6 +76,10 @@ const eventStore = await createConfiguredEventStore();
 
 const server = createServer(async (request, response) => {
     const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? `127.0.0.1:${port}`}`);
+
+    if (isDeveloperOnlyApiPath(requestUrl.pathname) && !developerMode) {
+        return sendJson(response, 403, developerModeRequiredPayload());
+    }
 
     if (requestUrl.pathname === "/api/events") {
         if (request.method === "POST") {
@@ -88,6 +110,19 @@ const server = createServer(async (request, response) => {
         return sendJson(response, 405, { ok: false, error: "Method not allowed" });
     }
 
+    if (requestUrl.pathname === "/api/diagnostics/bundle") {
+        if (request.method && request.method !== "GET") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        const bundle = await readDiagnosticsBundle();
+        if (requestUrl.searchParams.get("format") === "markdown") {
+            return sendText(response, 200, buildDiagnosticsMarkdown(bundle), "text/markdown; charset=utf-8");
+        }
+
+        return sendJson(response, 200, bundle);
+    }
+
     const eventLineMatch = /^\/api\/events\/([0-9]+)$/.exec(requestUrl.pathname);
     if (eventLineMatch) {
         if (request.method && request.method !== "GET") {
@@ -109,12 +144,31 @@ const server = createServer(async (request, response) => {
             settingsPath,
             port,
             defaultLimit,
+            developerMode,
+            companionMode,
+            release: releaseInfo,
             eventStoreBackend: eventStore?.backend ?? "none",
             storedEvents,
             startedAt: startedAt.toISOString(),
             uptimeMs: Date.now() - startedAt.getTime(),
             shuttingDown: shutdownRequested,
             pollHintMs: POLL_HINT_MS,
+            generatedAt: new Date().toISOString(),
+        });
+    }
+
+    if (requestUrl.pathname === "/api/dev/status") {
+        if (request.method && request.method !== "GET") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        return sendJson(response, 200, {
+            ok: true,
+            developerMode,
+            companionMode,
+            feedPath,
+            settingsPath,
+            eventStoreBackend: eventStore?.backend ?? "none",
             generatedAt: new Date().toISOString(),
         });
     }
@@ -141,6 +195,10 @@ const server = createServer(async (request, response) => {
             void shutdownServer("admin_request");
         });
         return;
+    }
+
+    if (isDeveloperOnlyPublicPath(requestUrl.pathname) && !developerMode) {
+        return sendJson(response, 403, developerModeRequiredPayload());
     }
 
     const publicAsset = await resolvePublicAsset(requestUrl.pathname);
@@ -216,6 +274,46 @@ async function readHotkeySettingsSnapshot() {
     };
 }
 
+async function readDiagnosticsBundle() {
+    const generatedAt = new Date().toISOString();
+    const [storedEvents, feed, settings] = await Promise.all([
+        eventStore ? eventStore.count() : Promise.resolve(0),
+        readEventsSnapshot(25, { includeDetails: false }).catch((error) => ({
+            ok: false,
+            exists: false,
+            source: "unknown",
+            error: error instanceof Error ? error.message : String(error),
+        })),
+        readHotkeySettingsSnapshot().catch((error) => ({
+            exists: false,
+            parseError: true,
+            saveSupported: false,
+            settingsSaveMode,
+            actions: [],
+            hardSettings: [],
+            error: error instanceof Error ? error.message : String(error),
+        })),
+    ]);
+
+    return buildDiagnosticsBundle({
+        generatedAt,
+        release: releaseInfo,
+        developerMode,
+        companionMode,
+        pid: process.pid,
+        port,
+        startedAt: startedAt.toISOString(),
+        uptimeMs: Date.now() - startedAt.getTime(),
+        eventStoreBackend: eventStore?.backend ?? "none",
+        storedEvents,
+        gameDir,
+        feedPath,
+        settingsPath,
+        feed,
+        settings,
+    });
+}
+
 async function handleHotkeySettingsUpdate(request, response) {
     if (!isAuthorizedSettingsRequest(request)) {
         return sendJson(response, 401, { ok: false, error: "Unauthorized settings request" });
@@ -248,6 +346,7 @@ function parseArgs(args) {
     let selectedSettingsPath = process.env.STFC_SIDECAR_SETTINGS_PATH ?? "";
     let selectedPort = parseInteger(process.env.STFC_SIDECAR_PORT, DEFAULT_PORT);
     let selectedLimit = parseInteger(process.env.STFC_SIDECAR_LIMIT, DEFAULT_LIMIT);
+    let selectedDeveloperMode = parseDeveloperModeFlag(process.env.STFC_SIDECAR_DEVELOPER_MODE);
 
     for (let index = 0; index < args.length; index += 1) {
         const arg = args[index];
@@ -286,8 +385,18 @@ function parseArgs(args) {
             continue;
         }
 
+        if (arg === "--developer-mode") {
+            selectedDeveloperMode = true;
+            continue;
+        }
+
+        if (arg === "--standard-mode") {
+            selectedDeveloperMode = false;
+            continue;
+        }
+
         if (arg === "--help" || arg === "-h") {
-            console.log("Usage: node packages/viewer/server.mjs [--game-dir <dir>] [--feed-path <jsonl>] [--settings-path <toml>] [--port <number>] [--limit <number>]");
+            console.log("Usage: node packages/viewer/server.mjs [--game-dir <dir>] [--feed-path <jsonl>] [--settings-path <toml>] [--port <number>] [--limit <number>] [--developer-mode|--standard-mode]");
             process.exit(0);
         }
 
@@ -303,7 +412,17 @@ function parseArgs(args) {
         settingsPath: resolveSettingsPath(selectedSettingsPath, resolvedFeedPath),
         port: selectedPort,
         defaultLimit: selectedLimit,
+        developerMode: selectedDeveloperMode,
     };
+}
+
+function readPackageVersion() {
+    try {
+        const packageJson = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+        return packageJson.version;
+    } catch {
+        return "";
+    }
 }
 
 function resolveGameDir(gameDir) {
@@ -1113,4 +1232,12 @@ function sendJson(response, statusCode, value) {
         "cache-control": "no-store",
     });
     response.end(JSON.stringify(value));
+}
+
+function sendText(response, statusCode, value, contentType) {
+    response.writeHead(statusCode, {
+        "content-type": contentType,
+        "cache-control": "no-store",
+    });
+    response.end(value);
 }
