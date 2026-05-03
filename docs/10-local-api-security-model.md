@@ -132,6 +132,8 @@ Keep this list intentionally small:
 
 - `/api/health`
 - `/api/viewer-config` if fully redacted
+- `GET /api/events?detail=summary` and `GET /api/events/stream` while they
+  remain read-only summary snapshots or update hints for the local viewer
 - `/api/diagnostics/bundle` only while it remains redacted, GET-only, and free
   of raw local paths, tokens, credentials, and raw event payloads
 
@@ -141,7 +143,7 @@ Everything else should require the local capability token unless there is a stro
 
 Examples:
 
-- `/api/events`
+- `POST /api/events`
 - `/api/battles/*`
 - `/api/integrations/*`
 - `/api/diagnostics/*`
@@ -163,12 +165,18 @@ caller guesses the URL directly.
 
 ## WebSocket Recommendations
 
-If live streaming becomes necessary:
+If richer live streaming becomes necessary:
 
 - require capability token during connection setup
 - treat each socket as a privilege-bearing session
 - support server-side disconnect when token rotates or sidecar restarts
 - never stream secret material even over authenticated local sockets
+
+The current Battle Log live update channel uses server-sent events at
+`GET /api/events/stream`. It sends only update hints (`ready` and
+`events-updated`) and relies on the existing snapshot/detail routes for data.
+If the stream begins carrying event payloads, cursors, or sensitive status, move
+it behind the local capability token.
 
 ## Credential Handling Through The API
 

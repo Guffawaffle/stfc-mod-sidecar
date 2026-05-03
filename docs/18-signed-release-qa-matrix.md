@@ -47,7 +47,7 @@ Record each result as `pass`, `fail`, `not run`, or `blocked`, with a short note
 | Settings | Edit a supported hotkey or hard setting. | Save writes a sparse TOML change and creates a backup when replacing an existing settings file. |
 | Settings | Save with an invalid/conflicting binding where the UI warns. | Warning remains visible and the saved result matches the user's explicit choice. |
 | Battle Log | Open Battle Log against the live feed. | Existing entries render and detail views open without console/runtime errors. |
-| Battle Log | Wait for new live entries. | Current releases may still use browser polling; event-driven updates are tracked in #11. Record observed delay and any stale state. |
+| Battle Log | Wait for new live entries. | Live updates arrive through `/api/events/stream` without the old two-second browser polling loop; record observed delay, reconnect behavior, and any stale state. |
 | Release Info | Open About. | Version, release channel, update mode, and signing expectation match the artifact being tested. |
 | Upgrade | Install over an existing version with `desktop-settings.json`. | Existing game directory and `developerMode` remain authoritative. |
 | Uninstall | Run uninstaller. | Installed files are removed. Record whether user-data settings/logs remain by design or need cleanup work. |

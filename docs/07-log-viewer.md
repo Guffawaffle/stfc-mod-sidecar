@@ -136,6 +136,10 @@ npm run viewer:run
 
 ## Notes
 
-- The viewer polls the JSONL file every two seconds when auto refresh is enabled.
+- The Battle Log page uses `GET /api/events/stream` for live update hints; the
+  server watches the JSONL feed and tells the page when to refresh its snapshot.
+- If browser EventSource support or the stream connection fails, the page keeps
+  a slow fallback refresh so the viewer degrades without returning to the old
+  two-second polling loop.
 - The page only displays the latest window of lines that you request in the control bar.
 - Invalid or non-sidecar JSONL lines are kept visible with an error note instead of being dropped silently.

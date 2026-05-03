@@ -3,7 +3,10 @@ const state = {
   selectedLineNumber: null,
   detailsByLine: new Map(),
   refreshTimer: null,
+  eventSource: null,
 };
+
+const FALLBACK_REFRESH_MS = 15000;
 
 const elements = {
   feedPath: document.querySelector("#feed-path"),
@@ -43,13 +46,48 @@ function updateRefreshLoop() {
     state.refreshTimer = null;
   }
 
+  if (state.eventSource) {
+    state.eventSource.close();
+    state.eventSource = null;
+  }
+
   if (!elements.autoRefresh.checked) {
+    setStatus("Paused");
+    return;
+  }
+
+  if (window.EventSource) {
+    state.eventSource = new EventSource("/api/events/stream");
+    state.eventSource.addEventListener("open", () => markLiveUpdatesConnected());
+    state.eventSource.addEventListener("ready", () => markLiveUpdatesConnected());
+    state.eventSource.addEventListener("events-updated", () => void refreshSnapshot());
+    state.eventSource.addEventListener("error", () => {
+      setStatus("Live updates reconnecting...");
+      ensureFallbackRefresh();
+    });
+    return;
+  }
+
+  ensureFallbackRefresh();
+}
+
+function markLiveUpdatesConnected() {
+  if (state.refreshTimer) {
+    window.clearInterval(state.refreshTimer);
+    state.refreshTimer = null;
+  }
+
+  setStatus("Live updates connected");
+}
+
+function ensureFallbackRefresh() {
+  if (state.refreshTimer || !elements.autoRefresh.checked) {
     return;
   }
 
   state.refreshTimer = window.setInterval(() => {
     void refreshSnapshot();
-  }, 2000);
+  }, FALLBACK_REFRESH_MS);
 }
 
 function renderStatus(snapshot) {

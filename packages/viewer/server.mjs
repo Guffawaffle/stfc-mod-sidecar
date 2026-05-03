@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, watch } from "node:fs";
 import { copyFile, mkdir, open, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,6 +27,7 @@ const SETTINGS_SAVE_MODE_LOCAL_TRUSTED = "local_trusted";
 const SETTINGS_SAVE_MODE_REMOTE_PROTECTED = "remote_protected";
 const MAX_EVENT_INGEST_BYTES = 5 * 1024 * 1024;
 const POLL_HINT_MS = 2000;
+const STREAM_KEEPALIVE_MS = 30000;
 const SHUTDOWN_GRACE_MS = 5000;
 
 const __filename = fileURLToPath(import.meta.url);
@@ -49,6 +50,10 @@ const releaseInfo = buildReleaseInfo({
     packaged: process.env.STFC_SIDECAR_DESKTOP === "1",
 });
 let feedIndex = createEmptyFeedIndex();
+let feedWatcher = null;
+let feedWatcherPath = "";
+let feedWatcherDebounce = null;
+const eventStreamClients = new Set();
 
 let shutdownRequested = false;
 let exitTimer;
@@ -96,6 +101,14 @@ const server = createServer(async (request, response) => {
             includeDetails: detailMode !== "summary",
         });
         return sendJson(response, 200, snapshot);
+    }
+
+    if (requestUrl.pathname === "/api/events/stream") {
+        if (request.method && request.method !== "GET") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        return handleEventStream(request, response);
     }
 
     if (requestUrl.pathname === "/api/settings/hotkeys") {
@@ -218,6 +231,7 @@ server.listen(port, "127.0.0.1", () => {
     console.log(`[sidecar-viewer] pid ${process.pid}`);
     console.log(`[sidecar-viewer] listening on http://127.0.0.1:${port}`);
     console.log(`[sidecar-viewer] feed path: ${feedPath}`);
+    ensureFeedWatcher();
 });
 
 process.on("SIGINT", () => {
@@ -500,6 +514,7 @@ async function handleEventIngest(request, response) {
         const payload = await readJsonBody(request);
         const events = normalizeIncomingEvents(payload);
         const result = await eventStore.append(events);
+        broadcastEventUpdate("ingest", { appended: result.appended ?? events.length });
         return sendJson(response, 202, {
             ok: true,
             backend: eventStore.backend,
@@ -511,6 +526,121 @@ async function handleEventIngest(request, response) {
             error: error instanceof Error ? error.message : String(error),
         });
     }
+}
+
+function handleEventStream(request, response) {
+    response.writeHead(200, {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-store",
+        "connection": "keep-alive",
+        "x-accel-buffering": "no",
+    });
+    response.write(": connected\n\n");
+
+    const client = {
+        response,
+        keepalive: setInterval(() => {
+            response.write(`: keepalive ${new Date().toISOString()}\n\n`);
+        }, STREAM_KEEPALIVE_MS),
+    };
+    client.keepalive.unref?.();
+    eventStreamClients.add(client);
+    sendEventStreamMessage(client, "ready", streamPayload("ready"));
+
+    request.on("close", () => {
+        clearInterval(client.keepalive);
+        eventStreamClients.delete(client);
+    });
+}
+
+function broadcastEventUpdate(reason, extra = {}) {
+    if (eventStreamClients.size === 0) {
+        return;
+    }
+
+    const payload = streamPayload(reason, extra);
+    for (const client of eventStreamClients) {
+        sendEventStreamMessage(client, "events-updated", payload);
+    }
+}
+
+function streamPayload(reason, extra = {}) {
+    return {
+        ok: true,
+        reason,
+        generatedAt: new Date().toISOString(),
+        ...extra,
+    };
+}
+
+function sendEventStreamMessage(client, eventName, payload) {
+    client.response.write(`event: ${eventName}\n`);
+    client.response.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+function ensureFeedWatcher() {
+    const target = watcherTargetForFeed(feedPath);
+    if (!target || target === feedWatcherPath) {
+        return;
+    }
+
+    closeFeedWatcher();
+    try {
+        feedWatcher = watch(target, { persistent: false }, (_eventType, filename) => {
+            if (filename && !isFeedWatcherFilename(filename)) {
+                return;
+            }
+
+            scheduleFeedWatcherUpdate();
+        });
+        feedWatcherPath = target;
+        feedWatcher.on("error", (error) => {
+            console.warn(`[sidecar-viewer] feed watcher failed: ${error instanceof Error ? error.message : String(error)}`);
+            closeFeedWatcher();
+        });
+        console.log(`[sidecar-viewer] watching feed updates at ${target}`);
+    } catch (error) {
+        console.warn(`[sidecar-viewer] unable to watch feed updates: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+
+function closeFeedWatcher() {
+    if (feedWatcherDebounce) {
+        clearTimeout(feedWatcherDebounce);
+        feedWatcherDebounce = null;
+    }
+
+    if (feedWatcher) {
+        feedWatcher.close();
+        feedWatcher = null;
+        feedWatcherPath = "";
+    }
+}
+
+function watcherTargetForFeed(selectedFeedPath) {
+    if (existsSync(selectedFeedPath)) {
+        return selectedFeedPath;
+    }
+
+    const directory = path.dirname(selectedFeedPath);
+    return existsSync(directory) ? directory : "";
+}
+
+function isFeedWatcherFilename(filename) {
+    return path.basename(String(filename)) === path.basename(feedPath);
+}
+
+function scheduleFeedWatcherUpdate() {
+    if (feedWatcherDebounce) {
+        clearTimeout(feedWatcherDebounce);
+    }
+
+    feedWatcherDebounce = setTimeout(() => {
+        feedWatcherDebounce = null;
+        ensureFeedWatcher();
+        broadcastEventUpdate("feed-changed");
+    }, 250);
+    feedWatcherDebounce.unref?.();
 }
 
 async function readEventsSnapshot(limit, options = {}) {
@@ -1184,6 +1314,12 @@ async function shutdownServer(reason) {
     }
 
     shutdownRequested = true;
+    closeFeedWatcher();
+    for (const client of eventStreamClients) {
+        clearInterval(client.keepalive);
+        client.response.end();
+    }
+    eventStreamClients.clear();
     console.log(`[sidecar-viewer] shutdown requested (${reason})`);
 
     exitTimer = setTimeout(() => {
