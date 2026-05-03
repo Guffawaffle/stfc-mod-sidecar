@@ -1,3 +1,8 @@
+import {
+  buildSettingsTroubleshootingPrompt,
+  buildSettingsTroubleshootingSummary,
+} from "./troubleshooting.js";
+
 const state = {
   snapshot: null,
   draftBindings: new Map(),
@@ -331,32 +336,21 @@ function renderHotkeys() {
 }
 
 function renderTroubleshootingCoach() {
-  if (!state.snapshot) {
-    elements.settingsCoachSummary.textContent = "Loading settings context.";
-    return;
-  }
-
-  const conflicts = buildDraftConflicts();
-  const warningCount = collectSettingsWarnings(conflicts).length;
-  const changeCount = countChanges();
-  const conflictCount = conflicts.filter((conflict) => conflict.severity === "warning").length;
-  const pieces = [
-    `${warningCount} warning${warningCount === 1 ? "" : "s"}`,
-    `${changeCount} draft change${changeCount === 1 ? "" : "s"}`,
-    `${conflictCount} blocking conflict${conflictCount === 1 ? "" : "s"}`,
-  ];
-  elements.settingsCoachSummary.textContent = `${pieces.join("; ")}. Local paths are reduced to file or folder names in exported context.`;
+  elements.settingsCoachSummary.textContent = buildSettingsTroubleshootingSummary({
+    ...settingsTroubleshootingInput(),
+    changeCount: countChanges(),
+  });
 }
 
 function previewSettingsPrompt() {
-  const prompt = buildSettingsTroubleshootingPrompt();
+  const prompt = buildSettingsTroubleshootingPrompt(settingsTroubleshootingInput());
   elements.settingsPromptPreview.textContent = prompt;
   elements.settingsPromptPreview.hidden = false;
   setCoachState("Preview ready");
 }
 
 async function copySettingsPrompt() {
-  const prompt = buildSettingsTroubleshootingPrompt();
+  const prompt = buildSettingsTroubleshootingPrompt(settingsTroubleshootingInput());
   elements.settingsPromptPreview.textContent = prompt;
   elements.settingsPromptPreview.hidden = false;
   setCoachState("Copying prompt...");
@@ -373,118 +367,14 @@ function setCoachState(message) {
   elements.settingsCoachState.textContent = message;
 }
 
-function buildSettingsTroubleshootingPrompt() {
-  if (!state.snapshot) {
-    return "Settings are still loading.";
-  }
-
-  const snapshot = state.snapshot;
-  const conflicts = buildDraftConflicts();
-  const warnings = collectSettingsWarnings(conflicts);
-  const changes = buildDraftChangeSummary();
-  const infoConflicts = conflicts.filter((conflict) => conflict.severity === "info");
-  const generatedAt = new Date().toISOString();
-  const contextRows = [
-    `Generated: ${generatedAt}`,
-    `Mode: ${modeLabel(state.bootstrap?.developerMode)}`,
-    `Config state: ${snapshot.parseError ? "Invalid TOML" : snapshot.exists ? "Found" : "Not found"}`,
-    `Settings file: ${redactedPathLabel(snapshot.settingsPath)}`,
-    `Game directory: ${redactedPathLabel(state.bootstrap?.gameDirectory || gameDirectoryFromSettingsPath(snapshot.settingsPath))}`,
-    `Feed file: ${redactedPathLabel(state.bootstrap?.feedPath)}`,
-    `Save mode: ${snapshot.settingsSaveMode ?? "unknown"}`,
-    `Apply mode: ${snapshot.applyMode ?? "unknown"}`,
-    `Hotkey actions: ${snapshot.actions.length}`,
-    `Hard settings: ${snapshot.hardSettings.length}`,
-    `Draft changes: ${changes.length}`,
-    `Warnings: ${warnings.length}`,
-  ];
-
-  return [
-    "# STFC Sidecar Settings Troubleshooting Context",
-    "",
-    "Use this redacted settings context to help troubleshoot hotkey or Community Mod settings issues.",
-    "Do not assume omitted local paths, tokens, credentials, or raw game payloads are available.",
-    "Keep recommendations read-only unless the user explicitly asks for a settings change.",
-    "",
-    "## Context",
-    ...contextRows.map((row) => `- ${row}`),
-    "",
-    "## Warnings And Conflicts",
-    ...formatPromptList(warnings, "No warnings or blocking conflicts detected."),
-    "",
-    "## Context-Dependent Shared Bindings",
-    ...formatPromptList(infoConflicts.map((conflict) => `${conflict.binding}: ${conflict.message}`), "No context-dependent shared bindings detected."),
-    "",
-    "## Unsaved Draft Changes",
-    ...formatPromptList(changes, "No unsaved draft changes."),
-  ].join("\n");
-}
-
-function collectSettingsWarnings(conflicts = buildDraftConflicts()) {
-  const rows = [];
-
-  if (state.snapshot?.parseError) {
-    rows.push("Settings TOML could not be parsed.");
-  }
-
-  for (const conflict of conflicts) {
-    if (conflict.severity === "warning") {
-      rows.push(`${conflict.binding}: ${conflict.message}`);
-    }
-  }
-
-  for (const action of state.snapshot?.actions ?? []) {
-    for (const issue of action.issues.filter((item) => item.severity !== "info")) {
-      rows.push(`${action.label} (${action.id}): ${issue.severity}: ${issue.message}`);
-    }
-  }
-
-  for (const setting of state.snapshot?.hardSettings ?? []) {
-    for (const issue of setting.issues.filter((item) => item.severity !== "info")) {
-      rows.push(`${setting.label} (${setting.id}): ${issue.severity}: ${issue.message}`);
-    }
-  }
-
-  return rows;
-}
-
-function buildDraftChangeSummary() {
-  const changes = [];
-  if (!state.snapshot) {
-    return changes;
-  }
-
-  for (const action of state.snapshot.actions) {
-    const draftValue = formatBindings(state.draftBindings.get(action.id) ?? []);
-    if (draftValue !== action.effectiveValue) {
-      changes.push(`${action.label} (${action.id}): ${action.effectiveValue} -> ${draftValue}`);
-    }
-  }
-
-  for (const setting of state.snapshot.hardSettings) {
-    const draftValue = state.draftHardSettings.get(setting.id);
-    if (draftValue !== setting.value) {
-      changes.push(`${setting.label} (${setting.id}): ${setting.value} -> ${draftValue}`);
-    }
-  }
-
-  return changes;
-}
-
-function formatPromptList(items, emptyText) {
-  return items.length > 0 ? items.map((item) => `- ${item}`) : [`- ${emptyText}`];
-}
-
-function redactedPathLabel(value) {
-  const rawValue = String(value ?? "").trim();
-  if (!rawValue) {
-    return "Unknown";
-  }
-
-  const normalized = rawValue.replaceAll("\\", "/");
-  const parts = normalized.split("/").filter(Boolean);
-  const name = parts.at(-1) ?? rawValue;
-  return `${name} (path redacted)`;
+function settingsTroubleshootingInput() {
+  return {
+    snapshot: state.snapshot,
+    bootstrap: state.bootstrap,
+    draftBindings: state.draftBindings,
+    draftHardSettings: state.draftHardSettings,
+    conflicts: state.snapshot ? buildDraftConflicts() : [],
+  };
 }
 
 function renderConflicts(conflicts) {
