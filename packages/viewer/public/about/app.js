@@ -3,6 +3,8 @@ import {
     communityModInstallSummary,
     communityModReleaseLabel,
     communityModReleaseSummary,
+    communityModInstallPlanLabel,
+    communityModInstallPlanSummary,
 } from "../shared/community-mod-status.js";
 
 const state = {
@@ -10,6 +12,7 @@ const state = {
     modeChanging: false,
     pendingDeveloperMode: null,
     modReleaseCatalog: null,
+    modInstallPlan: null,
     modReleaseChecking: false,
 };
 
@@ -29,6 +32,8 @@ const elements = {
     modInstallDetail: document.querySelector("#about-mod-install-detail"),
     modReleaseState: document.querySelector("#about-mod-release-state"),
     modReleaseDetail: document.querySelector("#about-mod-release-detail"),
+    modPlanState: document.querySelector("#about-mod-plan-state"),
+    modPlanDetail: document.querySelector("#about-mod-plan-detail"),
     refreshModStatus: document.querySelector("#refresh-mod-status"),
     checkModRelease: document.querySelector("#check-mod-release"),
     modReleaseLink: document.querySelector("#about-mod-release-link"),
@@ -167,6 +172,8 @@ function renderCommunityModStatus() {
     elements.modInstallDetail.textContent = communityModInstallSummary(install);
     elements.modReleaseState.textContent = communityModReleaseLabel(state.modReleaseCatalog);
     elements.modReleaseDetail.textContent = communityModReleaseSummary(state.modReleaseCatalog);
+    elements.modPlanState.textContent = communityModInstallPlanLabel(state.modInstallPlan);
+    elements.modPlanDetail.textContent = communityModInstallPlanSummary(state.modInstallPlan);
     setModReleaseLink(state.modReleaseCatalog?.release?.htmlUrl);
     elements.checkModRelease.disabled = state.modReleaseChecking;
 }
@@ -174,12 +181,14 @@ function renderCommunityModStatus() {
 async function checkModRelease() {
     state.modReleaseChecking = true;
     state.modReleaseCatalog = null;
+    state.modInstallPlan = null;
     renderCommunityModStatus();
 
     try {
-        state.modReleaseCatalog = await fetchModReleaseCatalog();
+        state.modInstallPlan = await fetchModInstallPlan();
+        state.modReleaseCatalog = state.modInstallPlan.catalog ?? null;
     } catch (error) {
-        state.modReleaseCatalog = {
+        state.modInstallPlan = {
             ok: false,
             status: "error",
             error: error instanceof Error ? error.message : String(error),
@@ -190,14 +199,14 @@ async function checkModRelease() {
     }
 }
 
-async function fetchModReleaseCatalog() {
+async function fetchModInstallPlan() {
     const profile = encodeURIComponent(state.bootstrap?.modProfile ?? state.bootstrap?.settingsProfile ?? "");
-    const response = await fetch(`/api/mod/release-catalog?profile=${profile}`, { cache: "no-store" });
+    const response = await fetch(`/api/mod/install-plan?profile=${profile}`, { cache: "no-store" });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result.ok === false) {
         throw new Error(result.error
-            ? `Mod release check failed: ${result.error}`
-            : `Mod release check failed: ${response.status}`);
+            ? `Mod install plan failed: ${result.error}`
+            : `Mod install plan failed: ${response.status}`);
     }
 
     return result;

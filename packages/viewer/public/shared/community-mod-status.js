@@ -154,6 +154,43 @@ export function communityModReleaseSummary(catalog) {
     return "Community Mod release status is unavailable.";
 }
 
+export function communityModInstallPlanLabel(plan) {
+    if (!plan) {
+        return "Install plan not checked";
+    }
+
+    if (plan.ok === false || plan.status === "error") {
+        return "Install plan unavailable";
+    }
+
+    if (plan.status === "current") {
+        return "Installed release is current";
+    }
+
+    return plan.actionLabel ?? "Install plan unavailable";
+}
+
+export function communityModInstallPlanSummary(plan) {
+    if (!plan) {
+        return "Check Mod Release to prepare a safe install/update plan.";
+    }
+
+    if (plan.ok === false) {
+        return String(plan.error ?? "Community Mod install plan is unavailable.");
+    }
+
+    const target = plan.target?.tag && plan.target?.assetName
+        ? ` | Target ${plan.target.tag} ${plan.target.assetName}`
+        : "";
+    const warnings = Array.isArray(plan.warnings) && plan.warnings.length > 0
+        ? ` | ${plan.warnings.join(" | ")}`
+        : "";
+    const execution = plan.execution?.enabled === false && plan.action !== "none"
+        ? " | Manual confirmation path not enabled yet"
+        : "";
+    return `${plan.summary ?? "Install plan unavailable."}${target}${warnings}${execution}`;
+}
+
 export function modProfileLabel(profile) {
     return normalizeModProfile(profile) === "netniv-basic" ? "Official Basic" : "Advanced Alpha";
 }

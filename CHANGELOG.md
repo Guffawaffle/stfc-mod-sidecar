@@ -17,6 +17,7 @@
 - Added Basic profile capability gates so Battle Log navigation, APIs, feed watching, and event storage stay off for official Basic mode.
 - Added a Community Mod release catalog endpoint for profile-specific mod artifact selection without downloading or installing yet.
 - Added About and Settings status surfaces for installed Community Mod provenance and profile release metadata.
+- Added a dry-run Community Mod install/update plan endpoint and About-page plan status without enabling DLL writes yet.
 - Added `POST /api/events` ingest endpoint with Bearer token auth
   (`STFC_SIDECAR_SYNC_TOKEN`, or a launch-scoped generated token when unset)
 - Added manual `/api/release/check` update checks and About-page release status
