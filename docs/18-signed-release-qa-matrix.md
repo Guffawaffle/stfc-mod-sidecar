@@ -24,6 +24,22 @@ Official release artifacts are built by `.github/workflows/release-windows.yml`
 with `WIN_SIGN_MODE=azure`. That workflow must verify every generated `.exe`
 with `signtool verify /pa /v` and `Get-AuthenticodeSignature` before upload.
 
+## Latest Local Readiness Snapshot
+
+Recorded on 2026-05-04 after the Basic companion install/update sprint:
+
+- `npm run ax -- check`: passed.
+- `npm run ax -- ci`: passed, including Windows NSIS and portable packaging.
+- VS Code diagnostics: no errors.
+- `git diff --check`: passed.
+- Packaged launch, silent setup, silent uninstall, source-server install flow,
+  About-page install execution, different-DLL profile handling, and manual
+  recovery smokes were run in the preceding full smoke pass.
+
+This snapshot does not make the product signed-release-ready. Interactive
+installer smoke, signed artifact verification, full uninstall behavior, and the
+remaining release/security roadmap work still need their own release records.
+
 ## Manual Smoke Matrix
 
 Record each result as `pass`, `fail`, `not run`, or `blocked`, with a short note.

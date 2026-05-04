@@ -11,6 +11,8 @@
 
 ### Features
 
+- Polished the LCARS shell header alignment and removed an unsupported Safari
+  scrollbar compatibility warning from the shared viewer CSS.
 - Added initial Community Mod settings schema profiles so official netniV Basic mode can hide fork-only settings before broader settings editing expands.
 - Added a desktop Settings profile selector for switching between official Basic and Advanced Alpha schemas.
 - Added Community Mod DLL install detection to classify missing, official Basic, advanced, and unknown installs by manifest/hash evidence.
@@ -51,6 +53,8 @@
 
 ### Docs
 
+- Added Basic companion milestone closeout notes and identified full uninstall as
+  the planned next milestone.
 - `docs/05-integration-plan-for-community-mod.md` updated with dual-mode
   architecture and `battlelogs_realtime` target model
 - Added `docs/12-battle-analytics-followups.md` for post-parity follow-up tracking

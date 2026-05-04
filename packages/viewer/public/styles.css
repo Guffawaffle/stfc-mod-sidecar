@@ -1183,7 +1183,6 @@ input[type="text"] {
 
 .table-scroll {
   scroll-behavior: auto;
-  scrollbar-gutter: stable both-edges;
 }
 
 .table-scroll:focus-visible {
@@ -1266,7 +1265,7 @@ body::before {
 
 .site-shell::before {
   position: absolute;
-  top: 30px;
+  top: 36px;
   bottom: 42px;
   left: 20px;
   width: 42px;
@@ -1284,7 +1283,7 @@ body::before {
 
 .site-shell::after {
   position: absolute;
-  top: 30px;
+  top: 36px;
   left: 62px;
   width: 156px;
   height: 42px;

@@ -67,6 +67,17 @@ Desktop UI / Overwolf UI
 5. UI shell: desktop diagnostics viewer.
 6. Optional overlay host: evaluate Overwolf as a renderer only.
 
+## Current Milestone Status
+
+The Basic companion install/update milestone is complete enough to move forward.
+It added profile-aware Basic mode, Community Mod provenance detection, guarded
+Windows `version.dll` install/update execution, About-page execution status, and
+recovery guidance. See [docs/20-basic-companion-milestone-closeout.md](docs/20-basic-companion-milestone-closeout.md).
+
+The next planned milestone is full uninstall behavior for the Community Mod and
+the installed Companion app. Signed-release readiness still requires interactive
+installer smoke and the remaining release/security work.
+
 ## Project Layout
 
 ```text
