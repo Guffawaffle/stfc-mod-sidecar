@@ -15,6 +15,7 @@ import {
     communityModInstallConfirmationLabel,
     communityModInstallConfirmationSummary,
     communityModInstallExecutionLabel,
+    communityModInstallExecutionRecoverySummary,
     communityModInstallExecutionSummary,
     modProfileLabel,
 } from "../../viewer/public/shared/community-mod-status.js";
@@ -209,6 +210,7 @@ describe("Community Mod status formatting", () => {
         expect(communityModInstallExecutionLabel(execution)).toBe("Execution disabled");
         expect(communityModInstallExecutionSummary(execution)).toContain("no game-directory write attempted");
         expect(communityModInstallExecutionSummary(execution)).toContain("Destination C:\\Games");
+        expect(communityModInstallExecutionRecoverySummary(execution)).toContain("No files were changed");
     });
 
     test("formats completed install execution with receipt details", () => {
@@ -228,5 +230,51 @@ describe("Community Mod status formatting", () => {
         expect(communityModInstallExecutionLabel(execution)).toBe("Community Mod installed");
         expect(communityModInstallExecutionSummary(execution)).toContain("Installed SHA-256 45DBE5FA43E2...");
         expect(communityModInstallExecutionSummary(execution)).toContain("Manifest C:\\Games");
+        expect(communityModInstallExecutionRecoverySummary(execution)).toContain("remove version.dll");
+    });
+
+    test("formats replacement rollback instructions from execution receipts", () => {
+        const execution = {
+            ok: true,
+            status: "replaced",
+            summary: "Replaced Community Mod version.dll and verified the copied hash.",
+            receipt: {
+                backup: {
+                    created: true,
+                    path: "C:\\Games\\Star Trek Fleet Command\\default\\game\\.stfc-sidecar\\backups\\version.dll.bak",
+                },
+            },
+            safety: { writesGameDirectory: true },
+            execution: { writesAttempted: true, writesCompleted: true },
+        };
+
+        expect(communityModInstallExecutionRecoverySummary(execution)).toContain("Rollback available");
+        expect(communityModInstallExecutionRecoverySummary(execution)).toContain("version.dll.bak");
+    });
+
+    test("formats failed execution rollback outcomes", () => {
+        const restored = {
+            ok: false,
+            status: "execution_failed",
+            summary: "copy failed",
+            rollback: { attempted: true, restoredBackup: true },
+            safety: { writesGameDirectory: true },
+            execution: { writesAttempted: true },
+        };
+        const manual = {
+            ok: false,
+            status: "execution_failed",
+            summary: "copy failed",
+            target: {
+                backupPath: "C:\\Games\\Star Trek Fleet Command\\default\\game\\.stfc-sidecar\\backups\\version.dll.bak",
+            },
+            rollback: { attempted: true, error: "access denied" },
+            safety: { writesGameDirectory: true },
+            execution: { writesAttempted: true },
+        };
+
+        expect(communityModInstallExecutionRecoverySummary(restored)).toContain("restored the previous version.dll");
+        expect(communityModInstallExecutionRecoverySummary(manual)).toContain("manual attention");
+        expect(communityModInstallExecutionRecoverySummary(manual)).toContain("version.dll.bak");
     });
 });
