@@ -2,9 +2,13 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import {
+    findExpectedDllEntry,
+    isUnsafeZipEntry,
+    readCommunityModZipEntries,
+} from "./community-mod-zip.mjs";
+
 const DEFAULT_MAX_ARTIFACT_BYTES = 50 * 1024 * 1024;
-const ZIP_EOCD_SIGNATURE = 0x06054b50;
-const ZIP_CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
 
 export async function verifyCommunityModArtifact(options = {}) {
     const catalog = options.catalog ?? null;
@@ -130,8 +134,9 @@ export function inspectCommunityModArtifact(buffer, asset) {
         };
     }
 
-    const entries = listZipEntries(buffer);
-    const unsafeEntries = entries.filter((entry) => isUnsafeZipEntry(entry));
+    const zipEntries = readCommunityModZipEntries(buffer);
+    const entries = zipEntries.map((entry) => entry.name);
+    const unsafeEntries = zipEntries.filter((entry) => isUnsafeZipEntry(entry)).map((entry) => entry.name);
     if (unsafeEntries.length > 0) {
         return {
             status: "unsafe_zip_entries",
@@ -142,8 +147,7 @@ export function inspectCommunityModArtifact(buffer, asset) {
         };
     }
 
-    const expectedName = String(asset.expectedDllName ?? "version.dll").toLowerCase();
-    const dllEntry = entries.find((entry) => path.posix.basename(entry.toLowerCase()) === expectedName) ?? "";
+    const dllEntry = findExpectedDllEntry(zipEntries, asset.expectedDllName ?? "version.dll")?.name ?? "";
     if (!dllEntry) {
         return {
             status: "missing_expected_dll",
@@ -232,51 +236,6 @@ function artifactCachePath(cacheDir, catalog, asset) {
         sanitizePathSegment(catalog.release?.tagName ?? "release"),
         sanitizePathSegment(asset.name),
     );
-}
-
-function listZipEntries(buffer) {
-    const eocdOffset = findEndOfCentralDirectory(buffer);
-    if (eocdOffset < 0) {
-        throw new Error("Zip artifact does not contain an end-of-central-directory record");
-    }
-
-    const totalEntries = buffer.readUInt16LE(eocdOffset + 10);
-    const centralDirectoryOffset = buffer.readUInt32LE(eocdOffset + 16);
-    const entries = [];
-    let offset = centralDirectoryOffset;
-    for (let index = 0; index < totalEntries; index += 1) {
-        if (buffer.readUInt32LE(offset) !== ZIP_CENTRAL_DIRECTORY_SIGNATURE) {
-            throw new Error("Zip artifact central directory is malformed");
-        }
-
-        const fileNameLength = buffer.readUInt16LE(offset + 28);
-        const extraLength = buffer.readUInt16LE(offset + 30);
-        const commentLength = buffer.readUInt16LE(offset + 32);
-        const fileNameStart = offset + 46;
-        const fileNameEnd = fileNameStart + fileNameLength;
-        entries.push(buffer.subarray(fileNameStart, fileNameEnd).toString("utf8").replaceAll("\\", "/"));
-        offset = fileNameEnd + extraLength + commentLength;
-    }
-
-    return entries;
-}
-
-function findEndOfCentralDirectory(buffer) {
-    const minimumOffset = Math.max(0, buffer.length - 65557);
-    for (let offset = buffer.length - 22; offset >= minimumOffset; offset -= 1) {
-        if (buffer.readUInt32LE(offset) === ZIP_EOCD_SIGNATURE) {
-            return offset;
-        }
-    }
-
-    return -1;
-}
-
-function isUnsafeZipEntry(entry) {
-    const normalized = String(entry ?? "").replaceAll("\\", "/");
-    return normalized.startsWith("/")
-        || /^[A-Za-z]:\//.test(normalized)
-        || normalized.split("/").some((part) => part === "..");
 }
 
 function sha256Buffer(buffer) {
