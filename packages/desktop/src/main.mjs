@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 
-import { initialDeveloperModeFromSources, normalizeDesktopSettings } from "./desktop-settings.mjs";
+import { initialDeveloperModeFromSources, normalizeDesktopSettings, normalizeModProfile } from "./desktop-settings.mjs";
 import { SECURITY_MOTTO, STFC_GAME_EXECUTABLE, validateStfcGameDirectory } from "./game-directory.mjs";
 import { buildReleaseInfo } from "../../viewer/release-info.mjs";
 
@@ -282,6 +282,20 @@ function registerDesktopIpc() {
         desktopSettings = normalizeDesktopSettings({
             ...desktopSettings,
             developerMode,
+        });
+        saveDesktopSettings(desktopSettings);
+        await restartSidecarServer();
+        return bootstrapSnapshot();
+    });
+    ipcMain.handle("sidecar-bootstrap:set-mod-profile", async (_event, profile) => {
+        const modProfile = normalizeModProfile(profile);
+        if (desktopSettings.modProfile === modProfile) {
+            return bootstrapSnapshot();
+        }
+
+        desktopSettings = normalizeDesktopSettings({
+            ...desktopSettings,
+            modProfile,
         });
         saveDesktopSettings(desktopSettings);
         await restartSidecarServer();
