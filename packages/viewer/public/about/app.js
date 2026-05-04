@@ -1,7 +1,23 @@
+import {
+    communityModInstallLabel,
+    communityModInstallSummary,
+    communityModReleaseLabel,
+    communityModReleaseSummary,
+    communityModInstallPlanLabel,
+    communityModInstallPlanSummary,
+    communityModArtifactVerificationLabel,
+    communityModArtifactVerificationSummary,
+} from "../shared/community-mod-status.js";
+
 const state = {
     bootstrap: null,
     modeChanging: false,
     pendingDeveloperMode: null,
+    modReleaseCatalog: null,
+    modInstallPlan: null,
+    modArtifactVerification: null,
+    modReleaseChecking: false,
+    modArtifactVerifying: false,
 };
 
 const elements = {
@@ -15,6 +31,19 @@ const elements = {
     releaseUpdateState: document.querySelector("#about-release-update-state"),
     checkReleaseUpdate: document.querySelector("#check-release-update"),
     releaseUpdateLink: document.querySelector("#about-release-update-link"),
+    modInstallTitle: document.querySelector("#about-mod-install-title"),
+    modInstallState: document.querySelector("#about-mod-install-state"),
+    modInstallDetail: document.querySelector("#about-mod-install-detail"),
+    modReleaseState: document.querySelector("#about-mod-release-state"),
+    modReleaseDetail: document.querySelector("#about-mod-release-detail"),
+    modPlanState: document.querySelector("#about-mod-plan-state"),
+    modPlanDetail: document.querySelector("#about-mod-plan-detail"),
+    modArtifactState: document.querySelector("#about-mod-artifact-state"),
+    modArtifactDetail: document.querySelector("#about-mod-artifact-detail"),
+    refreshModStatus: document.querySelector("#refresh-mod-status"),
+    checkModRelease: document.querySelector("#check-mod-release"),
+    verifyModArtifact: document.querySelector("#verify-mod-artifact"),
+    modReleaseLink: document.querySelector("#about-mod-release-link"),
     diagnosticsState: document.querySelector("#diagnostics-state"),
     diagnosticsPreview: document.querySelector("#diagnostics-preview"),
     previewDiagnostics: document.querySelector("#preview-diagnostics"),
@@ -27,6 +56,9 @@ elements.previewDiagnostics?.addEventListener("click", () => void previewDiagnos
 elements.copyDiagnostics?.addEventListener("click", () => void copyDiagnostics());
 elements.downloadDiagnostics?.addEventListener("click", () => void downloadDiagnostics());
 elements.checkReleaseUpdate?.addEventListener("click", () => void checkReleaseUpdate());
+elements.refreshModStatus?.addEventListener("click", () => void refreshModStatus());
+elements.checkModRelease?.addEventListener("click", () => void checkModRelease());
+elements.verifyModArtifact?.addEventListener("click", () => void verifyModArtifact());
 
 await loadMode();
 
@@ -42,6 +74,7 @@ async function loadMode() {
 
     renderMode();
     renderRelease();
+    renderCommunityModStatus();
 }
 
 async function loadServerMode() {
@@ -56,6 +89,9 @@ async function loadServerMode() {
         developerMode: Boolean(health.developerMode),
         companionMode: health.companionMode,
         modeLabel: modeLabel(health.developerMode),
+        modProfile: health.modProfile,
+        settingsProfile: health.settingsProfile,
+        communityModInstall: health.communityModInstall,
         release: health.release,
     };
 }
@@ -126,6 +162,74 @@ function renderRelease() {
     elements.releaseChannel.textContent = release?.channelLabel ? `${release.channelLabel} channel` : "Channel unknown";
     elements.signaturePolicy.textContent = release?.signatureLabel ?? "Signature expectation unknown";
     elements.updateMode.textContent = release?.updateLabel ?? "Update mode unknown";
+}
+
+async function refreshModStatus() {
+    elements.refreshModStatus.disabled = true;
+    try {
+        await loadMode();
+    } finally {
+        elements.refreshModStatus.disabled = false;
+    }
+}
+
+function renderCommunityModStatus() {
+    const install = state.bootstrap?.communityModInstall;
+    elements.modInstallTitle.textContent = communityModInstallLabel(install);
+    elements.modInstallState.textContent = communityModInstallLabel(install);
+    elements.modInstallDetail.textContent = communityModInstallSummary(install);
+    elements.modReleaseState.textContent = communityModReleaseLabel(state.modReleaseCatalog);
+    elements.modReleaseDetail.textContent = communityModReleaseSummary(state.modReleaseCatalog);
+    elements.modPlanState.textContent = communityModInstallPlanLabel(state.modInstallPlan);
+    elements.modPlanDetail.textContent = communityModInstallPlanSummary(state.modInstallPlan);
+    elements.modArtifactState.textContent = communityModArtifactVerificationLabel(state.modArtifactVerification);
+    elements.modArtifactDetail.textContent = communityModArtifactVerificationSummary(state.modArtifactVerification);
+    setModReleaseLink(state.modReleaseCatalog?.release?.htmlUrl);
+    elements.checkModRelease.disabled = state.modReleaseChecking;
+    elements.verifyModArtifact.disabled = state.modReleaseChecking
+        || state.modArtifactVerifying
+        || !state.modInstallPlan?.target?.assetName;
+}
+
+async function checkModRelease() {
+    state.modReleaseChecking = true;
+    state.modReleaseCatalog = null;
+    state.modInstallPlan = null;
+    state.modArtifactVerification = null;
+    renderCommunityModStatus();
+
+    try {
+        state.modInstallPlan = await fetchModInstallPlan();
+        state.modReleaseCatalog = state.modInstallPlan.catalog ?? null;
+    } catch (error) {
+        state.modInstallPlan = {
+            ok: false,
+            status: "error",
+            error: error instanceof Error ? error.message : String(error),
+        };
+    } finally {
+        state.modReleaseChecking = false;
+        renderCommunityModStatus();
+    }
+}
+
+async function fetchModInstallPlan() {
+    const profile = encodeURIComponent(state.bootstrap?.modProfile ?? state.bootstrap?.settingsProfile ?? "");
+    const response = await fetch(`/api/mod/install-plan?profile=${profile}`, { cache: "no-store" });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok === false) {
+        throw new Error(result.error
+            ? `Mod install plan failed: ${result.error}`
+            : `Mod install plan failed: ${response.status}`);
+    }
+
+    return result;
+}
+
+function setModReleaseLink(url) {
+    const safeUrl = safeGithubUrl(url);
+    elements.modReleaseLink.hidden = !safeUrl;
+    elements.modReleaseLink.href = safeUrl || "#";
 }
 
 async function checkReleaseUpdate() {
@@ -260,4 +364,39 @@ function setDiagnosticsState(message) {
 
 function safeTimestamp(value) {
     return String(value ?? new Date().toISOString()).replace(/[^0-9A-Za-z]+/g, "-").replace(/^-|-$/g, "");
+}
+
+async function verifyModArtifact() {
+    state.modArtifactVerifying = true;
+    state.modArtifactVerification = null;
+    renderCommunityModStatus();
+
+    try {
+        state.modArtifactVerification = await fetchModArtifactVerification();
+    } catch (error) {
+        state.modArtifactVerification = {
+            ok: false,
+            status: "error",
+            error: error instanceof Error ? error.message : String(error),
+        };
+    } finally {
+        state.modArtifactVerifying = false;
+        renderCommunityModStatus();
+    }
+}
+
+async function fetchModArtifactVerification() {
+    const profile = encodeURIComponent(state.bootstrap?.modProfile ?? state.bootstrap?.settingsProfile ?? "");
+    const response = await fetch(`/api/mod/verify-artifact?profile=${profile}`, {
+        method: "POST",
+        cache: "no-store",
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok === false) {
+        throw new Error(result.error
+            ? `Mod artifact verification failed: ${result.error}`
+            : `Mod artifact verification failed: ${response.status}`);
+    }
+
+    return result;
 }

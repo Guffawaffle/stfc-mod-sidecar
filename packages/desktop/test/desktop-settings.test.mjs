@@ -1,19 +1,21 @@
 import { describe, expect, test } from "vitest";
 
-import { initialDeveloperModeFromSources, normalizeDesktopSettings, parseDeveloperModeValue } from "../src/desktop-settings.mjs";
+import { initialDeveloperModeFromSources, normalizeDesktopSettings, normalizeModProfile, parseDeveloperModeValue } from "../src/desktop-settings.mjs";
 
 describe("desktop settings", () => {
     test("defaults to Standard Companion mode", () => {
         expect(normalizeDesktopSettings()).toEqual({
             gameDirectory: "",
             developerMode: false,
+            modProfile: "guff-advanced",
         });
     });
 
     test("preserves a stored developer mode preference", () => {
-        expect(normalizeDesktopSettings({ gameDirectory: "C:\\Games\\STFC", developerMode: true })).toEqual({
+        expect(normalizeDesktopSettings({ gameDirectory: "C:\\Games\\STFC", developerMode: true, modProfile: "netniv-basic" })).toEqual({
             gameDirectory: "C:\\Games\\STFC",
             developerMode: true,
+            modProfile: "netniv-basic",
         });
     });
 
@@ -37,5 +39,11 @@ describe("desktop settings", () => {
         expect(parseDeveloperModeValue("developer")).toBe(true);
         expect(parseDeveloperModeValue("off")).toBe(false);
         expect(parseDeveloperModeValue(undefined)).toBe(false);
+    });
+
+    test("normalizes mod profile aliases", () => {
+        expect(normalizeModProfile("official")).toBe("netniv-basic");
+        expect(normalizeModProfile("alpha")).toBe("guff-advanced");
+        expect(normalizeModProfile("surprise")).toBe("guff-advanced");
     });
 });

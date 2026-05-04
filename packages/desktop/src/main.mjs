@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 
-import { initialDeveloperModeFromSources, normalizeDesktopSettings } from "./desktop-settings.mjs";
+import { initialDeveloperModeFromSources, normalizeDesktopSettings, normalizeModProfile } from "./desktop-settings.mjs";
 import { SECURITY_MOTTO, STFC_GAME_EXECUTABLE, validateStfcGameDirectory } from "./game-directory.mjs";
 import { buildReleaseInfo } from "../../viewer/release-info.mjs";
 
@@ -141,6 +141,8 @@ async function startSidecarServer(url) {
             ELECTRON_RUN_AS_NODE: "1",
             STFC_SIDECAR_DESKTOP: "1",
             STFC_SIDECAR_DEVELOPER_MODE: desktopSettings.developerMode ? "1" : "0",
+            STFC_SIDECAR_MOD_PROFILE: desktopSettings.modProfile,
+            STFC_SIDECAR_CACHE_DIR: path.join(app.getPath("userData"), "cache"),
             ...releaseEnvironment(),
             STFC_SIDECAR_SHUTDOWN_TOKEN: sidecarShutdownToken,
             STFC_SIDECAR_SYNC_TOKEN: sidecarSyncToken,
@@ -286,6 +288,20 @@ function registerDesktopIpc() {
         await restartSidecarServer();
         return bootstrapSnapshot();
     });
+    ipcMain.handle("sidecar-bootstrap:set-mod-profile", async (_event, profile) => {
+        const modProfile = normalizeModProfile(profile);
+        if (desktopSettings.modProfile === modProfile) {
+            return bootstrapSnapshot();
+        }
+
+        desktopSettings = normalizeDesktopSettings({
+            ...desktopSettings,
+            modProfile,
+        });
+        saveDesktopSettings(desktopSettings);
+        await restartSidecarServer();
+        return bootstrapSnapshot();
+    });
     ipcMain.handle("sidecar-devtools:get-status", () => {
         if (!desktopSettings.developerMode) {
             return {
@@ -384,6 +400,9 @@ async function bootstrapSnapshot(options = {}) {
         developerMode: Boolean(desktopSettings.developerMode),
         companionMode: companionMode(),
         modeLabel: desktopSettings.developerMode ? "Developer Tools" : "Standard Companion",
+        modProfile: desktopSettings.modProfile || health?.modProfile || "guff-advanced",
+        settingsProfile: desktopSettings.modProfile || health?.settingsProfile || "guff-advanced",
+        communityModInstall: health?.communityModInstall ?? null,
         release: desktopReleaseInfo(health?.release),
         error: options.error ?? bootstrapWarning,
         requiredExecutable: STFC_GAME_EXECUTABLE,

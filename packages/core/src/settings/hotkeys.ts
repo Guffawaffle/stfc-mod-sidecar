@@ -2,6 +2,11 @@ import { parse as parseToml } from "smol-toml";
 
 export const HOTKEY_MAX_BINDINGS = 2;
 
+export const COMMUNITY_MOD_SETTINGS_PROFILES = ["netniv-basic", "guff-advanced"] as const;
+export const DEFAULT_COMMUNITY_MOD_SETTINGS_PROFILE: CommunityModSettingsProfile = "guff-advanced";
+
+export type CommunityModSettingsProfile = typeof COMMUNITY_MOD_SETTINGS_PROFILES[number];
+
 export type HotkeyBindingSource = "config" | "default" | "off";
 export type HotkeyIssueSeverity = "info" | "warning" | "error";
 export type HotkeyHardSettingType = "boolean" | "integer";
@@ -15,6 +20,7 @@ export interface HotkeyActionCatalogItem {
   readonly maxBindings?: number;
   readonly allowUnbound?: boolean;
   readonly conflictGroup?: string;
+  readonly profiles?: readonly CommunityModSettingsProfile[];
 }
 
 export interface HotkeyHardSettingCatalogItem {
@@ -28,6 +34,11 @@ export interface HotkeyHardSettingCatalogItem {
   readonly min?: number;
   readonly max?: number;
   readonly step?: number;
+  readonly profiles?: readonly CommunityModSettingsProfile[];
+}
+
+export interface CommunityModHotkeySettingsOptions {
+  readonly profile?: string | CommunityModSettingsProfile;
 }
 
 export interface HotkeyIssue {
@@ -62,6 +73,7 @@ export interface HotkeyConflict {
 
 export interface CommunityModHotkeySettingsSnapshot {
   readonly ok: boolean;
+  readonly profile: CommunityModSettingsProfile;
   readonly generatedAt: string;
   readonly parseError?: string;
   readonly actions: readonly HotkeyActionView[];
@@ -181,18 +193,18 @@ const utilityActions = [
   action("toggle_cargo_armada", "Toggle armada cargo", "Cargo & Locate", ["ALT-5"]),
   action("toggle_preview_locate", "Toggle preview locate", "Cargo & Locate", ["CTRL-R"]),
   action("toggle_preview_recall", "Toggle preview recall", "Cargo & Locate", ["CTRL-T"]),
-  action("move_up", "Move up", "Experimental", ["W"]),
-  action("move_down", "Move down", "Experimental", ["S"]),
-  action("move_left", "Move left", "Experimental", ["A"]),
-  action("move_right", "Move right", "Experimental", ["D"]),
+  action("move_up", "Move up", "Experimental", ["W"], { profiles: ["guff-advanced"] }),
+  action("move_down", "Move down", "Experimental", ["S"], { profiles: ["guff-advanced"] }),
+  action("move_left", "Move left", "Experimental", ["A"], { profiles: ["guff-advanced"] }),
+  action("move_right", "Move right", "Experimental", ["D"], { profiles: ["guff-advanced"] }),
   action("log_trace", "Log trace", "Hotkeys Master Switch & Logs", ["CTRL-SHIFT-F7"]),
   action("log_info", "Log info", "Hotkeys Master Switch & Logs", ["CTRL-SHIFT-F8"]),
   action("log_debug", "Log debug", "Hotkeys Master Switch & Logs", ["CTRL-SHIFT-F9"]),
   action("log_warn", "Log warn", "Hotkeys Master Switch & Logs", ["CTRL-SHIFT-F10"]),
   action("log_error", "Log error", "Hotkeys Master Switch & Logs", ["CTRL-SHIFT-F11"]),
   action("log_off", "Log off", "Hotkeys Master Switch & Logs", ["CTRL-SHIFT-F12"]),
-  action("set_hotkeys_disable", "Disable mod hotkeys", "Hotkeys Master Switch & Logs", ["CTRL-ALT-MINUS"]),
-  action("set_hotkeys_enabled", "Enable mod hotkeys", "Hotkeys Master Switch & Logs", ["CTRL-ALT-="]),
+  action("set_hotkeys_disable", "Disable mod hotkeys", "Hotkeys Master Switch & Logs", ["CTRL-ALT-MINUS"], { profiles: ["guff-advanced"] }),
+  action("set_hotkeys_enabled", "Enable mod hotkeys", "Hotkeys Master Switch & Logs", ["CTRL-ALT-="], { profiles: ["guff-advanced"] }),
   action("quit", "Quit process", "Hotkeys Master Switch & Logs", ["F10"]),
 ] as const;
 
@@ -240,6 +252,7 @@ export const HOTKEY_HARD_SETTING_CATALOG: readonly HotkeyHardSettingCatalogItem[
     type: "boolean",
     defaultValue: false,
     description: "Let unhandled key frames continue into the original game input path.",
+    profiles: ["guff-advanced"],
   },
   {
     id: "control.select_timer",
@@ -291,12 +304,9 @@ export const HOTKEY_HARD_SETTING_CATALOG: readonly HotkeyHardSettingCatalogItem[
     min: 0,
     max: 2000,
     step: 50,
+    profiles: ["guff-advanced"],
   },
 ];
-
-const actionById = new Map(HOTKEY_ACTION_CATALOG.map((item) => [item.id, item]));
-const hardSettingById = new Map(HOTKEY_HARD_SETTING_CATALOG.map((item) => [item.id, item]));
-const hardSettingBySectionKey = new Map(HOTKEY_HARD_SETTING_CATALOG.map((item) => [`${item.section}.${item.key}`, item]));
 
 const modifierKeys = new Set(["SHIFT", "LSHIFT", "RSHIFT", "CTRL", "LCTRL", "RCTRL", "ALT", "LALT", "RALT", "WIN", "LWIN", "RWIN", "ALTGR"]);
 const primaryKeys = new Set([
@@ -310,17 +320,19 @@ const primaryKeys = new Set([
   "KEY7", "KEY8", "KEY9", "KEYDIVIDE", "KEYENTER", "KEYEQUAL", "KEYMINUS", "KEYMULTI", "KEYPERIOD", "KEYPLUS", "NUMLOCK",
 ]);
 
-export function buildCommunityModHotkeySettingsSnapshot(tomlText: string): CommunityModHotkeySettingsSnapshot {
+export function buildCommunityModHotkeySettingsSnapshot(tomlText: string, options: CommunityModHotkeySettingsOptions = {}): CommunityModHotkeySettingsSnapshot {
+  const profile = normalizeCommunityModSettingsProfile(options.profile);
   const generatedAt = new Date().toISOString();
   const parsed = parseCommunityModToml(tomlText);
   const root = parsed.root;
   const shortcuts = asRecord(root.shortcuts);
-  const actions = HOTKEY_ACTION_CATALOG.map((catalogItem) => buildActionView(catalogItem, shortcuts));
-  const hardSettings = HOTKEY_HARD_SETTING_CATALOG.map((catalogItem) => buildHardSettingView(catalogItem, root));
+  const actions = hotkeyActionCatalogForProfile(profile).map((catalogItem) => buildActionView(catalogItem, shortcuts));
+  const hardSettings = hotkeyHardSettingCatalogForProfile(profile).map((catalogItem) => buildHardSettingView(catalogItem, root));
   const conflicts = buildConflicts(actions);
 
   return {
     ok: !parsed.error,
+    profile,
     generatedAt,
     parseError: parsed.error,
     actions,
@@ -329,7 +341,10 @@ export function buildCommunityModHotkeySettingsSnapshot(tomlText: string): Commu
   };
 }
 
-export function normalizeHotkeySettingsPatch(input: unknown): NormalizedHotkeySettingsPatch {
+export function normalizeHotkeySettingsPatch(input: unknown, options: CommunityModHotkeySettingsOptions = {}): NormalizedHotkeySettingsPatch {
+  const profile = normalizeCommunityModSettingsProfile(options.profile);
+  const actionById = new Map(hotkeyActionCatalogForProfile(profile).map((item) => [item.id, item]));
+  const hardSettingById = new Map(hotkeyHardSettingCatalogForProfile(profile).map((item) => [item.id, item]));
   const payload = asRecord(input);
   const shortcutsPayload = asRecord(payload.shortcuts);
   const hardSettingsPayload = asRecord(payload.hardSettings);
@@ -358,9 +373,9 @@ export function normalizeHotkeySettingsPatch(input: unknown): NormalizedHotkeySe
   return { shortcuts, hardSettings };
 }
 
-export function applyCommunityModHotkeySettingsPatch(tomlText: string, input: unknown): string {
+export function applyCommunityModHotkeySettingsPatch(tomlText: string, input: unknown, options: CommunityModHotkeySettingsOptions = {}): string {
   parseCommunityModTomlOrThrow(tomlText);
-  const patch = normalizeHotkeySettingsPatch(input);
+  const patch = normalizeHotkeySettingsPatch(input, options);
   let output = tomlText;
 
   for (const item of patch.hardSettings) {
@@ -375,9 +390,36 @@ export function applyCommunityModHotkeySettingsPatch(tomlText: string, input: un
   return output;
 }
 
+export function normalizeCommunityModSettingsProfile(value: unknown): CommunityModSettingsProfile {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (["netniv-basic", "netniv", "official", "official-basic", "basic", "none", "unknown", "external"].includes(normalized)) {
+    return "netniv-basic";
+  }
+
+  if (["guff-advanced", "guff", "advanced", "alpha", "advanced-alpha"].includes(normalized)) {
+    return "guff-advanced";
+  }
+
+  return DEFAULT_COMMUNITY_MOD_SETTINGS_PROFILE;
+}
+
+export function hotkeyActionCatalogForProfile(profileValue: unknown = DEFAULT_COMMUNITY_MOD_SETTINGS_PROFILE): readonly HotkeyActionCatalogItem[] {
+  const profile = normalizeCommunityModSettingsProfile(profileValue);
+  return HOTKEY_ACTION_CATALOG.filter((item) => catalogItemSupportsProfile(item, profile));
+}
+
+export function hotkeyHardSettingCatalogForProfile(profileValue: unknown = DEFAULT_COMMUNITY_MOD_SETTINGS_PROFILE): readonly HotkeyHardSettingCatalogItem[] {
+  const profile = normalizeCommunityModSettingsProfile(profileValue);
+  return HOTKEY_HARD_SETTING_CATALOG.filter((item) => catalogItemSupportsProfile(item, profile));
+}
+
 export function formatShortcutValue(bindings: readonly string[]): string {
   const normalized = bindings.map(normalizeBindingToken).filter((binding) => binding.length > 0);
   return normalized.length === 0 ? "NONE" : normalized.join("|");
+}
+
+function catalogItemSupportsProfile(item: { readonly profiles?: readonly CommunityModSettingsProfile[] }, profile: CommunityModSettingsProfile): boolean {
+  return !item.profiles || item.profiles.includes(profile);
 }
 
 function action(id: string, label: string, group: string, defaultBindings: readonly string[], options: Partial<HotkeyActionCatalogItem> = {}): HotkeyActionCatalogItem {

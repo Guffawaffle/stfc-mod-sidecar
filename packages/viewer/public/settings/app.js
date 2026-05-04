@@ -2,6 +2,11 @@ import {
   buildSettingsTroubleshootingPrompt,
   buildSettingsTroubleshootingSummary,
 } from "./troubleshooting.js";
+import {
+  communityModInstallLabel,
+  modProfileLabel,
+  normalizeModProfile,
+} from "../shared/community-mod-status.js";
 
 const state = {
   snapshot: null,
@@ -21,7 +26,12 @@ const elements = {
   gameDirectory: document.querySelector("#game-directory"),
   desktopGameDirectory: document.querySelector("#desktop-game-directory"),
   companionMode: document.querySelector("#companion-mode"),
+  modProfile: document.querySelector("#mod-profile"),
+  communityModInstall: document.querySelector("#community-mod-install"),
   desktopFeedPath: document.querySelector("#desktop-feed-path"),
+  desktopModProfile: document.querySelector("#desktop-mod-profile"),
+  desktopCommunityModInstall: document.querySelector("#desktop-community-mod-install"),
+  desktopModProfileSelect: document.querySelector("#desktop-mod-profile-select"),
   selectGameDirectory: document.querySelector("#select-game-directory"),
   openGameDirectory: document.querySelector("#open-game-directory"),
   settingsToken: document.querySelector("#settings-token"),
@@ -54,6 +64,7 @@ const elements = {
 
 elements.selectGameDirectory?.addEventListener("click", () => void selectGameDirectory());
 elements.openGameDirectory?.addEventListener("click", () => void openGameDirectory());
+elements.desktopModProfileSelect?.addEventListener("change", () => void setModProfile(elements.desktopModProfileSelect.value));
 elements.reloadSettings.addEventListener("click", () => void loadSettings());
 elements.saveSettings.addEventListener("click", () => void saveSettings());
 elements.previewSettingsPrompt.addEventListener("click", previewSettingsPrompt);
@@ -150,6 +161,8 @@ function renderSummary() {
   elements.gameDirectory.textContent = state.bootstrap?.gameDirectory || gameDirectoryFromSettingsPath(snapshot.settingsPath) || "Unknown";
   elements.settingsPath.textContent = snapshot.settingsPath ?? "Unknown";
   elements.companionMode.textContent = modeLabel(state.bootstrap?.developerMode);
+  elements.modProfile.textContent = modProfileLabel(state.bootstrap?.modProfile ?? snapshot.modProfile ?? snapshot.profile);
+  elements.communityModInstall.textContent = communityModInstallLabel(state.bootstrap?.communityModInstall);
   elements.settingsState.textContent = snapshot.parseError ? "Invalid TOML" : snapshot.exists ? "Found" : "Not found";
   elements.settingsWarningCount.textContent = String(warnings);
   elements.settingsChangeCount.textContent = String(countChanges());
@@ -191,6 +204,9 @@ async function loadServerBootstrap() {
       developerMode: Boolean(health.developerMode),
       companionMode: health.companionMode,
       modeLabel: modeLabel(health.developerMode),
+      modProfile: health.modProfile,
+      settingsProfile: health.settingsProfile,
+      communityModInstall: health.communityModInstall,
       gameDirectory: health.gameDir,
       feedPath: health.feedPath,
       settingsPath: health.settingsPath,
@@ -242,6 +258,37 @@ async function openGameDirectory() {
   }
 }
 
+async function setModProfile(profile) {
+  if (!window.stfcDesktop?.setModProfile) {
+    return;
+  }
+
+  elements.desktopModProfileSelect.disabled = true;
+  elements.desktopBootstrapState.textContent = "Switching profile...";
+  try {
+    state.bootstrap = await window.stfcDesktop.setModProfile(profile);
+    if (state.bootstrap?.ok === false) {
+      renderBootstrap();
+      renderSummary();
+      renderTroubleshootingCoach();
+      return;
+    }
+
+    await loadSettings();
+    await loadBootstrap();
+  } catch (error) {
+    state.bootstrap = {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+    renderBootstrap();
+    renderSummary();
+    renderTroubleshootingCoach();
+  } finally {
+    elements.desktopModProfileSelect.disabled = false;
+  }
+}
+
 function renderBootstrap() {
   if (!elements.desktopBootstrap) {
     return;
@@ -255,8 +302,12 @@ function renderBootstrap() {
   }
 
   const gameDirectory = bootstrap?.gameDirectory || "Not selected";
+  const modProfile = bootstrap?.modProfile ?? state.snapshot?.modProfile ?? state.snapshot?.profile ?? "guff-advanced";
   elements.desktopGameDirectory.textContent = gameDirectory;
   elements.desktopFeedPath.textContent = bootstrap?.feedPath || "Unknown";
+  elements.desktopModProfile.textContent = modProfileLabel(modProfile);
+  elements.desktopCommunityModInstall.textContent = communityModInstallLabel(bootstrap?.communityModInstall);
+  elements.desktopModProfileSelect.value = normalizeModProfile(modProfile);
   elements.openGameDirectory.disabled = !bootstrap?.gameDirectorySelected;
   if (bootstrap?.error) {
     elements.desktopBootstrapState.textContent = `${bootstrap.securityMotto ?? "Security"}: ${bootstrap.error}`;
