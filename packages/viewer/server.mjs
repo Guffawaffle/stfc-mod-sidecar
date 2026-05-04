@@ -24,6 +24,10 @@ import { buildDiagnosticsBundle, buildDiagnosticsMarkdown } from "./diagnostics-
 import { detectCommunityModInstall } from "./community-mod-install.mjs";
 import { verifyCommunityModArtifact } from "./community-mod-artifact-verification.mjs";
 import {
+    buildCommunityModInstallPreflight,
+    detectStfcGameProcess,
+} from "./community-mod-install-preflight.mjs";
+import {
     fetchCommunityModReleaseCatalog,
     normalizeCommunityModReleaseProfile,
 } from "./community-mod-release-catalog.mjs";
@@ -239,6 +243,41 @@ const server = createServer(async (request, response) => {
                 catalog,
                 cacheDir: process.env.STFC_SIDECAR_CACHE_DIR || DEFAULT_ARTIFACT_CACHE_DIR,
             }));
+        } catch (error) {
+            return sendJson(response, 502, {
+                ok: false,
+                status: "error",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
+            });
+        }
+    }
+
+    if (requestUrl.pathname === "/api/mod/install-preflight") {
+        if (request.method !== "POST") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        try {
+            const profile = normalizeCommunityModReleaseProfile(
+                requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
+            );
+            const [install, catalog] = await Promise.all([
+                readCommunityModInstallStatus(),
+                fetchCommunityModReleaseCatalog({ profile }),
+            ]);
+            const installPlan = buildCommunityModInstallPlan({ profile, install, catalog });
+            const gameProcess = await detectStfcGameProcess();
+            let preflight = buildCommunityModInstallPreflight({ installPlan, gameProcess });
+            if (preflight.status === "artifact_not_verified") {
+                const artifactVerification = await verifyCommunityModArtifact({
+                    catalog,
+                    cacheDir: process.env.STFC_SIDECAR_CACHE_DIR || DEFAULT_ARTIFACT_CACHE_DIR,
+                });
+                preflight = buildCommunityModInstallPreflight({ installPlan, artifactVerification, gameProcess });
+            }
+
+            return sendJson(response, 200, preflight);
         } catch (error) {
             return sendJson(response, 502, {
                 ok: false,
