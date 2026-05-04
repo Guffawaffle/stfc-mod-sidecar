@@ -11,6 +11,10 @@ export function communityModInstallLabel(install) {
         return "Directory not selected";
     }
 
+    if (install.state === "unsupported_platform") {
+        return "Platform unsupported";
+    }
+
     if (install.state === "none" || install.classification === "none") {
         return "Not installed";
     }
@@ -41,6 +45,10 @@ export function communityModInstallSummary(install) {
 
     if (install.state === "unselected") {
         return "Select the STFC game directory to inspect version.dll.";
+    }
+
+    if (install.state === "unsupported_platform") {
+        return install.summary ?? install.platform?.unsupportedReason ?? "Community Mod install/update is not supported on this platform.";
     }
 
     if (install.state === "none" || install.classification === "none") {
@@ -75,6 +83,10 @@ export function communityModInstallSummary(install) {
 
 export function communityModInstallTone(install) {
     if (!install || install.ok === false || install.manifest?.parseError) {
+        return "warning";
+    }
+
+    if (install.state === "unsupported_platform") {
         return "warning";
     }
 
@@ -165,6 +177,10 @@ export function communityModInstallPlanLabel(plan) {
 
     if (plan.status === "current") {
         return "Installed release is current";
+    }
+
+    if (plan.status === "platform_unsupported") {
+        return "Platform unsupported";
     }
 
     return plan.actionLabel ?? "Install plan unavailable";
@@ -294,6 +310,8 @@ export function communityModInstallConfirmationLabel(confirmation) {
             return "Staged DLL required";
         case "game_directory_unavailable":
             return "Game directory required";
+        case "platform_unsupported":
+            return "Platform unsupported";
         default:
             return "Confirmation blocked";
     }
@@ -343,6 +361,8 @@ export function communityModInstallExecutionLabel(execution) {
             return "Hash verification failed";
         case "unsafe_target_path":
             return "Target path blocked";
+        case "platform_unsupported":
+            return "Platform unsupported";
         case "destination_exists_for_install":
         case "destination_missing_for_backup":
         case "backup_path_unavailable":

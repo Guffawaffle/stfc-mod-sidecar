@@ -4,6 +4,8 @@ import { constants as fsConstants } from "node:fs";
 import { access, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
+import { buildCommunityModInstallPlatformCapability } from "./community-mod-install-platform.mjs";
+
 export const COMMUNITY_MOD_DLL_FILE = "version.dll";
 export const COMMUNITY_MOD_MANIFEST_DIRECTORY = ".stfc-sidecar";
 export const COMMUNITY_MOD_INSTALL_MANIFEST_FILE = "community-mod-install.json";
@@ -22,6 +24,7 @@ export const DEFAULT_COMMUNITY_MOD_RELEASE_FINGERPRINTS = Object.freeze([
 
 export async function detectCommunityModInstall(gameDirectory, options = {}) {
     const generatedAt = options.generatedAt ?? new Date().toISOString();
+    const platform = options.platformCapability ?? buildCommunityModInstallPlatformCapability({ platform: options.platform });
     const normalizedGameDirectory = typeof gameDirectory === "string" ? gameDirectory.trim() : "";
     if (!normalizedGameDirectory) {
         return {
@@ -29,11 +32,25 @@ export async function detectCommunityModInstall(gameDirectory, options = {}) {
             state: "unselected",
             classification: "none",
             profile: "none",
+            platform,
             generatedAt,
         };
     }
 
     const resolvedGameDirectory = await realpath(normalizedGameDirectory).catch(() => path.resolve(normalizedGameDirectory));
+    if (!platform.installPlanningSupported) {
+        return {
+            ok: true,
+            state: "unsupported_platform",
+            classification: "none",
+            profile: "none",
+            gameDirectory: resolvedGameDirectory,
+            platform,
+            summary: platform.unsupportedReason,
+            generatedAt,
+        };
+    }
+
     const dllPath = path.join(resolvedGameDirectory, COMMUNITY_MOD_DLL_FILE);
     const manifestPath = communityModInstallManifestPath(resolvedGameDirectory);
     const manifest = await readCommunityModInstallManifest(manifestPath);

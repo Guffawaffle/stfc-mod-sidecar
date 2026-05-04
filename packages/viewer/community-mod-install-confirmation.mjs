@@ -4,6 +4,10 @@ import {
     COMMUNITY_MOD_DLL_FILE,
     communityModInstallManifestPath,
 } from "./community-mod-install.mjs";
+import {
+    buildCommunityModInstallPlatformCapability,
+    platformUnsupportedInstallSummary,
+} from "./community-mod-install-platform.mjs";
 
 export function buildCommunityModInstallConfirmation(options = {}) {
     const checkedAt = normalizeIsoTimestamp(options.checkedAt);
@@ -11,6 +15,10 @@ export function buildCommunityModInstallConfirmation(options = {}) {
     const artifactStaging = options.artifactStaging ?? null;
     const installPlan = options.installPlan ?? preflight?.installPlan ?? null;
     const install = installPlan?.install ?? null;
+    const platform = options.platformCapability
+        ?? installPlan?.platform
+        ?? preflight?.platform
+        ?? buildCommunityModInstallPlatformCapability({ platform: options.platform });
     const installAction = installPlan?.action ?? preflight?.confirmation?.action ?? "none";
     const action = preflight?.status === "ready_for_confirmation" ? installAction : preflight?.action ?? installAction;
     const backupRequired = requiresBackupForAction(installAction, install);
@@ -22,6 +30,7 @@ export function buildCommunityModInstallConfirmation(options = {}) {
         ok: true,
         checkedAt,
         profile: installPlan?.profile ?? preflight?.profile ?? "unknown",
+        platform,
         action,
         installAction,
         actionLabel: preflight?.confirmation?.title ?? installPlan?.actionLabel ?? "No install action",
@@ -36,7 +45,7 @@ export function buildCommunityModInstallConfirmation(options = {}) {
         },
         staged: artifactStaging?.staged ?? null,
         safety: confirmationSafety({ artifactStaging, backupRequired }),
-        execution: confirmationExecution(),
+        execution: confirmationExecution(platform),
         warnings: [...(preflight?.warnings ?? [])],
     };
 
@@ -147,10 +156,12 @@ function requiresBackupForAction(action, install) {
     return ["update", "reinstall", "replace_unknown", "replace_profile"].includes(action);
 }
 
-function confirmationExecution() {
+function confirmationExecution(platform) {
     return {
         enabled: false,
-        reason: "Install confirmation contract is prepared, but DLL copy execution is not enabled in this build.",
+        reason: platform?.installExecutionSupported === false
+            ? platformUnsupportedInstallSummary(platform)
+            : "Install confirmation contract is prepared, but copy execution remains endpoint-gated.",
     };
 }
 

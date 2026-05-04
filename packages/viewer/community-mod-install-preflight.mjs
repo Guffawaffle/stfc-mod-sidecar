@@ -1,5 +1,10 @@
 import { spawn } from "node:child_process";
 
+import {
+    buildCommunityModInstallPlatformCapability,
+    platformUnsupportedInstallSummary,
+} from "./community-mod-install-platform.mjs";
+
 const ACTIONS_REQUIRING_PREFLIGHT = new Set([
     "install",
     "update",
@@ -12,16 +17,20 @@ export function buildCommunityModInstallPreflight(options = {}) {
     const checkedAt = normalizeIsoTimestamp(options.checkedAt);
     const installPlan = options.installPlan ?? null;
     const artifactVerification = options.artifactVerification ?? null;
+    const platform = options.platformCapability
+        ?? installPlan?.platform
+        ?? buildCommunityModInstallPlatformCapability({ platform: options.platform });
     const gameProcess = normalizeGameProcessStatus(options.gameProcess);
     const base = {
         ok: true,
         checkedAt,
         profile: installPlan?.profile ?? "unknown",
+        platform,
         installPlan,
         artifactVerification,
         gameProcess,
         safety: installPreflightSafety(),
-        execution: installPreflightExecution(),
+        execution: installPreflightExecution(platform),
         warnings: [...(installPlan?.warnings ?? [])],
     };
 
@@ -30,6 +39,15 @@ export function buildCommunityModInstallPreflight(options = {}) {
             status: "install_plan_unavailable",
             action: "inspect",
             summary: String(installPlan?.error ?? "Community Mod install plan is unavailable."),
+        });
+    }
+
+    if (!platform.installExecutionSupported) {
+        return installPreflightResult(base, {
+            status: "platform_unsupported",
+            action: "none",
+            summary: platformUnsupportedInstallSummary(platform),
+            warnings: base.warnings.includes(platform.unsupportedReason) ? [] : [platform.unsupportedReason],
         });
     }
 
@@ -98,12 +116,13 @@ export async function detectStfcGameProcess(options = {}) {
         return normalizeGameProcessStatus(await options.detectGameProcess());
     }
 
-    if (process.platform !== "win32") {
+    const platform = buildCommunityModInstallPlatformCapability({ platform: options.platform });
+    if (!platform.gameProcessDetectionSupported) {
         return normalizeGameProcessStatus({
             checked: false,
             running: false,
-            processName: "prime.exe",
-            error: "STFC process detection is only implemented on Windows.",
+            processName: platform.gameProcessName,
+            error: `${platform.displayName} STFC process detection is not implemented yet.`,
         });
     }
 
@@ -156,10 +175,12 @@ function installPreflightSafety() {
     };
 }
 
-function installPreflightExecution() {
+function installPreflightExecution(platform) {
     return {
         enabled: false,
-        reason: "Install execution is not enabled in this build.",
+        reason: platform?.installExecutionSupported === false
+            ? platformUnsupportedInstallSummary(platform)
+            : "Install execution is gated by confirmation and the local execution endpoint.",
     };
 }
 

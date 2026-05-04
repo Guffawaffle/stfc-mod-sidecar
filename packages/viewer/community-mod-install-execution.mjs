@@ -7,6 +7,10 @@ import {
     COMMUNITY_MOD_DLL_FILE,
     communityModInstallManifestPath,
 } from "./community-mod-install.mjs";
+import {
+    buildCommunityModInstallPlatformCapability,
+    platformUnsupportedInstallSummary,
+} from "./community-mod-install-platform.mjs";
 
 const REPLACE_ACTIONS = new Set(["update", "reinstall", "replace_unknown", "replace_profile"]);
 export const COMMUNITY_MOD_INSTALL_EXECUTION_ACKNOWLEDGEMENT = "I understand this will modify version.dll in the selected STFC game directory.";
@@ -14,6 +18,10 @@ export const COMMUNITY_MOD_INSTALL_EXECUTION_ACKNOWLEDGEMENT = "I understand thi
 export function buildCommunityModInstallExecutionRequest(options = {}) {
     const payload = isRecord(options.payload) ? options.payload : {};
     const confirmation = options.confirmation ?? null;
+    const platform = options.platformCapability
+        ?? confirmation?.platform
+        ?? confirmation?.installPlan?.platform
+        ?? buildCommunityModInstallPlatformCapability({ platform: options.platform });
     const env = options.env ?? process.env;
     const serverEnabled = parseBooleanFlag(env.STFC_SIDECAR_ENABLE_MOD_INSTALL_EXECUTION);
     const requested = payload.enableExecution === true;
@@ -28,6 +36,7 @@ export function buildCommunityModInstallExecutionRequest(options = {}) {
     const base = {
         ok: true,
         status: "ready",
+        platform,
         requested,
         serverEnabled,
         acknowledgementAccepted: acknowledgement === expectedAcknowledgement,
@@ -37,6 +46,14 @@ export function buildCommunityModInstallExecutionRequest(options = {}) {
         confirmedDestinationPath,
         expectedDestinationPath,
     };
+
+    if (!platform.installExecutionSupported) {
+        return executionRequestResult(base, {
+            status: "platform_unsupported",
+            summary: platformUnsupportedInstallSummary(platform),
+            warnings: [platform.unsupportedReason],
+        });
+    }
 
     if (!serverEnabled) {
         return executionRequestResult(base, {
@@ -84,6 +101,11 @@ export function buildCommunityModInstallExecutionRequest(options = {}) {
 export function buildCommunityModInstallExecutionBlocked(options = {}) {
     const confirmation = options.confirmation ?? null;
     const executionRequest = options.executionRequest ?? null;
+    const platform = options.platformCapability
+        ?? confirmation?.platform
+        ?? executionRequest?.platform
+        ?? confirmation?.installPlan?.platform
+        ?? buildCommunityModInstallPlatformCapability({ platform: options.platform });
     const backupRequired = confirmation?.safety?.backupBeforeReplace === true || REPLACE_ACTIONS.has(confirmation?.action);
     return {
         ok: true,
@@ -91,6 +113,7 @@ export function buildCommunityModInstallExecutionBlocked(options = {}) {
         status: executionRequest?.status ?? "execution_request_blocked",
         action: confirmation?.action ?? "none",
         profile: confirmation?.profile ?? "unknown",
+        platform,
         summary: executionRequest?.summary ?? "Install execution request is blocked.",
         confirmation,
         executionRequest,
@@ -110,6 +133,10 @@ export function buildCommunityModInstallExecutionBlocked(options = {}) {
 export async function executeCommunityModInstall(options = {}) {
     const checkedAt = normalizeIsoTimestamp(options.checkedAt);
     const confirmation = options.confirmation ?? null;
+    const platform = options.platformCapability
+        ?? confirmation?.platform
+        ?? confirmation?.installPlan?.platform
+        ?? buildCommunityModInstallPlatformCapability({ platform: options.platform });
     const gameProcess = normalizeGameProcessStatus(options.gameProcess);
     const executionEnabled = options.enableExecution === true;
     const target = normalizeTarget(confirmation?.target);
@@ -121,6 +148,7 @@ export async function executeCommunityModInstall(options = {}) {
         status: "not_started",
         action: confirmation?.action ?? "none",
         profile: confirmation?.profile ?? "unknown",
+        platform,
         confirmation,
         gameProcess,
         target,
@@ -137,7 +165,7 @@ export async function executeCommunityModInstall(options = {}) {
         warnings: [...(confirmation?.warnings ?? [])],
     };
 
-    const blocked = validateBeforeWrite({ base, confirmation, gameProcess, executionEnabled, backupRequired });
+    const blocked = validateBeforeWrite({ base, confirmation, platform, gameProcess, executionEnabled, backupRequired });
     if (blocked) {
         return executionResult(base, blocked);
     }
@@ -236,7 +264,15 @@ export async function executeCommunityModInstall(options = {}) {
     }
 }
 
-function validateBeforeWrite({ base, confirmation, gameProcess, executionEnabled, backupRequired }) {
+function validateBeforeWrite({ base, confirmation, platform, gameProcess, executionEnabled, backupRequired }) {
+    if (!platform.installExecutionSupported) {
+        return {
+            status: "platform_unsupported",
+            summary: platformUnsupportedInstallSummary(platform),
+            warnings: base.warnings.includes(platform.unsupportedReason) ? [] : [platform.unsupportedReason],
+        };
+    }
+
     if (!confirmation || confirmation.status !== "ready_for_confirmation") {
         return {
             status: "confirmation_not_ready",

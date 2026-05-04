@@ -65,6 +65,23 @@ describe("Community Mod install preflight", () => {
         });
     });
 
+    test("blocks preflight on platforms without execution support", () => {
+        const preflight = buildCommunityModInstallPreflight({
+            platform: "darwin",
+            installPlan: installPlan({ action: "install" }),
+            artifactVerification: verifiedArtifact(),
+            gameProcess: { checked: true, running: false },
+        });
+
+        expect(preflight).toMatchObject({
+            status: "platform_unsupported",
+            action: "none",
+            summary: "macOS Community Mod install/update is not implemented yet.",
+            safety: { writesGameDirectory: false },
+            execution: { enabled: false },
+        });
+    });
+
     test("requires artifact verification before confirmation", () => {
         const preflight = buildCommunityModInstallPreflight({
             installPlan: installPlan({ action: "replace_unknown" }),

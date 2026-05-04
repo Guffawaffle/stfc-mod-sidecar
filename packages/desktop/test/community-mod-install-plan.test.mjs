@@ -87,6 +87,29 @@ describe("Community Mod install plan", () => {
             summary: "Advanced Alpha install is not enabled.",
         });
     });
+
+    test("blocks install planning on platforms without an implemented install flow", () => {
+        const plan = buildCommunityModInstallPlan({
+            platform: "darwin",
+            profile: "netniv-basic",
+            install: install({ state: "none", classification: "none" }),
+            catalog: readyCatalog(),
+        });
+
+        expect(plan).toMatchObject({
+            status: "platform_unsupported",
+            action: "none",
+            summary: "macOS Community Mod install/update is not implemented yet.",
+            platform: {
+                platform: "darwin",
+                installPlanningSupported: false,
+            },
+            execution: {
+                enabled: false,
+                reason: "macOS Community Mod install/update is not implemented yet.",
+            },
+        });
+    });
 });
 
 function install(options = {}) {
