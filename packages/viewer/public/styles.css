@@ -196,6 +196,7 @@ button {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
+  align-items: start;
 }
 
 .module-grid--two {
@@ -205,6 +206,7 @@ button {
 .module-card {
   display: grid;
   gap: 12px;
+  align-content: start;
   padding: 22px;
   border: 1px solid var(--line);
   border-radius: 22px;
@@ -1689,8 +1691,25 @@ select {
   border-left: 22px solid var(--lcars-orange);
 }
 
+.about-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+}
+
+.about-grid__column {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+  min-width: 0;
+}
+
 .about-grid .module-card {
-  min-height: 210px;
+  min-height: 0;
+}
+
+.about-grid .eyebrow,
+.about-grid .page-copy {
+  margin: 0;
 }
 
 :where(button, [role="button"], a, select, input, textarea, summary, [tabindex]):focus-visible {
@@ -1735,6 +1754,14 @@ select {
   .settings-panel {
     border-left-width: 14px;
   }
+
+  .about-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .about-grid .module-card--wide {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 560px) {
@@ -1749,5 +1776,9 @@ select {
 
   .site-nav__link {
     flex-basis: 100%;
+  }
+
+  .about-grid {
+    grid-template-columns: 1fr;
   }
 }

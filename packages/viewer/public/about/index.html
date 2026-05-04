@@ -19,82 +19,94 @@
       </header>
 
       <section class="module-grid module-grid--two about-grid" aria-label="sidecar companion details">
-        <article class="module-card module-card--primary">
-          <p class="eyebrow">Boundary</p>
-          <h2>Outside The Game Process</h2>
-          <p class="page-copy">The sidecar reads local files and documented local APIs. It does not inject into STFC, synthesize input, automate gameplay, or send arbitrary commands to the mod.</p>
-        </article>
+        <div class="about-grid__column">
+          <article class="module-card module-card--primary">
+            <p class="eyebrow">Boundary</p>
+            <h2>Outside The Game Process</h2>
+            <p class="page-copy">The sidecar reads local files and documented local APIs. It does not inject into STFC, synthesize input, automate gameplay, or send arbitrary commands to the mod.</p>
+          </article>
 
-        <article class="module-card module-card--accent">
-          <p class="eyebrow">Security</p>
-          <h2>Security Is Paramount</h2>
-          <p class="page-copy">Desktop bootstrap accepts only a canonical local game directory with prime.exe directly inside it before the sidecar reads or writes derived mod files.</p>
-        </article>
+          <article class="module-card module-card--accent">
+            <p class="eyebrow">Security</p>
+            <h2>Security Is Paramount</h2>
+            <p class="page-copy">Desktop bootstrap accepts only a canonical local game directory with prime.exe directly inside it before the sidecar reads or writes derived mod files.</p>
+          </article>
 
-        <article class="module-card">
-          <p class="eyebrow">Mode Boundary</p>
-          <h2>Standard By Default</h2>
-          <p id="about-developer-mode-state" class="page-copy">Loading companion mode...</p>
-          <label id="about-developer-mode-option" class="toggle" hidden>
-            <input id="about-developer-mode-toggle" type="checkbox" />
-            <span>Developer Tools</span>
-          </label>
-        </article>
+          <article class="module-card">
+            <p class="eyebrow">Mode Boundary</p>
+            <h2>Standard By Default</h2>
+            <p id="about-developer-mode-state" class="page-copy">Loading companion mode...</p>
+            <label id="about-developer-mode-option" class="toggle" hidden>
+              <input id="about-developer-mode-toggle" type="checkbox" />
+              <span>Developer Tools</span>
+            </label>
+          </article>
 
-        <article class="module-card">
-          <p class="eyebrow">Configuration</p>
-          <h2>Schema First</h2>
-          <p class="page-copy">The companion UI should render settings from the shared schema, persist sparse startup config, and live-apply only schema-approved runtime settings.</p>
-        </article>
+          <article class="module-card">
+            <p class="eyebrow">Configuration</p>
+            <h2>Schema First</h2>
+            <p class="page-copy">The companion UI should render settings from the shared schema, persist sparse startup config, and live-apply only schema-approved runtime settings.</p>
+          </article>
+        </div>
 
-        <article class="module-card">
-          <p class="eyebrow">Release</p>
-          <h2 id="about-release-version">Version</h2>
-          <p id="about-release-channel" class="page-copy">Loading release channel...</p>
-          <p id="about-signature-policy" class="page-copy">Loading signature expectation...</p>
-          <p id="about-update-mode" class="page-copy">Loading update mode...</p>
-          <p id="about-release-update-state" class="page-copy">Update check not run</p>
-          <div class="diagnostics-actions">
-            <button id="check-release-update" type="button">Check for Updates</button>
-            <a id="about-release-update-link" class="link-button link-button--secondary" href="#" target="_blank" rel="noreferrer" hidden>Open Release</a>
-          </div>
-        </article>
+        <div class="about-grid__column">
+          <article class="module-card">
+            <p class="eyebrow">Release</p>
+            <h2 id="about-release-version">Version</h2>
+            <p id="about-release-channel" class="page-copy">Loading release channel...</p>
+            <p id="about-signature-policy" class="page-copy">Loading signature expectation...</p>
+            <p id="about-update-mode" class="page-copy">Loading update mode...</p>
+            <p id="about-release-update-state" class="page-copy">Update check not run</p>
+            <div class="diagnostics-actions">
+              <button id="check-release-update" type="button">Check for Updates</button>
+              <a id="about-release-update-link" class="link-button link-button--secondary" href="#" target="_blank" rel="noreferrer" hidden>Open Release</a>
+            </div>
+          </article>
 
-        <article class="module-card">
-          <p class="eyebrow">Community Mod</p>
-          <h2 id="about-mod-install-title">Install Status</h2>
-          <p id="about-mod-install-state" class="page-copy">Loading Community Mod status...</p>
-          <p id="about-mod-install-detail" class="page-copy">Loading install details...</p>
-          <p id="about-mod-release-state" class="page-copy">Release check not run</p>
-          <p id="about-mod-release-detail" class="page-copy">Use Check Mod Release to read GitHub release metadata.</p>
-          <p id="about-mod-plan-state" class="page-copy">Install plan not checked</p>
-          <p id="about-mod-plan-detail" class="page-copy">Check Mod Release to prepare a safe install/update plan.</p>
-          <p id="about-mod-artifact-state" class="page-copy">Artifact not verified</p>
-          <p id="about-mod-artifact-detail" class="page-copy">
-            Verify Artifact downloads to the sidecar cache and checks SHA-256 before any install path exists.
-          </p>
-          <div class="diagnostics-actions">
-            <button id="refresh-mod-status" type="button">Refresh Status</button>
-            <button id="check-mod-release" type="button">Check Mod Release</button>
-            <button id="verify-mod-artifact" type="button">Verify Artifact</button>
-            <a
-              id="about-mod-release-link"
-              class="link-button link-button--secondary"
-              href="#"
-              target="_blank"
-              rel="noreferrer"
-              hidden
-            >
-              Open Mod Release
-            </a>
-          </div>
-        </article>
+          <article class="module-card">
+            <p class="eyebrow">Packaging</p>
+            <h2>Optional Installer</h2>
+            <p class="page-copy">Manual DLL/dylib installs stay available. The companion installer can add update, launch, diagnostics, and local viewer workflows for users who want them.</p>
+          </article>
 
-        <article class="module-card">
-          <p class="eyebrow">Packaging</p>
-          <h2>Optional Installer</h2>
-          <p class="page-copy">Manual DLL/dylib installs stay available. The companion installer can add update, launch, diagnostics, and local viewer workflows for users who want them.</p>
-        </article>
+          <article class="module-card module-card--accent">
+            <p class="eyebrow">Disclaimer</p>
+            <h2>Independent Project</h2>
+            <p class="page-copy">Star Trek and related marks belong to their respective owners. This project is not affiliated with, endorsed by, or sponsored by CBS Studios Inc. or Scopely.</p>
+          </article>
+        </div>
+
+        <div class="about-grid__column">
+          <article class="module-card">
+            <p class="eyebrow">Community Mod</p>
+            <h2 id="about-mod-install-title">Install Status</h2>
+            <p id="about-mod-install-state" class="page-copy">Loading Community Mod status...</p>
+            <p id="about-mod-install-detail" class="page-copy">Loading install details...</p>
+            <p id="about-mod-release-state" class="page-copy">Release check not run</p>
+            <p id="about-mod-release-detail" class="page-copy">Use Check Mod Release to read GitHub release metadata.</p>
+            <p id="about-mod-plan-state" class="page-copy">Install plan not checked</p>
+            <p id="about-mod-plan-detail" class="page-copy">Check Mod Release to prepare a safe install/update plan.</p>
+            <p id="about-mod-artifact-state" class="page-copy">Artifact not verified</p>
+            <p id="about-mod-artifact-detail" class="page-copy">
+              Verify Artifact downloads to the sidecar cache and checks SHA-256 before any install path exists.
+            </p>
+            <div class="diagnostics-actions">
+              <button id="refresh-mod-status" type="button">Refresh Status</button>
+              <button id="check-mod-release" type="button">Check Mod Release</button>
+              <button id="verify-mod-artifact" type="button">Verify Artifact</button>
+              <a
+                id="about-mod-release-link"
+                class="link-button link-button--secondary"
+                href="#"
+                target="_blank"
+                rel="noreferrer"
+                hidden
+              >
+                Open Mod Release
+              </a>
+            </div>
+          </article>
+        </div>
 
         <article class="module-card module-card--wide">
           <p class="eyebrow">Support</p>
@@ -108,12 +120,6 @@
           <pre id="diagnostics-preview" class="diagnostics-preview" hidden></pre>
         </article>
 
-        <article class="module-card module-card--accent">
-          <p class="eyebrow">Visual Credit</p>
-          <h2>LCARS Inspired</h2>
-          <p class="page-copy">This interface uses original project-authored styling inspired by LCARS interface language. It does not bundle TheLCARS.com template files.</p>
-          <p class="page-copy">Star Trek and related marks belong to their respective owners. This project is not affiliated with, endorsed by, or sponsored by CBS Studios Inc. or Scopely.</p>
-        </article>
       </section>
     </main>
 
