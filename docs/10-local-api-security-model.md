@@ -105,6 +105,12 @@ Preferred models, in order:
 
 Avoid storing the local capability token in durable config.
 
+The viewer server must not rely on a hardcoded development sync token. When
+`STFC_SIDECAR_SYNC_TOKEN` is not provided, desktop and managed dev launches pass
+a launch-scoped generated token to the server. Settings mutation in
+`remote_protected` mode requires `STFC_SIDECAR_SETTINGS_TOKEN`; it does not
+implicitly reuse the sync ingest token.
+
 ## CORS And Browser Rules
 
 If a browser-rendered UI exists, default policy should be strict.
@@ -132,6 +138,10 @@ Keep this list intentionally small:
 
 - `/api/health`
 - `/api/viewer-config` if fully redacted
+- `GET /api/events?detail=summary` and `GET /api/events/stream` while they
+  remain read-only summary snapshots or update hints for the local viewer
+- `/api/diagnostics/bundle` only while it remains redacted, GET-only, and free
+  of raw local paths, tokens, credentials, and raw event payloads
 
 ### Token-Protected Routes
 
@@ -139,11 +149,19 @@ Everything else should require the local capability token unless there is a stro
 
 Examples:
 
-- `/api/events`
+- `POST /api/events`
 - `/api/battles/*`
 - `/api/integrations/*`
 - `/api/diagnostics/*`
 - `/api/credentials/*`
+
+### Developer-Only Routes
+
+Developer Tools are a runtime mode, not a renderer-only preference. Routes under
+`/api/dev/*` must return `403 developer_mode_required` unless the viewer server
+was started with Developer Tools enabled. Public developer surfaces such as the
+battle workbench are also denied by the server in Standard Mode, even when a
+caller guesses the URL directly.
 
 ### Mutation Rules
 
@@ -153,12 +171,18 @@ Examples:
 
 ## WebSocket Recommendations
 
-If live streaming becomes necessary:
+If richer live streaming becomes necessary:
 
 - require capability token during connection setup
 - treat each socket as a privilege-bearing session
 - support server-side disconnect when token rotates or sidecar restarts
 - never stream secret material even over authenticated local sockets
+
+The current Battle Log live update channel uses server-sent events at
+`GET /api/events/stream`. It sends only update hints (`ready` and
+`events-updated`) and relies on the existing snapshot/detail routes for data.
+If the stream begins carrying event payloads, cursors, or sensitive status, move
+it behind the local capability token.
 
 ## Credential Handling Through The API
 

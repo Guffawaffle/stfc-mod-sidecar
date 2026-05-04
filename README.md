@@ -20,6 +20,14 @@ This project is intentionally separate from the community mod repo because it ha
 - No hidden advantage logic.
 - No sidecar commands that control gameplay.
 
+## Architecture Boundary
+
+The C++ community mod remains the production mod until a managed BepInEx port proves replacement parity in writing. The sidecar stays mod-agnostic and communicates through local files and documented APIs, not implementation internals. See [docs/12-production-mod-boundary.md](docs/12-production-mod-boundary.md).
+
+The current C++ mod feed contract is documented in [docs/13-cpp-mod-feed-contract.md](docs/13-cpp-mod-feed-contract.md).
+
+The V1 hotkey settings page decisions are documented in [docs/14-hotkey-settings-page.md](docs/14-hotkey-settings-page.md).
+
 ## V0 Goals
 
 - Ingest JSONL events emitted by the community mod.
@@ -139,6 +147,50 @@ npm run viewer:run
 Detailed operating notes live in `docs/07-log-viewer.md`.
 
 Battle-log parser and analyzer requirements live in `docs/11-battle-log-parser-analyzer-requirements.md`.
+
+## Desktop Companion Packaging
+
+The optional desktop companion lives in `packages/desktop/`. It wraps the same
+local viewer UI in Electron, starts the sidecar server as a bundled local child
+process, and opens the LCARS-inspired companion shell in a desktop window.
+
+After installing dependencies, run the desktop shell in development:
+
+```bash
+npm run desktop:dev
+```
+
+Create an unpacked app directory for inspection:
+
+```bash
+npm run desktop:pack
+```
+
+Create release artifacts:
+
+```bash
+npm run desktop:dist
+```
+
+Create Windows artifacts only:
+
+```bash
+npm run desktop:dist:win
+```
+
+Electron must stay on a release line with Node 22 or newer because the sidecar
+event store uses Node's `node:sqlite` module. The desktop package currently
+targets Electron 41, which carries Node 24.
+
+Local desktop artifacts are unsigned by default. Official Windows signing uses
+Azure Artifact Signing through the release workflow and is documented in
+[docs/16-windows-code-signing.md](docs/16-windows-code-signing.md).
+The signed release QA matrix is documented in
+[docs/18-signed-release-qa-matrix.md](docs/18-signed-release-qa-matrix.md).
+
+The desktop app can remember a selected STFC game directory and pass it to the
+bundled sidecar server. User bootstrap/path behavior is documented in
+[docs/17-user-bootstrap-and-paths.md](docs/17-user-bootstrap-and-paths.md).
 
 ## Battle-Log Samples
 

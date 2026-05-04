@@ -22,16 +22,16 @@
         <article class="module-card module-card--primary">
           <p class="eyebrow">Available Now</p>
           <h2>Battle Log Explorer</h2>
-          <p class="page-copy">Inspect the live JSONL feed, drill into canonical <code>battle.capture</code> payloads, and review compatibility <code>battle.report</code> bundles.</p>
+          <p class="page-copy">Inspect the live JSONL feed, drill into canonical <code>battle.capture</code> payloads, and review report, analytics, and catalog bundles.</p>
           <ul class="module-list">
             <li>Recent feed events and raw JSON</li>
             <li>Lossless token stream inspection</li>
-            <li>Participant and reward tables</li>
+            <li>Participant, reward, analytics, and catalog tables</li>
           </ul>
           <a class="link-button" href="/battle-log/">Open Battle Log</a>
         </article>
 
-        <article class="module-card">
+        <article class="module-card" data-developer-only hidden>
           <p class="eyebrow">Next Focus</p>
           <h2>Parser And Analyzer Workbench</h2>
           <p class="page-copy">Deterministic parse stages and reviewable analytics on top of canonical capture data.</p>
@@ -44,14 +44,27 @@
         </article>
 
         <article class="module-card">
-          <p class="eyebrow">Planned</p>
-          <h2>Additional Pages</h2>
-          <p class="page-copy">This root page is now the viewer home so future modules can land without overloading the battle-log route.</p>
+          <p class="eyebrow">New</p>
+          <h2>Settings</h2>
+          <p class="page-copy">Review and edit community mod hotkey bindings, hard hotkey toggles, and next-launch keyboard behavior.</p>
           <ul class="module-list">
-            <li>Battle parser diagnostics</li>
-            <li>Export and integration status</li>
-            <li>Session and feed health pages</li>
+            <li>Two binding slots per action</li>
+            <li>Conflict and single-key visibility</li>
+            <li>Explicit Off state using NONE</li>
           </ul>
+          <a class="link-button link-button--secondary" href="/settings/">Open Settings</a>
+        </article>
+
+        <article class="module-card module-card--accent">
+          <p class="eyebrow">Companion Shell</p>
+          <h2>About And Credits</h2>
+          <p class="page-copy">Project boundaries, local-first security posture, and visual attribution for the sidecar companion interface.</p>
+          <ul class="module-list">
+            <li>Read-only gameplay boundary</li>
+            <li>Local companion app direction</li>
+            <li>LCARS-inspired visual credit</li>
+          </ul>
+          <a class="link-button link-button--secondary" href="/about/">Open About</a>
         </article>
       </section>
     </main>

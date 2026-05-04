@@ -1,6 +1,6 @@
 {
   "name": "@stfc-mod-sidecar/core",
-  "version": "0.0.0",
+  "version": "0.0.1-Alpha",
   "private": true,
   "description": "Core event types, battle-log parser, and diagnostics helpers for STFC Mod Sidecar.",
   "type": "module",
@@ -13,7 +13,8 @@
     }
   },
   "dependencies": {
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "smol-toml": "^1.6.1"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

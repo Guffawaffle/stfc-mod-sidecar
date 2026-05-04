@@ -1,17 +1,40 @@
 import { createServer } from "node:http";
-import { existsSync, readFileSync } from "node:fs";
-import { open, readFile, stat } from "node:fs/promises";
+import { existsSync, readFileSync, watch } from "node:fs";
+import { copyFile, mkdir, open, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const DEFAULT_FEED_PATH = "C:\\Games\\Star Trek Fleet Command\\default\\game\\community_patch_battle_feed.jsonl";
+import {
+    companionModeFromDeveloperMode,
+    developerModeRequiredPayload,
+    isDeveloperOnlyApiPath,
+    isDeveloperOnlyPublicPath,
+    parseDeveloperModeFlag,
+} from "./runtime-mode.mjs";
+import {
+    isAuthorizedSettingsRequest as isSettingsRequestAuthorized,
+    isAuthorizedShutdownRequest as isShutdownRequestAuthorized,
+    isAuthorizedSyncRequest as isSyncRequestAuthorized,
+    resolveSettingsToken,
+    resolveSyncToken,
+} from "./local-auth.mjs";
+import { buildReleaseInfo } from "./release-info.mjs";
+import { fetchReleaseUpdateCheck } from "./release-update.mjs";
+import { buildDiagnosticsBundle, buildDiagnosticsMarkdown } from "./diagnostics-bundle.mjs";
+
+const DEFAULT_GAME_DIR = "C:\\Games\\Star Trek Fleet Command\\default\\game";
+const DEFAULT_FEED_FILE = "community_patch_battle_feed.jsonl";
+const DEFAULT_FEED_PATH = path.join(DEFAULT_GAME_DIR, DEFAULT_FEED_FILE);
+const DEFAULT_SETTINGS_FILE = "community_patch_settings.toml";
 const DEFAULT_PORT = 43127;
 const DEFAULT_LIMIT = 150;
 const DETAIL_CACHE_LIMIT = 128;
 const DEFAULT_STORE_PATH = "./.sidecar/sidecar-events.sqlite";
-const DEFAULT_SYNC_TOKEN = "testtoken123";
+const SETTINGS_SAVE_MODE_LOCAL_TRUSTED = "local_trusted";
+const SETTINGS_SAVE_MODE_REMOTE_PROTECTED = "remote_protected";
 const MAX_EVENT_INGEST_BYTES = 5 * 1024 * 1024;
 const POLL_HINT_MS = 2000;
+const STREAM_KEEPALIVE_MS = 30000;
 const SHUTDOWN_GRACE_MS = 5000;
 
 const __filename = fileURLToPath(import.meta.url);
@@ -19,20 +42,42 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..");
 const publicDir = path.join(__dirname, "public");
 
-const { feedPath, port, defaultLimit } = parseArgs(process.argv.slice(2));
+const { gameDir, feedPath, settingsPath, port, defaultLimit, developerMode } = parseArgs(process.argv.slice(2));
+const companionMode = companionModeFromDeveloperMode(developerMode);
 const startedAt = new Date();
 const shutdownToken = process.env.STFC_SIDECAR_SHUTDOWN_TOKEN ?? "";
-const syncToken = process.env.STFC_SIDECAR_SYNC_TOKEN ?? DEFAULT_SYNC_TOKEN;
+const syncToken = resolveSyncToken(process.env);
+const settingsToken = resolveSettingsToken(process.env);
+const settingsSaveMode = parseSettingsSaveMode(process.env.STFC_SIDECAR_SETTINGS_SAVE_MODE);
+const releaseInfo = buildReleaseInfo({
+    version: process.env.STFC_SIDECAR_APP_VERSION ?? readPackageVersion(),
+    channel: process.env.STFC_SIDECAR_RELEASE_CHANNEL,
+    updateMode: process.env.STFC_SIDECAR_UPDATE_MODE,
+    signaturePolicy: process.env.STFC_SIDECAR_SIGNATURE_POLICY,
+    packaged: process.env.STFC_SIDECAR_DESKTOP === "1",
+});
 let feedIndex = createEmptyFeedIndex();
+let feedWatcher = null;
+let feedWatcherPath = "";
+let feedWatcherDebounce = null;
+const eventStreamClients = new Set();
 
 let shutdownRequested = false;
 let exitTimer;
 
 let createSqlSidecarEventStore;
+let applyCommunityModHotkeySettingsPatch;
+let buildCommunityModHotkeySettingsSnapshot;
 let isSidecarEvent;
 let parseEventJsonLine;
 try {
-    ({ createSqlSidecarEventStore, isSidecarEvent, parseEventJsonLine } = await import(new URL("../core/dist/index.js", import.meta.url)));
+    ({
+        applyCommunityModHotkeySettingsPatch,
+        buildCommunityModHotkeySettingsSnapshot,
+        createSqlSidecarEventStore,
+        isSidecarEvent,
+        parseEventJsonLine,
+    } = await import(new URL("../core/dist/index.js", import.meta.url)));
 } catch (error) {
     console.error("Unable to load @stfc-mod-sidecar/core. Run `npm run build --workspace @stfc-mod-sidecar/core` first.");
     console.error(error instanceof Error ? error.message : String(error));
@@ -43,6 +88,10 @@ const eventStore = await createConfiguredEventStore();
 
 const server = createServer(async (request, response) => {
     const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? `127.0.0.1:${port}`}`);
+
+    if (isDeveloperOnlyApiPath(requestUrl.pathname) && !developerMode) {
+        return sendJson(response, 403, developerModeRequiredPayload());
+    }
 
     if (requestUrl.pathname === "/api/events") {
         if (request.method === "POST") {
@@ -61,6 +110,60 @@ const server = createServer(async (request, response) => {
         return sendJson(response, 200, snapshot);
     }
 
+    if (requestUrl.pathname === "/api/events/stream") {
+        if (request.method && request.method !== "GET") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        return handleEventStream(request, response);
+    }
+
+    if (requestUrl.pathname === "/api/settings/hotkeys") {
+        if (request.method === "GET") {
+            return sendJson(response, 200, await readHotkeySettingsSnapshot());
+        }
+
+        if (request.method === "PUT" || request.method === "PATCH" || request.method === "POST") {
+            return handleHotkeySettingsUpdate(request, response);
+        }
+
+        return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+    }
+
+    if (requestUrl.pathname === "/api/diagnostics/bundle") {
+        if (request.method && request.method !== "GET") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        const bundle = await readDiagnosticsBundle();
+        if (requestUrl.searchParams.get("format") === "markdown") {
+            return sendText(response, 200, buildDiagnosticsMarkdown(bundle), "text/markdown; charset=utf-8");
+        }
+
+        return sendJson(response, 200, bundle);
+    }
+
+    if (requestUrl.pathname === "/api/release/check") {
+        if (request.method && request.method !== "GET") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        try {
+            return sendJson(response, 200, await fetchReleaseUpdateCheck({
+                currentRelease: releaseInfo,
+                repository: process.env.STFC_SIDECAR_RELEASE_REPOSITORY,
+            }));
+        } catch (error) {
+            return sendJson(response, 502, {
+                ok: false,
+                status: "error",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
+                current: releaseInfo,
+            });
+        }
+    }
+
     const eventLineMatch = /^\/api\/events\/([0-9]+)$/.exec(requestUrl.pathname);
     if (eventLineMatch) {
         if (request.method && request.method !== "GET") {
@@ -77,15 +180,36 @@ const server = createServer(async (request, response) => {
         return sendJson(response, 200, {
             ok: true,
             pid: process.pid,
+            gameDir,
             feedPath,
+            settingsPath,
             port,
             defaultLimit,
+            developerMode,
+            companionMode,
+            release: releaseInfo,
             eventStoreBackend: eventStore?.backend ?? "none",
             storedEvents,
             startedAt: startedAt.toISOString(),
             uptimeMs: Date.now() - startedAt.getTime(),
             shuttingDown: shutdownRequested,
             pollHintMs: POLL_HINT_MS,
+            generatedAt: new Date().toISOString(),
+        });
+    }
+
+    if (requestUrl.pathname === "/api/dev/status") {
+        if (request.method && request.method !== "GET") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        return sendJson(response, 200, {
+            ok: true,
+            developerMode,
+            companionMode,
+            feedPath,
+            settingsPath,
+            eventStoreBackend: eventStore?.backend ?? "none",
             generatedAt: new Date().toISOString(),
         });
     }
@@ -114,6 +238,10 @@ const server = createServer(async (request, response) => {
         return;
     }
 
+    if (isDeveloperOnlyPublicPath(requestUrl.pathname) && !developerMode) {
+        return sendJson(response, 403, developerModeRequiredPayload());
+    }
+
     const publicAsset = await resolvePublicAsset(requestUrl.pathname);
     if (publicAsset) {
         return sendFile(response, publicAsset.filePath, publicAsset.contentType);
@@ -131,6 +259,7 @@ server.listen(port, "127.0.0.1", () => {
     console.log(`[sidecar-viewer] pid ${process.pid}`);
     console.log(`[sidecar-viewer] listening on http://127.0.0.1:${port}`);
     console.log(`[sidecar-viewer] feed path: ${feedPath}`);
+    ensureFeedWatcher();
 });
 
 process.on("SIGINT", () => {
@@ -169,10 +298,97 @@ async function createConfiguredEventStore() {
     throw new Error(`Unsupported STFC_SIDECAR_STORE_BACKEND: ${backend}`);
 }
 
+async function readHotkeySettingsSnapshot() {
+    const generatedAt = new Date().toISOString();
+    const exists = existsSync(settingsPath);
+    const contents = exists ? await readFile(settingsPath, "utf8") : "";
+    const snapshot = buildCommunityModHotkeySettingsSnapshot(contents);
+
+    return {
+        ...snapshot,
+        generatedAt,
+        settingsPath,
+        exists,
+        saveRequiresToken: settingsSaveMode === SETTINGS_SAVE_MODE_REMOTE_PROTECTED,
+        settingsSaveMode,
+        saveSupported: true,
+        applyMode: "next_launch",
+    };
+}
+
+async function readDiagnosticsBundle() {
+    const generatedAt = new Date().toISOString();
+    const [storedEvents, feed, settings] = await Promise.all([
+        eventStore ? eventStore.count() : Promise.resolve(0),
+        readEventsSnapshot(25, { includeDetails: false }).catch((error) => ({
+            ok: false,
+            exists: false,
+            source: "unknown",
+            error: error instanceof Error ? error.message : String(error),
+        })),
+        readHotkeySettingsSnapshot().catch((error) => ({
+            exists: false,
+            parseError: true,
+            saveSupported: false,
+            settingsSaveMode,
+            actions: [],
+            hardSettings: [],
+            error: error instanceof Error ? error.message : String(error),
+        })),
+    ]);
+
+    return buildDiagnosticsBundle({
+        generatedAt,
+        release: releaseInfo,
+        developerMode,
+        companionMode,
+        pid: process.pid,
+        port,
+        startedAt: startedAt.toISOString(),
+        uptimeMs: Date.now() - startedAt.getTime(),
+        eventStoreBackend: eventStore?.backend ?? "none",
+        storedEvents,
+        gameDir,
+        feedPath,
+        settingsPath,
+        feed,
+        settings,
+    });
+}
+
+async function handleHotkeySettingsUpdate(request, response) {
+    if (!isAuthorizedSettingsRequest(request)) {
+        return sendJson(response, 401, { ok: false, error: "Unauthorized settings request" });
+    }
+
+    try {
+        const payload = await readJsonBody(request);
+        const previousContents = existsSync(settingsPath) ? await readFile(settingsPath, "utf8") : "";
+        const nextContents = applyCommunityModHotkeySettingsPatch(previousContents, payload);
+        await mkdir(path.dirname(settingsPath), { recursive: true });
+
+        if (existsSync(settingsPath)) {
+            await copyFile(settingsPath, `${settingsPath}.bak.sidecar`);
+        }
+
+        await writeFile(settingsPath, nextContents, "utf8");
+        console.log(`[sidecar-viewer] updated hotkey settings ${settingsPath}`);
+        return sendJson(response, 200, await readHotkeySettingsSnapshot());
+    } catch (error) {
+        return sendJson(response, 400, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+}
+
 function parseArgs(args) {
-    let selectedFeedPath = process.env.STFC_SIDECAR_FEED_PATH ?? DEFAULT_FEED_PATH;
+    let selectedGameDir = process.env.STFC_SIDECAR_GAME_DIR ?? "";
+    let selectedFeedPath = process.env.STFC_SIDECAR_FEED_PATH ?? "";
+    let selectedSettingsPath = process.env.STFC_SIDECAR_SETTINGS_PATH ?? "";
     let selectedPort = parseInteger(process.env.STFC_SIDECAR_PORT, DEFAULT_PORT);
     let selectedLimit = parseInteger(process.env.STFC_SIDECAR_LIMIT, DEFAULT_LIMIT);
+    let selectedDeveloperMode = parseDeveloperModeFlag(process.env.STFC_SIDECAR_DEVELOPER_MODE);
 
     for (let index = 0; index < args.length; index += 1) {
         const arg = args[index];
@@ -186,8 +402,18 @@ function parseArgs(args) {
             return args[index];
         };
 
+        if (arg === "--game-dir") {
+            selectedGameDir = nextValue();
+            continue;
+        }
+
         if (arg === "--feed-path") {
             selectedFeedPath = nextValue();
+            continue;
+        }
+
+        if (arg === "--settings-path") {
+            selectedSettingsPath = nextValue();
             continue;
         }
 
@@ -201,8 +427,18 @@ function parseArgs(args) {
             continue;
         }
 
+        if (arg === "--developer-mode") {
+            selectedDeveloperMode = true;
+            continue;
+        }
+
+        if (arg === "--standard-mode") {
+            selectedDeveloperMode = false;
+            continue;
+        }
+
         if (arg === "--help" || arg === "-h") {
-            console.log("Usage: node packages/viewer/server.mjs [--feed-path <jsonl>] [--port <number>] [--limit <number>]");
+            console.log("Usage: node packages/viewer/server.mjs [--game-dir <dir>] [--feed-path <jsonl>] [--settings-path <toml>] [--port <number>] [--limit <number>] [--developer-mode|--standard-mode]");
             process.exit(0);
         }
 
@@ -210,15 +446,40 @@ function parseArgs(args) {
         process.exit(2);
     }
 
+    const resolvedGameDir = resolveGameDir(selectedGameDir);
+    const resolvedFeedPath = resolveFeedPath(selectedFeedPath || path.join(resolvedGameDir, DEFAULT_FEED_FILE));
     return {
-        feedPath: resolveFeedPath(selectedFeedPath),
+        gameDir: resolvedGameDir,
+        feedPath: resolvedFeedPath,
+        settingsPath: resolveSettingsPath(selectedSettingsPath, resolvedFeedPath),
         port: selectedPort,
         defaultLimit: selectedLimit,
+        developerMode: selectedDeveloperMode,
     };
+}
+
+function readPackageVersion() {
+    try {
+        const packageJson = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+        return packageJson.version;
+    } catch {
+        return "";
+    }
+}
+
+function resolveGameDir(gameDir) {
+    const platformPath = normalizeWindowsPathForWsl(gameDir || DEFAULT_GAME_DIR);
+    return path.resolve(platformPath);
 }
 
 function resolveFeedPath(feedPath) {
     const platformPath = normalizeWindowsPathForWsl(feedPath);
+    return path.resolve(platformPath);
+}
+
+function resolveSettingsPath(selectedSettingsPath, selectedFeedPath) {
+    const settingsPathValue = selectedSettingsPath || path.join(path.dirname(selectedFeedPath), DEFAULT_SETTINGS_FILE);
+    const platformPath = normalizeWindowsPathForWsl(settingsPathValue);
     return path.resolve(platformPath);
 }
 
@@ -281,6 +542,7 @@ async function handleEventIngest(request, response) {
         const payload = await readJsonBody(request);
         const events = normalizeIncomingEvents(payload);
         const result = await eventStore.append(events);
+        broadcastEventUpdate("ingest", { appended: result.appended ?? events.length });
         return sendJson(response, 202, {
             ok: true,
             backend: eventStore.backend,
@@ -292,6 +554,121 @@ async function handleEventIngest(request, response) {
             error: error instanceof Error ? error.message : String(error),
         });
     }
+}
+
+function handleEventStream(request, response) {
+    response.writeHead(200, {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-store",
+        "connection": "keep-alive",
+        "x-accel-buffering": "no",
+    });
+    response.write(": connected\n\n");
+
+    const client = {
+        response,
+        keepalive: setInterval(() => {
+            response.write(`: keepalive ${new Date().toISOString()}\n\n`);
+        }, STREAM_KEEPALIVE_MS),
+    };
+    client.keepalive.unref?.();
+    eventStreamClients.add(client);
+    sendEventStreamMessage(client, "ready", streamPayload("ready"));
+
+    request.on("close", () => {
+        clearInterval(client.keepalive);
+        eventStreamClients.delete(client);
+    });
+}
+
+function broadcastEventUpdate(reason, extra = {}) {
+    if (eventStreamClients.size === 0) {
+        return;
+    }
+
+    const payload = streamPayload(reason, extra);
+    for (const client of eventStreamClients) {
+        sendEventStreamMessage(client, "events-updated", payload);
+    }
+}
+
+function streamPayload(reason, extra = {}) {
+    return {
+        ok: true,
+        reason,
+        generatedAt: new Date().toISOString(),
+        ...extra,
+    };
+}
+
+function sendEventStreamMessage(client, eventName, payload) {
+    client.response.write(`event: ${eventName}\n`);
+    client.response.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+function ensureFeedWatcher() {
+    const target = watcherTargetForFeed(feedPath);
+    if (!target || target === feedWatcherPath) {
+        return;
+    }
+
+    closeFeedWatcher();
+    try {
+        feedWatcher = watch(target, { persistent: false }, (_eventType, filename) => {
+            if (filename && !isFeedWatcherFilename(filename)) {
+                return;
+            }
+
+            scheduleFeedWatcherUpdate();
+        });
+        feedWatcherPath = target;
+        feedWatcher.on("error", (error) => {
+            console.warn(`[sidecar-viewer] feed watcher failed: ${error instanceof Error ? error.message : String(error)}`);
+            closeFeedWatcher();
+        });
+        console.log(`[sidecar-viewer] watching feed updates at ${target}`);
+    } catch (error) {
+        console.warn(`[sidecar-viewer] unable to watch feed updates: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+
+function closeFeedWatcher() {
+    if (feedWatcherDebounce) {
+        clearTimeout(feedWatcherDebounce);
+        feedWatcherDebounce = null;
+    }
+
+    if (feedWatcher) {
+        feedWatcher.close();
+        feedWatcher = null;
+        feedWatcherPath = "";
+    }
+}
+
+function watcherTargetForFeed(selectedFeedPath) {
+    if (existsSync(selectedFeedPath)) {
+        return selectedFeedPath;
+    }
+
+    const directory = path.dirname(selectedFeedPath);
+    return existsSync(directory) ? directory : "";
+}
+
+function isFeedWatcherFilename(filename) {
+    return path.basename(String(filename)) === path.basename(feedPath);
+}
+
+function scheduleFeedWatcherUpdate() {
+    if (feedWatcherDebounce) {
+        clearTimeout(feedWatcherDebounce);
+    }
+
+    feedWatcherDebounce = setTimeout(() => {
+        feedWatcherDebounce = null;
+        ensureFeedWatcher();
+        broadcastEventUpdate("feed-changed");
+    }, 250);
+    feedWatcherDebounce.unref?.();
 }
 
 async function readEventsSnapshot(limit, options = {}) {
@@ -375,16 +752,25 @@ async function readStoredEvent(lineNumber) {
 }
 
 function isAuthorizedSyncRequest(request) {
-    if (!syncToken) {
-        return true;
+    return isSyncRequestAuthorized(request, syncToken);
+}
+
+function isAuthorizedSettingsRequest(request) {
+    return isSettingsRequestAuthorized(request, { settingsSaveMode, settingsToken });
+}
+
+function parseSettingsSaveMode(value) {
+    const mode = String(value ?? "").trim().toLowerCase();
+    if (!mode || mode === "local" || mode === "local_trusted") {
+        return SETTINGS_SAVE_MODE_LOCAL_TRUSTED;
     }
 
-    const authorization = request.headers.authorization;
-    if (authorization === `Bearer ${syncToken}`) {
-        return true;
+    if (mode === "remote" || mode === "remote_protected") {
+        return SETTINGS_SAVE_MODE_REMOTE_PROTECTED;
     }
 
-    return request.headers["stfc-sync-token"] === syncToken;
+    console.warn(`[sidecar-viewer] unknown STFC_SIDECAR_SETTINGS_SAVE_MODE '${value}', using ${SETTINGS_SAVE_MODE_LOCAL_TRUSTED}`);
+    return SETTINGS_SAVE_MODE_LOCAL_TRUSTED;
 }
 
 async function readJsonBody(request) {
@@ -920,12 +1306,7 @@ function contentTypeForPath(filePath) {
 }
 
 function isAuthorizedShutdownRequest(request) {
-    const authorization = request.headers.authorization;
-    if (authorization === `Bearer ${shutdownToken}`) {
-        return true;
-    }
-
-    return request.headers["x-sidecar-shutdown-token"] === shutdownToken;
+    return isShutdownRequestAuthorized(request, shutdownToken);
 }
 
 async function shutdownServer(reason) {
@@ -934,6 +1315,12 @@ async function shutdownServer(reason) {
     }
 
     shutdownRequested = true;
+    closeFeedWatcher();
+    for (const client of eventStreamClients) {
+        clearInterval(client.keepalive);
+        client.response.end();
+    }
+    eventStreamClients.clear();
     console.log(`[sidecar-viewer] shutdown requested (${reason})`);
 
     exitTimer = setTimeout(() => {
@@ -982,4 +1369,12 @@ function sendJson(response, statusCode, value) {
         "cache-control": "no-store",
     });
     response.end(JSON.stringify(value));
+}
+
+function sendText(response, statusCode, value, contentType) {
+    response.writeHead(statusCode, {
+        "content-type": contentType,
+        "cache-control": "no-store",
+    });
+    response.end(value);
 }

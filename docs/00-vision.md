@@ -12,3 +12,7 @@ The first useful version should be boring:
 - Keep integration actions explicit and user-initiated.
 
 The long-term shape should let multiple renderers consume the same core: a desktop app, a local web UI, a CLI, Majel tooling, or an optional Overwolf overlay host.
+
+The optional desktop companion should use an original LCARS-inspired interface
+without making the injected mod own UI, installer, updater, or integration
+dependencies. See `docs/15-companion-app-and-lcars-ui.md`.
