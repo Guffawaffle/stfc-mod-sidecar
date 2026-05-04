@@ -23,6 +23,7 @@ import { fetchReleaseUpdateCheck } from "./release-update.mjs";
 import { buildDiagnosticsBundle, buildDiagnosticsMarkdown } from "./diagnostics-bundle.mjs";
 import { detectCommunityModInstall } from "./community-mod-install.mjs";
 import { verifyCommunityModArtifact } from "./community-mod-artifact-verification.mjs";
+import { stageCommunityModArtifact } from "./community-mod-artifact-staging.mjs";
 import {
     buildCommunityModInstallPreflight,
     detectStfcGameProcess,
@@ -278,6 +279,29 @@ const server = createServer(async (request, response) => {
             }
 
             return sendJson(response, 200, preflight);
+        } catch (error) {
+            return sendJson(response, 502, {
+                ok: false,
+                status: "error",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
+            });
+        }
+    }
+
+    if (requestUrl.pathname === "/api/mod/stage-artifact") {
+        if (request.method !== "POST") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        try {
+            const profile = normalizeCommunityModReleaseProfile(
+                requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
+            );
+            const catalog = await fetchCommunityModReleaseCatalog({ profile });
+            const cacheDir = process.env.STFC_SIDECAR_CACHE_DIR || DEFAULT_ARTIFACT_CACHE_DIR;
+            const verification = await verifyCommunityModArtifact({ catalog, cacheDir });
+            return sendJson(response, 200, await stageCommunityModArtifact({ catalog, verification, cacheDir }));
         } catch (error) {
             return sendJson(response, 502, {
                 ok: false,
