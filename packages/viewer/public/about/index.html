@@ -90,10 +90,19 @@
             <p id="about-mod-artifact-detail" class="page-copy">
               Verify Artifact downloads to the sidecar cache and checks SHA-256 before any install path exists.
             </p>
+            <p id="about-mod-staging-state" class="page-copy">version.dll not staged</p>
+            <p id="about-mod-staging-detail" class="page-copy">
+              Prepare Confirmation stages the verified version.dll in the sidecar cache.
+            </p>
+            <p id="about-mod-confirmation-state" class="page-copy">Confirmation not prepared</p>
+            <p id="about-mod-confirmation-detail" class="page-copy">
+              Prepare Confirmation builds the final review text without copying files.
+            </p>
             <div class="diagnostics-actions">
               <button id="refresh-mod-status" type="button">Refresh Status</button>
               <button id="check-mod-release" type="button">Check Mod Release</button>
               <button id="verify-mod-artifact" type="button">Verify Artifact</button>
+              <button id="prepare-mod-confirmation" type="button">Prepare Confirmation</button>
               <a
                 id="about-mod-release-link"
                 class="link-button link-button--secondary"
