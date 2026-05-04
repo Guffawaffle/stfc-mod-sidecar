@@ -88,6 +88,7 @@ try {
 }
 
 const communityModSettingsProfile = normalizeCommunityModSettingsProfile(process.env.STFC_SIDECAR_MOD_PROFILE);
+const communityModCapabilities = buildCommunityModCapabilities(communityModSettingsProfile);
 const eventStore = await createConfiguredEventStore();
 
 const server = createServer(async (request, response) => {
@@ -95,6 +96,10 @@ const server = createServer(async (request, response) => {
 
     if (isDeveloperOnlyApiPath(requestUrl.pathname) && !developerMode) {
         return sendJson(response, 403, developerModeRequiredPayload());
+    }
+
+    if (isBattleLogApiPath(requestUrl.pathname) && !communityModCapabilities.battleLog) {
+        return sendJson(response, 403, capabilityUnavailablePayload("battleLog"));
     }
 
     if (requestUrl.pathname === "/api/events") {
@@ -194,6 +199,7 @@ const server = createServer(async (request, response) => {
             companionMode,
             modProfile: communityModSettingsProfile,
             settingsProfile: communityModSettingsProfile,
+            capabilities: communityModCapabilities,
             communityModInstall,
             release: releaseInfo,
             eventStoreBackend: eventStore?.backend ?? "none",
@@ -217,6 +223,7 @@ const server = createServer(async (request, response) => {
             companionMode,
             modProfile: communityModSettingsProfile,
             settingsProfile: communityModSettingsProfile,
+            capabilities: communityModCapabilities,
             feedPath,
             settingsPath,
             eventStoreBackend: eventStore?.backend ?? "none",
@@ -252,6 +259,10 @@ const server = createServer(async (request, response) => {
         return sendJson(response, 403, developerModeRequiredPayload());
     }
 
+    if (isBattleLogPublicPath(requestUrl.pathname) && !communityModCapabilities.battleLog) {
+        return sendJson(response, 403, capabilityUnavailablePayload("battleLog"));
+    }
+
     const publicAsset = await resolvePublicAsset(requestUrl.pathname);
     if (publicAsset) {
         return sendFile(response, publicAsset.filePath, publicAsset.contentType);
@@ -268,8 +279,12 @@ server.on("error", (error) => {
 server.listen(port, "127.0.0.1", () => {
     console.log(`[sidecar-viewer] pid ${process.pid}`);
     console.log(`[sidecar-viewer] listening on http://127.0.0.1:${port}`);
-    console.log(`[sidecar-viewer] feed path: ${feedPath}`);
-    ensureFeedWatcher();
+    if (communityModCapabilities.battleLog) {
+        console.log(`[sidecar-viewer] feed path: ${feedPath}`);
+        ensureFeedWatcher();
+    } else {
+        console.log(`[sidecar-viewer] battle log surfaces disabled for profile ${communityModSettingsProfile}`);
+    }
 });
 
 process.on("SIGINT", () => {
@@ -281,7 +296,7 @@ process.on("SIGTERM", () => {
 });
 
 async function createConfiguredEventStore() {
-    const backend = (process.env.STFC_SIDECAR_STORE_BACKEND ?? "sqlite").trim().toLowerCase();
+    const backend = (process.env.STFC_SIDECAR_STORE_BACKEND ?? (communityModCapabilities.eventStore ? "sqlite" : "none")).trim().toLowerCase();
     if (backend === "none") {
         return null;
     }
@@ -306,6 +321,34 @@ async function createConfiguredEventStore() {
     }
 
     throw new Error(`Unsupported STFC_SIDECAR_STORE_BACKEND: ${backend}`);
+}
+
+function buildCommunityModCapabilities(profile) {
+    const battleLog = profile !== "netniv-basic";
+    return {
+        settings: true,
+        installStatus: true,
+        battleLog,
+        eventStore: battleLog,
+    };
+}
+
+function isBattleLogApiPath(pathname) {
+    return pathname === "/api/events" || pathname === "/api/events/stream" || /^\/api\/events\/[0-9]+$/.test(pathname);
+}
+
+function isBattleLogPublicPath(pathname) {
+    return pathname === "/battle-log" || pathname.startsWith("/battle-log/");
+}
+
+function capabilityUnavailablePayload(capability) {
+    return {
+        ok: false,
+        code: "profile_capability_unavailable",
+        error: `${capability} is not available for the active Community Mod profile.`,
+        capability,
+        modProfile: communityModSettingsProfile,
+    };
 }
 
 async function readCommunityModInstallStatus() {
@@ -346,12 +389,19 @@ async function readDiagnosticsBundle() {
     const generatedAt = new Date().toISOString();
     const [storedEvents, feed, settings] = await Promise.all([
         eventStore ? eventStore.count() : Promise.resolve(0),
-        readEventsSnapshot(25, { includeDetails: false }).catch((error) => ({
-            ok: false,
-            exists: false,
-            source: "unknown",
-            error: error instanceof Error ? error.message : String(error),
-        })),
+        communityModCapabilities.battleLog
+            ? readEventsSnapshot(25, { includeDetails: false }).catch((error) => ({
+                ok: false,
+                exists: false,
+                source: "unknown",
+                error: error instanceof Error ? error.message : String(error),
+            }))
+            : Promise.resolve({
+                ok: true,
+                exists: false,
+                source: "disabled",
+                error: "Battle Log is not available for the active Community Mod profile.",
+            }),
         readHotkeySettingsSnapshot().catch((error) => ({
             exists: false,
             parseError: true,

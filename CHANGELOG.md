@@ -14,6 +14,7 @@
 - Added initial Community Mod settings schema profiles so official netniV Basic mode can hide fork-only settings before broader settings editing expands.
 - Added a desktop Settings profile selector for switching between official Basic and Advanced Alpha schemas.
 - Added Community Mod DLL install detection to classify missing, official Basic, advanced, and unknown installs by manifest/hash evidence.
+- Added Basic profile capability gates so Battle Log navigation, APIs, feed watching, and event storage stay off for official Basic mode.
 - Added `POST /api/events` ingest endpoint with Bearer token auth
   (`STFC_SIDECAR_SYNC_TOKEN`, or a launch-scoped generated token when unset)
 - Added manual `/api/release/check` update checks and About-page release status
