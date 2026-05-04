@@ -26,6 +26,11 @@ import { verifyCommunityModArtifact } from "./community-mod-artifact-verificatio
 import { stageCommunityModArtifact } from "./community-mod-artifact-staging.mjs";
 import { buildCommunityModInstallConfirmation } from "./community-mod-install-confirmation.mjs";
 import {
+    buildCommunityModInstallExecutionBlocked,
+    buildCommunityModInstallExecutionRequest,
+    executeCommunityModInstall,
+} from "./community-mod-install-execution.mjs";
+import {
     buildCommunityModInstallPreflight,
     detectStfcGameProcess,
 } from "./community-mod-install-preflight.mjs";
@@ -322,28 +327,64 @@ const server = createServer(async (request, response) => {
             const profile = normalizeCommunityModReleaseProfile(
                 requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
             );
-            const [install, catalog] = await Promise.all([
-                readCommunityModInstallStatus(),
-                fetchCommunityModReleaseCatalog({ profile }),
-            ]);
-            const cacheDir = process.env.STFC_SIDECAR_CACHE_DIR || DEFAULT_ARTIFACT_CACHE_DIR;
-            const installPlan = buildCommunityModInstallPlan({ profile, install, catalog });
-            const gameProcess = await detectStfcGameProcess();
-            let artifactVerification = null;
-            let artifactStaging = null;
-            let preflight = buildCommunityModInstallPreflight({ installPlan, gameProcess });
-            if (preflight.status === "artifact_not_verified") {
-                artifactVerification = await verifyCommunityModArtifact({ catalog, cacheDir });
-                if (artifactVerification.status === "verified") {
-                    artifactStaging = await stageCommunityModArtifact({ catalog, verification: artifactVerification, cacheDir });
-                }
-                preflight = buildCommunityModInstallPreflight({ installPlan, artifactVerification, gameProcess });
+            return sendJson(response, 200, await buildCurrentCommunityModInstallConfirmation(profile));
+        } catch (error) {
+            return sendJson(response, 502, {
+                ok: false,
+                status: "error",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
+            });
+        }
+    }
+
+    if (requestUrl.pathname === "/api/mod/install-execution") {
+        if (request.method !== "POST") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        let payload;
+        try {
+            payload = await readJsonBody(request);
+        } catch (error) {
+            return sendJson(response, 400, {
+                ok: false,
+                status: "invalid_request",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
+            });
+        }
+
+        try {
+            const profile = normalizeCommunityModReleaseProfile(
+                requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
+            );
+            const confirmation = await buildCurrentCommunityModInstallConfirmation(profile);
+            if (confirmation.status !== "ready_for_confirmation") {
+                return sendJson(response, 200, buildCommunityModInstallExecutionBlocked({
+                    confirmation,
+                    executionRequest: {
+                        ok: true,
+                        status: confirmation.status,
+                        summary: confirmation.summary,
+                        warnings: ["Install execution is blocked by confirmation preflight."],
+                    },
+                }));
             }
 
-            return sendJson(response, 200, buildCommunityModInstallConfirmation({
-                installPlan,
-                preflight,
-                artifactStaging,
+            const executionRequest = buildCommunityModInstallExecutionRequest({
+                payload,
+                confirmation,
+                env: process.env,
+            });
+            if (executionRequest.status !== "ready") {
+                return sendJson(response, 200, buildCommunityModInstallExecutionBlocked({ confirmation, executionRequest }));
+            }
+
+            return sendJson(response, 200, await executeCommunityModInstall({
+                confirmation,
+                gameProcess: await detectStfcGameProcess(),
+                enableExecution: true,
             }));
         } catch (error) {
             return sendJson(response, 502, {
@@ -546,6 +587,32 @@ async function readCommunityModInstallStatus() {
             generatedAt: new Date().toISOString(),
         };
     }
+}
+
+async function buildCurrentCommunityModInstallConfirmation(profile) {
+    const [install, catalog] = await Promise.all([
+        readCommunityModInstallStatus(),
+        fetchCommunityModReleaseCatalog({ profile }),
+    ]);
+    const cacheDir = process.env.STFC_SIDECAR_CACHE_DIR || DEFAULT_ARTIFACT_CACHE_DIR;
+    const installPlan = buildCommunityModInstallPlan({ profile, install, catalog });
+    const gameProcess = await detectStfcGameProcess();
+    let artifactVerification = null;
+    let artifactStaging = null;
+    let preflight = buildCommunityModInstallPreflight({ installPlan, gameProcess });
+    if (preflight.status === "artifact_not_verified") {
+        artifactVerification = await verifyCommunityModArtifact({ catalog, cacheDir });
+        if (artifactVerification.status === "verified") {
+            artifactStaging = await stageCommunityModArtifact({ catalog, verification: artifactVerification, cacheDir });
+        }
+        preflight = buildCommunityModInstallPreflight({ installPlan, artifactVerification, gameProcess });
+    }
+
+    return buildCommunityModInstallConfirmation({
+        installPlan,
+        preflight,
+        artifactStaging,
+    });
 }
 
 async function readHotkeySettingsSnapshot() {

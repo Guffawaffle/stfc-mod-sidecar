@@ -10,7 +10,12 @@ import {
     communityModInstallManifestPath,
     detectCommunityModInstall,
 } from "../../viewer/community-mod-install.mjs";
-import { executeCommunityModInstall } from "../../viewer/community-mod-install-execution.mjs";
+import {
+    COMMUNITY_MOD_INSTALL_EXECUTION_ACKNOWLEDGEMENT,
+    buildCommunityModInstallExecutionBlocked,
+    buildCommunityModInstallExecutionRequest,
+    executeCommunityModInstall,
+} from "../../viewer/community-mod-install-execution.mjs";
 
 describe("Community Mod install execution", () => {
     test("stays disabled unless execution is explicitly enabled", async () => {
@@ -128,6 +133,77 @@ describe("Community Mod install execution", () => {
         });
         await expect(fs.access(path.join(fixture.gameDirectory, COMMUNITY_MOD_DLL_FILE))).rejects.toThrow();
     });
+
+    test("request contract stays server-disabled by default", async () => {
+        const fixture = await makeFixture();
+        const request = buildCommunityModInstallExecutionRequest({
+            confirmation: fixture.confirmation,
+            payload: explicitExecutionPayload(fixture),
+            env: {},
+        });
+
+        expect(request).toMatchObject({
+            status: "server_execution_disabled",
+            requested: true,
+            serverEnabled: false,
+        });
+
+        const blocked = buildCommunityModInstallExecutionBlocked({ confirmation: fixture.confirmation, executionRequest: request });
+        expect(blocked).toMatchObject({
+            status: "server_execution_disabled",
+            safety: { writesGameDirectory: false, writesSidecarCache: false },
+            execution: { enabled: false, writesAttempted: false },
+        });
+    });
+
+    test("request contract requires exact acknowledgement text", async () => {
+        const fixture = await makeFixture();
+        const request = buildCommunityModInstallExecutionRequest({
+            confirmation: fixture.confirmation,
+            payload: { ...explicitExecutionPayload(fixture), acknowledgement: "yes really" },
+            env: { STFC_SIDECAR_ENABLE_MOD_INSTALL_EXECUTION: "1" },
+        });
+
+        expect(request).toMatchObject({
+            status: "acknowledgement_required",
+            acknowledgementAccepted: false,
+        });
+    });
+
+    test("request contract requires matching staged hash and destination", async () => {
+        const fixture = await makeFixture();
+        const hashRequest = buildCommunityModInstallExecutionRequest({
+            confirmation: fixture.confirmation,
+            payload: { ...explicitExecutionPayload(fixture), confirmedStagedSha256: "ABC" },
+            env: { STFC_SIDECAR_ENABLE_MOD_INSTALL_EXECUTION: "1" },
+        });
+        const destinationRequest = buildCommunityModInstallExecutionRequest({
+            confirmation: fixture.confirmation,
+            payload: { ...explicitExecutionPayload(fixture), confirmedDestinationPath: path.join(fixture.gameDirectory, "wrong.dll") },
+            env: { STFC_SIDECAR_ENABLE_MOD_INSTALL_EXECUTION: "1" },
+        });
+
+        expect(hashRequest.status).toBe("staged_hash_confirmation_required");
+        expect(destinationRequest.status).toBe("destination_confirmation_required");
+    });
+
+    test("request contract accepts a fully explicit execution request", async () => {
+        const fixture = await makeFixture();
+        const request = buildCommunityModInstallExecutionRequest({
+            confirmation: fixture.confirmation,
+            payload: explicitExecutionPayload(fixture),
+            env: { STFC_SIDECAR_ENABLE_MOD_INSTALL_EXECUTION: "true" },
+        });
+
+        expect(request).toMatchObject({
+            status: "ready",
+            requested: true,
+            serverEnabled: true,
+            acknowledgementAccepted: true,
+            confirmedStagedSha256: fixture.stagedSha256,
+            confirmedDestinationPath: fixture.confirmation.target.destinationPath,
+        });
+    });
 });
 
 async function makeFixture(options = {}) {
@@ -203,6 +279,15 @@ function basicCatalog() {
 
 function stoppedGameProcess() {
     return { checked: true, running: false, processName: "prime.exe" };
+}
+
+function explicitExecutionPayload(fixture) {
+    return {
+        enableExecution: true,
+        acknowledgement: COMMUNITY_MOD_INSTALL_EXECUTION_ACKNOWLEDGEMENT,
+        confirmedStagedSha256: fixture.stagedSha256,
+        confirmedDestinationPath: fixture.confirmation.target.destinationPath,
+    };
 }
 
 function sha256(contents) {
