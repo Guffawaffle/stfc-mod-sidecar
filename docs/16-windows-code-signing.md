@@ -57,8 +57,11 @@ then verifies every generated `.exe` with `signtool verify /pa /v` and
 The companion also exposes local release metadata through `/api/health` and the
 About page: version, release channel, update mode, and the expected signing
 policy. Local development runs report unsigned local artifacts; packaged release
-builds report that Authenticode signing is required. This is informational and
-does not replace CI signature verification.
+builds report that Authenticode signing is required. Manual update checks use
+`/api/release/check` to read GitHub release metadata, never auto-download assets,
+and only summarize Windows executable assets as Authenticode-required release
+candidates. This is informational and does not replace CI signature
+verification.
 
 Use GitHub Environment variables for non-secret profile metadata:
 

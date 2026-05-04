@@ -12,6 +12,9 @@ const elements = {
     releaseChannel: document.querySelector("#about-release-channel"),
     signaturePolicy: document.querySelector("#about-signature-policy"),
     updateMode: document.querySelector("#about-update-mode"),
+    releaseUpdateState: document.querySelector("#about-release-update-state"),
+    checkReleaseUpdate: document.querySelector("#check-release-update"),
+    releaseUpdateLink: document.querySelector("#about-release-update-link"),
     diagnosticsState: document.querySelector("#diagnostics-state"),
     diagnosticsPreview: document.querySelector("#diagnostics-preview"),
     previewDiagnostics: document.querySelector("#preview-diagnostics"),
@@ -23,6 +26,7 @@ elements.developerModeToggle?.addEventListener("change", () => void setDeveloper
 elements.previewDiagnostics?.addEventListener("click", () => void previewDiagnostics());
 elements.copyDiagnostics?.addEventListener("click", () => void copyDiagnostics());
 elements.downloadDiagnostics?.addEventListener("click", () => void downloadDiagnostics());
+elements.checkReleaseUpdate?.addEventListener("click", () => void checkReleaseUpdate());
 
 await loadMode();
 
@@ -122,6 +126,72 @@ function renderRelease() {
     elements.releaseChannel.textContent = release?.channelLabel ? `${release.channelLabel} channel` : "Channel unknown";
     elements.signaturePolicy.textContent = release?.signatureLabel ?? "Signature expectation unknown";
     elements.updateMode.textContent = release?.updateLabel ?? "Update mode unknown";
+}
+
+async function checkReleaseUpdate() {
+    elements.checkReleaseUpdate.disabled = true;
+    setReleaseUpdateState("Checking updates...");
+    setReleaseUpdateLink("");
+
+    try {
+        const result = await fetchReleaseUpdateCheck();
+        renderReleaseUpdate(result);
+    } catch (error) {
+        setReleaseUpdateState(error instanceof Error ? error.message : String(error));
+    } finally {
+        elements.checkReleaseUpdate.disabled = false;
+    }
+}
+
+async function fetchReleaseUpdateCheck() {
+    const response = await fetch("/api/release/check", { cache: "no-store" });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok === false) {
+        throw new Error(result.error ? `Update check failed: ${result.error}` : `Update check failed: ${response.status}`);
+    }
+
+    return result;
+}
+
+function renderReleaseUpdate(result) {
+    if (result.status === "update_available") {
+        setReleaseUpdateState(`${result.latest?.version ?? "New version"} available`);
+        setReleaseUpdateLink(result.latest?.htmlUrl);
+        return;
+    }
+
+    if (result.status === "up_to_date") {
+        setReleaseUpdateState(`Current version is latest: ${result.latest?.version ?? "unknown"}`);
+        setReleaseUpdateLink(result.latest?.htmlUrl);
+        return;
+    }
+
+    if (result.status === "no_release") {
+        setReleaseUpdateState("No release found for this channel");
+        return;
+    }
+
+    if (result.status === "unavailable") {
+        setReleaseUpdateState(result.error ?? "Release metadata unavailable");
+        return;
+    }
+
+    setReleaseUpdateState("Update status unavailable");
+}
+
+function setReleaseUpdateState(message) {
+    elements.releaseUpdateState.textContent = message;
+}
+
+function setReleaseUpdateLink(url) {
+    const safeUrl = safeGithubUrl(url);
+    elements.releaseUpdateLink.hidden = !safeUrl;
+    elements.releaseUpdateLink.href = safeUrl || "#";
+}
+
+function safeGithubUrl(value) {
+    const url = String(value ?? "").trim();
+    return /^https:\/\/github\.com\/[^\s]+$/i.test(url) ? url : "";
 }
 
 async function previewDiagnostics() {

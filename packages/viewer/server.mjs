@@ -19,6 +19,7 @@ import {
     resolveSyncToken,
 } from "./local-auth.mjs";
 import { buildReleaseInfo } from "./release-info.mjs";
+import { fetchReleaseUpdateCheck } from "./release-update.mjs";
 import { buildDiagnosticsBundle, buildDiagnosticsMarkdown } from "./diagnostics-bundle.mjs";
 
 const DEFAULT_GAME_DIR = "C:\\Games\\Star Trek Fleet Command\\default\\game";
@@ -140,6 +141,27 @@ const server = createServer(async (request, response) => {
         }
 
         return sendJson(response, 200, bundle);
+    }
+
+    if (requestUrl.pathname === "/api/release/check") {
+        if (request.method && request.method !== "GET") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        try {
+            return sendJson(response, 200, await fetchReleaseUpdateCheck({
+                currentRelease: releaseInfo,
+                repository: process.env.STFC_SIDECAR_RELEASE_REPOSITORY,
+            }));
+        } catch (error) {
+            return sendJson(response, 502, {
+                ok: false,
+                status: "error",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
+                current: releaseInfo,
+            });
+        }
     }
 
     const eventLineMatch = /^\/api\/events\/([0-9]+)$/.exec(requestUrl.pathname);

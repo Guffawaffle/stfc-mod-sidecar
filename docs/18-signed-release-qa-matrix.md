@@ -48,7 +48,7 @@ Record each result as `pass`, `fail`, `not run`, or `blocked`, with a short note
 | Settings | Save with an invalid/conflicting binding where the UI warns. | Warning remains visible and the saved result matches the user's explicit choice. |
 | Battle Log | Open Battle Log against the live feed. | Existing entries render and detail views open without console/runtime errors. |
 | Battle Log | Wait for new live entries. | Live updates arrive through `/api/events/stream` without the old two-second browser polling loop; record observed delay, reconnect behavior, and any stale state. |
-| Release Info | Open About. | Version, release channel, update mode, and signing expectation match the artifact being tested. |
+| Release Info | Open About and run Check for Updates. | Version, release channel, update mode, signing expectation, and manual update result match the artifact being tested. No unsigned asset is downloaded automatically. |
 | Upgrade | Install over an existing version with `desktop-settings.json`. | Existing game directory and `developerMode` remain authoritative. |
 | Uninstall | Run uninstaller. | Installed files are removed. Record whether user-data settings/logs remain by design or need cleanup work. |
 
