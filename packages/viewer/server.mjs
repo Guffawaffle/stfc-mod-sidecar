@@ -22,6 +22,10 @@ import { buildReleaseInfo } from "./release-info.mjs";
 import { fetchReleaseUpdateCheck } from "./release-update.mjs";
 import { buildDiagnosticsBundle, buildDiagnosticsMarkdown } from "./diagnostics-bundle.mjs";
 import { detectCommunityModInstall } from "./community-mod-install.mjs";
+import {
+    fetchCommunityModReleaseCatalog,
+    normalizeCommunityModReleaseProfile,
+} from "./community-mod-release-catalog.mjs";
 
 const DEFAULT_GAME_DIR = "C:\\Games\\Star Trek Fleet Command\\default\\game";
 const DEFAULT_FEED_FILE = "community_patch_battle_feed.jsonl";
@@ -169,6 +173,27 @@ const server = createServer(async (request, response) => {
                 error: error instanceof Error ? error.message : String(error),
                 checkedAt: new Date().toISOString(),
                 current: releaseInfo,
+            });
+        }
+    }
+
+    if (requestUrl.pathname === "/api/mod/release-catalog") {
+        if (request.method && request.method !== "GET") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        try {
+            return sendJson(response, 200, await fetchCommunityModReleaseCatalog({
+                profile: normalizeCommunityModReleaseProfile(
+                    requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
+                ),
+            }));
+        } catch (error) {
+            return sendJson(response, 502, {
+                ok: false,
+                status: "error",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
             });
         }
     }
