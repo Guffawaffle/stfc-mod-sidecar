@@ -8,6 +8,8 @@ import {
     communityModReleaseSummary,
     communityModInstallPlanLabel,
     communityModInstallPlanSummary,
+    communityModArtifactVerificationLabel,
+    communityModArtifactVerificationSummary,
     modProfileLabel,
 } from "../../viewer/public/shared/community-mod-status.js";
 
@@ -99,5 +101,22 @@ describe("Community Mod status formatting", () => {
 
         expect(communityModInstallPlanLabel(plan)).toBe("Update available");
         expect(communityModInstallPlanSummary(plan)).toContain("Manual confirmation path not enabled yet");
+    });
+
+    test("formats verified artifacts without implying game-directory writes", () => {
+        const verification = {
+            ok: true,
+            status: "verified",
+            summary: "Community Mod artifact hash and structure verified.",
+            artifact: {
+                actualSha256: "945E73F7A122E4D7C374A1E5BB847339C2831DD6390B8B907E991A993E9797EA",
+                inspection: { dllEntry: "version.dll" },
+            },
+            cache: { reused: false },
+        };
+
+        expect(communityModArtifactVerificationLabel(verification)).toBe("Artifact verified");
+        expect(communityModArtifactVerificationSummary(verification)).toContain("SHA-256 945E73F7A122...");
+        expect(communityModArtifactVerificationSummary(verification)).toContain("cached");
     });
 });

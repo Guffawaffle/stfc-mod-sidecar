@@ -142,6 +142,7 @@ async function startSidecarServer(url) {
             STFC_SIDECAR_DESKTOP: "1",
             STFC_SIDECAR_DEVELOPER_MODE: desktopSettings.developerMode ? "1" : "0",
             STFC_SIDECAR_MOD_PROFILE: desktopSettings.modProfile,
+            STFC_SIDECAR_CACHE_DIR: path.join(app.getPath("userData"), "cache"),
             ...releaseEnvironment(),
             STFC_SIDECAR_SHUTDOWN_TOKEN: sidecarShutdownToken,
             STFC_SIDECAR_SYNC_TOKEN: sidecarSyncToken,

@@ -5,6 +5,8 @@ import {
     communityModReleaseSummary,
     communityModInstallPlanLabel,
     communityModInstallPlanSummary,
+    communityModArtifactVerificationLabel,
+    communityModArtifactVerificationSummary,
 } from "../shared/community-mod-status.js";
 
 const state = {
@@ -13,7 +15,9 @@ const state = {
     pendingDeveloperMode: null,
     modReleaseCatalog: null,
     modInstallPlan: null,
+    modArtifactVerification: null,
     modReleaseChecking: false,
+    modArtifactVerifying: false,
 };
 
 const elements = {
@@ -34,8 +38,11 @@ const elements = {
     modReleaseDetail: document.querySelector("#about-mod-release-detail"),
     modPlanState: document.querySelector("#about-mod-plan-state"),
     modPlanDetail: document.querySelector("#about-mod-plan-detail"),
+    modArtifactState: document.querySelector("#about-mod-artifact-state"),
+    modArtifactDetail: document.querySelector("#about-mod-artifact-detail"),
     refreshModStatus: document.querySelector("#refresh-mod-status"),
     checkModRelease: document.querySelector("#check-mod-release"),
+    verifyModArtifact: document.querySelector("#verify-mod-artifact"),
     modReleaseLink: document.querySelector("#about-mod-release-link"),
     diagnosticsState: document.querySelector("#diagnostics-state"),
     diagnosticsPreview: document.querySelector("#diagnostics-preview"),
@@ -51,6 +58,7 @@ elements.downloadDiagnostics?.addEventListener("click", () => void downloadDiagn
 elements.checkReleaseUpdate?.addEventListener("click", () => void checkReleaseUpdate());
 elements.refreshModStatus?.addEventListener("click", () => void refreshModStatus());
 elements.checkModRelease?.addEventListener("click", () => void checkModRelease());
+elements.verifyModArtifact?.addEventListener("click", () => void verifyModArtifact());
 
 await loadMode();
 
@@ -174,14 +182,20 @@ function renderCommunityModStatus() {
     elements.modReleaseDetail.textContent = communityModReleaseSummary(state.modReleaseCatalog);
     elements.modPlanState.textContent = communityModInstallPlanLabel(state.modInstallPlan);
     elements.modPlanDetail.textContent = communityModInstallPlanSummary(state.modInstallPlan);
+    elements.modArtifactState.textContent = communityModArtifactVerificationLabel(state.modArtifactVerification);
+    elements.modArtifactDetail.textContent = communityModArtifactVerificationSummary(state.modArtifactVerification);
     setModReleaseLink(state.modReleaseCatalog?.release?.htmlUrl);
     elements.checkModRelease.disabled = state.modReleaseChecking;
+    elements.verifyModArtifact.disabled = state.modReleaseChecking
+        || state.modArtifactVerifying
+        || !state.modInstallPlan?.target?.assetName;
 }
 
 async function checkModRelease() {
     state.modReleaseChecking = true;
     state.modReleaseCatalog = null;
     state.modInstallPlan = null;
+    state.modArtifactVerification = null;
     renderCommunityModStatus();
 
     try {
@@ -350,4 +364,39 @@ function setDiagnosticsState(message) {
 
 function safeTimestamp(value) {
     return String(value ?? new Date().toISOString()).replace(/[^0-9A-Za-z]+/g, "-").replace(/^-|-$/g, "");
+}
+
+async function verifyModArtifact() {
+    state.modArtifactVerifying = true;
+    state.modArtifactVerification = null;
+    renderCommunityModStatus();
+
+    try {
+        state.modArtifactVerification = await fetchModArtifactVerification();
+    } catch (error) {
+        state.modArtifactVerification = {
+            ok: false,
+            status: "error",
+            error: error instanceof Error ? error.message : String(error),
+        };
+    } finally {
+        state.modArtifactVerifying = false;
+        renderCommunityModStatus();
+    }
+}
+
+async function fetchModArtifactVerification() {
+    const profile = encodeURIComponent(state.bootstrap?.modProfile ?? state.bootstrap?.settingsProfile ?? "");
+    const response = await fetch(`/api/mod/verify-artifact?profile=${profile}`, {
+        method: "POST",
+        cache: "no-store",
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok === false) {
+        throw new Error(result.error
+            ? `Mod artifact verification failed: ${result.error}`
+            : `Mod artifact verification failed: ${response.status}`);
+    }
+
+    return result;
 }

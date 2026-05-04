@@ -191,6 +191,50 @@ export function communityModInstallPlanSummary(plan) {
     return `${plan.summary ?? "Install plan unavailable."}${target}${warnings}${execution}`;
 }
 
+export function communityModArtifactVerificationLabel(verification) {
+    if (!verification) {
+        return "Artifact not verified";
+    }
+
+    if (verification.ok === false || verification.status === "error") {
+        return "Artifact verification failed";
+    }
+
+    switch (verification.status) {
+        case "verified":
+            return "Artifact verified";
+        case "hash_mismatch":
+            return "Artifact hash mismatch";
+        case "missing_expected_dll":
+            return "version.dll missing from artifact";
+        case "unsafe_zip_entries":
+            return "Unsafe zip entries detected";
+        case "profile_unsupported":
+            return "Artifact verification unsupported";
+        case "release_not_ready":
+            return "Release not ready";
+        default:
+            return "Artifact verification unavailable";
+    }
+}
+
+export function communityModArtifactVerificationSummary(verification) {
+    if (!verification) {
+        return "Verify Artifact downloads to the sidecar cache and checks SHA-256 before any install path exists.";
+    }
+
+    if (verification.ok === false) {
+        return String(verification.error ?? "Community Mod artifact verification failed.");
+    }
+
+    const sha = verification.artifact?.actualSha256
+        ? ` | SHA-256 ${shortSha256(verification.artifact.actualSha256)}`
+        : "";
+    const dll = verification.artifact?.inspection?.dllEntry ? ` | ${verification.artifact.inspection.dllEntry}` : "";
+    const cache = verification.cache?.reused ? " | cache reused" : verification.cache ? " | cached" : "";
+    return `${verification.summary ?? "Artifact verification unavailable."}${sha}${dll}${cache}`;
+}
+
 export function modProfileLabel(profile) {
     return normalizeModProfile(profile) === "netniv-basic" ? "Official Basic" : "Advanced Alpha";
 }

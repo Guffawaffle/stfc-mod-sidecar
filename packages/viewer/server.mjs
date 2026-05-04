@@ -22,6 +22,7 @@ import { buildReleaseInfo } from "./release-info.mjs";
 import { fetchReleaseUpdateCheck } from "./release-update.mjs";
 import { buildDiagnosticsBundle, buildDiagnosticsMarkdown } from "./diagnostics-bundle.mjs";
 import { detectCommunityModInstall } from "./community-mod-install.mjs";
+import { verifyCommunityModArtifact } from "./community-mod-artifact-verification.mjs";
 import {
     fetchCommunityModReleaseCatalog,
     normalizeCommunityModReleaseProfile,
@@ -47,6 +48,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..");
 const publicDir = path.join(__dirname, "public");
+const DEFAULT_ARTIFACT_CACHE_DIR = path.join(repoRoot, ".sidecar", "mod-artifacts");
 
 const { gameDir, feedPath, settingsPath, port, defaultLimit, developerMode } = parseArgs(process.argv.slice(2));
 const companionMode = companionModeFromDeveloperMode(developerMode);
@@ -213,6 +215,30 @@ const server = createServer(async (request, response) => {
                 fetchCommunityModReleaseCatalog({ profile }),
             ]);
             return sendJson(response, 200, buildCommunityModInstallPlan({ profile, install, catalog }));
+        } catch (error) {
+            return sendJson(response, 502, {
+                ok: false,
+                status: "error",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
+            });
+        }
+    }
+
+    if (requestUrl.pathname === "/api/mod/verify-artifact") {
+        if (request.method !== "POST") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        try {
+            const profile = normalizeCommunityModReleaseProfile(
+                requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
+            );
+            const catalog = await fetchCommunityModReleaseCatalog({ profile });
+            return sendJson(response, 200, await verifyCommunityModArtifact({
+                catalog,
+                cacheDir: process.env.STFC_SIDECAR_CACHE_DIR || DEFAULT_ARTIFACT_CACHE_DIR,
+            }));
         } catch (error) {
             return sendJson(response, 502, {
                 ok: false,
