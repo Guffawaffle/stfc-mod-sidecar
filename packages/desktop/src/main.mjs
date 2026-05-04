@@ -401,6 +401,7 @@ async function bootstrapSnapshot(options = {}) {
         modeLabel: desktopSettings.developerMode ? "Developer Tools" : "Standard Companion",
         modProfile: desktopSettings.modProfile || health?.modProfile || "guff-advanced",
         settingsProfile: desktopSettings.modProfile || health?.settingsProfile || "guff-advanced",
+        communityModInstall: health?.communityModInstall ?? null,
         release: desktopReleaseInfo(health?.release),
         error: options.error ?? bootstrapWarning,
         requiredExecutable: STFC_GAME_EXECUTABLE,

@@ -2,6 +2,11 @@ import {
   buildSettingsTroubleshootingPrompt,
   buildSettingsTroubleshootingSummary,
 } from "./troubleshooting.js";
+import {
+  communityModInstallLabel,
+  modProfileLabel,
+  normalizeModProfile,
+} from "../shared/community-mod-status.js";
 
 const state = {
   snapshot: null,
@@ -22,8 +27,10 @@ const elements = {
   desktopGameDirectory: document.querySelector("#desktop-game-directory"),
   companionMode: document.querySelector("#companion-mode"),
   modProfile: document.querySelector("#mod-profile"),
+  communityModInstall: document.querySelector("#community-mod-install"),
   desktopFeedPath: document.querySelector("#desktop-feed-path"),
   desktopModProfile: document.querySelector("#desktop-mod-profile"),
+  desktopCommunityModInstall: document.querySelector("#desktop-community-mod-install"),
   desktopModProfileSelect: document.querySelector("#desktop-mod-profile-select"),
   selectGameDirectory: document.querySelector("#select-game-directory"),
   openGameDirectory: document.querySelector("#open-game-directory"),
@@ -155,6 +162,7 @@ function renderSummary() {
   elements.settingsPath.textContent = snapshot.settingsPath ?? "Unknown";
   elements.companionMode.textContent = modeLabel(state.bootstrap?.developerMode);
   elements.modProfile.textContent = modProfileLabel(state.bootstrap?.modProfile ?? snapshot.modProfile ?? snapshot.profile);
+  elements.communityModInstall.textContent = communityModInstallLabel(state.bootstrap?.communityModInstall);
   elements.settingsState.textContent = snapshot.parseError ? "Invalid TOML" : snapshot.exists ? "Found" : "Not found";
   elements.settingsWarningCount.textContent = String(warnings);
   elements.settingsChangeCount.textContent = String(countChanges());
@@ -198,6 +206,7 @@ async function loadServerBootstrap() {
       modeLabel: modeLabel(health.developerMode),
       modProfile: health.modProfile,
       settingsProfile: health.settingsProfile,
+      communityModInstall: health.communityModInstall,
       gameDirectory: health.gameDir,
       feedPath: health.feedPath,
       settingsPath: health.settingsPath,
@@ -297,6 +306,7 @@ function renderBootstrap() {
   elements.desktopGameDirectory.textContent = gameDirectory;
   elements.desktopFeedPath.textContent = bootstrap?.feedPath || "Unknown";
   elements.desktopModProfile.textContent = modProfileLabel(modProfile);
+  elements.desktopCommunityModInstall.textContent = communityModInstallLabel(bootstrap?.communityModInstall);
   elements.desktopModProfileSelect.value = normalizeModProfile(modProfile);
   elements.openGameDirectory.disabled = !bootstrap?.gameDirectorySelected;
   if (bootstrap?.error) {
@@ -878,14 +888,6 @@ function setStatus(text) {
 
 function modeLabel(developerMode) {
   return developerMode ? "Developer Tools" : "Standard Companion";
-}
-
-function modProfileLabel(profile) {
-  return normalizeModProfile(profile) === "netniv-basic" ? "Official Basic" : "Advanced Alpha";
-}
-
-function normalizeModProfile(profile) {
-  return String(profile ?? "").toLowerCase() === "netniv-basic" ? "netniv-basic" : "guff-advanced";
 }
 
 function gameDirectoryFromSettingsPath(settingsPath) {

@@ -1,7 +1,16 @@
+import {
+    communityModInstallLabel,
+    communityModInstallSummary,
+    communityModReleaseLabel,
+    communityModReleaseSummary,
+} from "../shared/community-mod-status.js";
+
 const state = {
     bootstrap: null,
     modeChanging: false,
     pendingDeveloperMode: null,
+    modReleaseCatalog: null,
+    modReleaseChecking: false,
 };
 
 const elements = {
@@ -15,6 +24,14 @@ const elements = {
     releaseUpdateState: document.querySelector("#about-release-update-state"),
     checkReleaseUpdate: document.querySelector("#check-release-update"),
     releaseUpdateLink: document.querySelector("#about-release-update-link"),
+    modInstallTitle: document.querySelector("#about-mod-install-title"),
+    modInstallState: document.querySelector("#about-mod-install-state"),
+    modInstallDetail: document.querySelector("#about-mod-install-detail"),
+    modReleaseState: document.querySelector("#about-mod-release-state"),
+    modReleaseDetail: document.querySelector("#about-mod-release-detail"),
+    refreshModStatus: document.querySelector("#refresh-mod-status"),
+    checkModRelease: document.querySelector("#check-mod-release"),
+    modReleaseLink: document.querySelector("#about-mod-release-link"),
     diagnosticsState: document.querySelector("#diagnostics-state"),
     diagnosticsPreview: document.querySelector("#diagnostics-preview"),
     previewDiagnostics: document.querySelector("#preview-diagnostics"),
@@ -27,6 +44,8 @@ elements.previewDiagnostics?.addEventListener("click", () => void previewDiagnos
 elements.copyDiagnostics?.addEventListener("click", () => void copyDiagnostics());
 elements.downloadDiagnostics?.addEventListener("click", () => void downloadDiagnostics());
 elements.checkReleaseUpdate?.addEventListener("click", () => void checkReleaseUpdate());
+elements.refreshModStatus?.addEventListener("click", () => void refreshModStatus());
+elements.checkModRelease?.addEventListener("click", () => void checkModRelease());
 
 await loadMode();
 
@@ -42,6 +61,7 @@ async function loadMode() {
 
     renderMode();
     renderRelease();
+    renderCommunityModStatus();
 }
 
 async function loadServerMode() {
@@ -56,6 +76,9 @@ async function loadServerMode() {
         developerMode: Boolean(health.developerMode),
         companionMode: health.companionMode,
         modeLabel: modeLabel(health.developerMode),
+        modProfile: health.modProfile,
+        settingsProfile: health.settingsProfile,
+        communityModInstall: health.communityModInstall,
         release: health.release,
     };
 }
@@ -126,6 +149,64 @@ function renderRelease() {
     elements.releaseChannel.textContent = release?.channelLabel ? `${release.channelLabel} channel` : "Channel unknown";
     elements.signaturePolicy.textContent = release?.signatureLabel ?? "Signature expectation unknown";
     elements.updateMode.textContent = release?.updateLabel ?? "Update mode unknown";
+}
+
+async function refreshModStatus() {
+    elements.refreshModStatus.disabled = true;
+    try {
+        await loadMode();
+    } finally {
+        elements.refreshModStatus.disabled = false;
+    }
+}
+
+function renderCommunityModStatus() {
+    const install = state.bootstrap?.communityModInstall;
+    elements.modInstallTitle.textContent = communityModInstallLabel(install);
+    elements.modInstallState.textContent = communityModInstallLabel(install);
+    elements.modInstallDetail.textContent = communityModInstallSummary(install);
+    elements.modReleaseState.textContent = communityModReleaseLabel(state.modReleaseCatalog);
+    elements.modReleaseDetail.textContent = communityModReleaseSummary(state.modReleaseCatalog);
+    setModReleaseLink(state.modReleaseCatalog?.release?.htmlUrl);
+    elements.checkModRelease.disabled = state.modReleaseChecking;
+}
+
+async function checkModRelease() {
+    state.modReleaseChecking = true;
+    state.modReleaseCatalog = null;
+    renderCommunityModStatus();
+
+    try {
+        state.modReleaseCatalog = await fetchModReleaseCatalog();
+    } catch (error) {
+        state.modReleaseCatalog = {
+            ok: false,
+            status: "error",
+            error: error instanceof Error ? error.message : String(error),
+        };
+    } finally {
+        state.modReleaseChecking = false;
+        renderCommunityModStatus();
+    }
+}
+
+async function fetchModReleaseCatalog() {
+    const profile = encodeURIComponent(state.bootstrap?.modProfile ?? state.bootstrap?.settingsProfile ?? "");
+    const response = await fetch(`/api/mod/release-catalog?profile=${profile}`, { cache: "no-store" });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok === false) {
+        throw new Error(result.error
+            ? `Mod release check failed: ${result.error}`
+            : `Mod release check failed: ${response.status}`);
+    }
+
+    return result;
+}
+
+function setModReleaseLink(url) {
+    const safeUrl = safeGithubUrl(url);
+    elements.modReleaseLink.hidden = !safeUrl;
+    elements.modReleaseLink.href = safeUrl || "#";
 }
 
 async function checkReleaseUpdate() {
