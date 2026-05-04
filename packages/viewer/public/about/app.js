@@ -13,6 +13,7 @@ import {
     communityModInstallConfirmationSummary,
     communityModInstallExecutionLabel,
     communityModInstallExecutionSummary,
+    communityModInstallExecutionRecoverySummary,
 } from "../shared/community-mod-status.js";
 
 const state = {
@@ -57,6 +58,7 @@ const elements = {
     modConfirmationDetail: document.querySelector("#about-mod-confirmation-detail"),
     modExecutionState: document.querySelector("#about-mod-execution-state"),
     modExecutionDetail: document.querySelector("#about-mod-execution-detail"),
+    modRecoveryDetail: document.querySelector("#about-mod-recovery-detail"),
     refreshModStatus: document.querySelector("#refresh-mod-status"),
     checkModRelease: document.querySelector("#check-mod-release"),
     verifyModArtifact: document.querySelector("#verify-mod-artifact"),
@@ -211,6 +213,7 @@ function renderCommunityModStatus() {
     elements.modConfirmationDetail.textContent = communityModInstallConfirmationSummary(state.modInstallConfirmation);
     elements.modExecutionState.textContent = communityModInstallExecutionLabel(state.modInstallExecution);
     elements.modExecutionDetail.textContent = communityModInstallExecutionSummary(state.modInstallExecution);
+    elements.modRecoveryDetail.textContent = communityModInstallExecutionRecoverySummary(state.modInstallExecution);
     setModReleaseLink(state.modReleaseCatalog?.release?.htmlUrl);
     elements.checkModRelease.disabled = state.modReleaseChecking;
     elements.verifyModArtifact.disabled = state.modReleaseChecking

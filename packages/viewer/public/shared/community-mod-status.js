@@ -398,6 +398,40 @@ export function communityModInstallExecutionSummary(execution) {
     return `${execution.summary ?? "Install execution status unavailable."}${destination}${backup}${manifest}${writes}`;
 }
 
+export function communityModInstallExecutionRecoverySummary(execution) {
+    if (!execution) {
+        return "No recovery action is needed before execution runs.";
+    }
+
+    if (execution.execution?.writesAttempted === false || execution.safety?.writesGameDirectory === false) {
+        return "No files were changed. Resolve the blocker, refresh status, and prepare confirmation again.";
+    }
+
+    const rollback = execution.rollback ?? execution.receipt?.rollback ?? null;
+    if (rollback?.error) {
+        const backup = execution.target?.backupPath ? ` Restore backup ${execution.target.backupPath} over the destination after closing STFC.` : "";
+        return `Rollback needs manual attention: ${rollback.error}.${backup}`;
+    }
+
+    if (rollback?.restoredBackup) {
+        return "Rollback restored the previous version.dll. Review the failure before retrying.";
+    }
+
+    if (rollback?.removedDestination) {
+        return "Rollback removed the partial version.dll. Refresh status before retrying.";
+    }
+
+    if (execution.status === "replaced" && execution.receipt?.backup?.path) {
+        return `Rollback available: close STFC and restore backup ${execution.receipt.backup.path} over the destination version.dll.`;
+    }
+
+    if (execution.status === "installed") {
+        return "Rollback available: close STFC, remove version.dll, and remove the sidecar install manifest.";
+    }
+
+    return "If files changed, close STFC and use the execution receipt before retrying.";
+}
+
 export function modProfileLabel(profile) {
     return normalizeModProfile(profile) === "netniv-basic" ? "Official Basic" : "Advanced Alpha";
 }
