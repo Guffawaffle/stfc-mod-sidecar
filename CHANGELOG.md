@@ -26,6 +26,7 @@
 - Added a guarded Community Mod install execution helper with execution-time process checks, staged-hash verification, backup/copy/hash verification, and manifest receipts tested only against temp directories.
 - Added a guarded Community Mod install execution endpoint that remains process-disabled by default and requires explicit request acknowledgement, staged hash, and destination confirmation before write handling.
 - Added an About-page Community Mod Execute Install flow that posts the prepared confirmation payload to the guarded endpoint and reports blocked/completed execution receipts.
+- Added a platform compatibility guard so non-Windows Community Mod install/update flows report unsupported instead of probing or executing the Windows `version.dll` path.
 - Added `POST /api/events` ingest endpoint with Bearer token auth
   (`STFC_SIDECAR_SYNC_TOKEN`, or a launch-scoped generated token when unset)
 - Added manual `/api/release/check` update checks and About-page release status

@@ -49,6 +49,24 @@ describe("Community Mod install execution", () => {
         await expect(fs.access(path.join(fixture.gameDirectory, COMMUNITY_MOD_DLL_FILE))).rejects.toThrow();
     });
 
+    test("blocks execution on platforms without an implemented install flow", async () => {
+        const fixture = await makeFixture();
+        const result = await executeCommunityModInstall({
+            platform: "darwin",
+            confirmation: fixture.confirmation,
+            gameProcess: stoppedGameProcess(),
+            enableExecution: true,
+        });
+
+        expect(result).toMatchObject({
+            status: "platform_unsupported",
+            summary: "macOS Community Mod install/update is not implemented yet.",
+            safety: { writesGameDirectory: false },
+            execution: { writesAttempted: false },
+        });
+        await expect(fs.access(path.join(fixture.gameDirectory, COMMUNITY_MOD_DLL_FILE))).rejects.toThrow();
+    });
+
     test("installs a staged DLL into a temp game directory and writes a manifest", async () => {
         const fixture = await makeFixture({ checkedAt: "2026-05-04T08:00:00.000Z" });
         const result = await executeCommunityModInstall({
@@ -153,6 +171,23 @@ describe("Community Mod install execution", () => {
             status: "server_execution_disabled",
             safety: { writesGameDirectory: false, writesSidecarCache: false },
             execution: { enabled: false, writesAttempted: false },
+        });
+    });
+
+    test("request contract blocks unsupported platforms before write handling", async () => {
+        const fixture = await makeFixture();
+        const request = buildCommunityModInstallExecutionRequest({
+            platform: "darwin",
+            confirmation: fixture.confirmation,
+            payload: explicitExecutionPayload(fixture),
+            env: { STFC_SIDECAR_ENABLE_MOD_INSTALL_EXECUTION: "1" },
+        });
+
+        expect(request).toMatchObject({
+            status: "platform_unsupported",
+            requested: true,
+            serverEnabled: true,
+            platform: { platform: "darwin", installExecutionSupported: false },
         });
     });
 

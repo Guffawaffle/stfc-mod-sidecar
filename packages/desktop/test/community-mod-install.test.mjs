@@ -28,6 +28,28 @@ describe("community mod install detection", () => {
         });
     });
 
+    test("reports unsupported platforms without probing Windows DLL paths", async () => {
+        const gameDirectory = await makeTempGameDirectory();
+
+        const result = await detectCommunityModInstall(gameDirectory, {
+            platform: "darwin",
+            generatedAt: "2026-05-04T00:00:00.000Z",
+        });
+
+        expect(result).toMatchObject({
+            ok: true,
+            state: "unsupported_platform",
+            classification: "none",
+            profile: "none",
+            platform: {
+                platform: "darwin",
+                installPlanningSupported: false,
+                installExecutionSupported: false,
+            },
+            summary: "macOS Community Mod install/update is not implemented yet.",
+        });
+    });
+
     test("matches known official Basic release fingerprints by DLL hash", async () => {
         const gameDirectory = await makeTempGameDirectory();
         const dllContents = Buffer.from("official netniv dll");

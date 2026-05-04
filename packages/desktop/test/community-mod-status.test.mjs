@@ -54,6 +54,18 @@ describe("Community Mod status formatting", () => {
         expect(communityModInstallTone(install)).toBe("warning");
     });
 
+    test("formats unsupported install platforms without implying Windows probes", () => {
+        const install = {
+            ok: true,
+            state: "unsupported_platform",
+            summary: "macOS Community Mod install/update is not implemented yet.",
+        };
+
+        expect(communityModInstallLabel(install)).toBe("Platform unsupported");
+        expect(communityModInstallSummary(install)).toBe("macOS Community Mod install/update is not implemented yet.");
+        expect(communityModInstallTone(install)).toBe("warning");
+    });
+
     test("formats mod release catalog states", () => {
         const catalog = {
             ok: true,
@@ -107,6 +119,28 @@ describe("Community Mod status formatting", () => {
 
         expect(communityModInstallPlanLabel(plan)).toBe("Update available");
         expect(communityModInstallPlanSummary(plan)).toContain("Manual confirmation path not enabled yet");
+    });
+
+    test("formats unsupported install/update platforms", () => {
+        const plan = {
+            ok: true,
+            status: "platform_unsupported",
+            action: "none",
+            summary: "macOS Community Mod install/update is not implemented yet.",
+            warnings: [],
+        };
+        const execution = {
+            ok: true,
+            status: "platform_unsupported",
+            summary: "macOS Community Mod install/update is not implemented yet.",
+            safety: { writesGameDirectory: false },
+            execution: { writesAttempted: false },
+        };
+
+        expect(communityModInstallPlanLabel(plan)).toBe("Platform unsupported");
+        expect(communityModInstallPlanSummary(plan)).toBe("macOS Community Mod install/update is not implemented yet.");
+        expect(communityModInstallExecutionLabel(execution)).toBe("Platform unsupported");
+        expect(communityModInstallExecutionSummary(execution)).toContain("no game-directory write attempted");
     });
 
     test("formats verified artifacts without implying game-directory writes", () => {

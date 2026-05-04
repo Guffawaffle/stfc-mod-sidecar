@@ -1,21 +1,29 @@
 import { normalizeCommunityModReleaseProfile } from "./community-mod-release-catalog.mjs";
+import {
+    buildCommunityModInstallPlatformCapability,
+    platformUnsupportedInstallSummary,
+} from "./community-mod-install-platform.mjs";
 import { compareReleaseVersions } from "./release-update.mjs";
 
 export function buildCommunityModInstallPlan(options = {}) {
     const profile = normalizeCommunityModReleaseProfile(options.profile ?? options.catalog?.profile);
     const install = options.install ?? null;
     const catalog = options.catalog ?? null;
+    const platform = options.platformCapability
+        ?? install?.platform
+        ?? buildCommunityModInstallPlatformCapability({ platform: options.platform });
     const checkedAt = normalizeIsoTimestamp(options.checkedAt);
     const base = {
         ok: true,
         checkedAt,
         profile,
+        platform,
         install,
         catalog,
         current: currentInstallSummary(install),
         target: targetReleaseSummary(catalog),
         safety: installPlanSafety(),
-        execution: installPlanExecution(),
+        execution: installPlanExecution(platform),
         warnings: [],
     };
 
@@ -32,6 +40,15 @@ export function buildCommunityModInstallPlan(options = {}) {
             status: "game_directory_required",
             action: "select_directory",
             summary: "Select the STFC game directory before planning an install or update.",
+        });
+    }
+
+    if (!platform.installPlanningSupported) {
+        return installPlanResult(base, {
+            status: "platform_unsupported",
+            action: "none",
+            summary: platformUnsupportedInstallSummary(platform),
+            warnings: [platform.unsupportedReason],
         });
     }
 
@@ -195,10 +212,12 @@ function installPlanSafety() {
     };
 }
 
-function installPlanExecution() {
+function installPlanExecution(platform) {
     return {
         enabled: false,
-        reason: "Install execution is not enabled in this build.",
+        reason: platform?.installExecutionSupported === false
+            ? platformUnsupportedInstallSummary(platform)
+            : "Install execution is gated by confirmation and the local execution endpoint.",
     };
 }
 
