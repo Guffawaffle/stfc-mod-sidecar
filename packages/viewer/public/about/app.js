@@ -11,6 +11,8 @@ import {
     communityModArtifactStagingSummary,
     communityModInstallConfirmationLabel,
     communityModInstallConfirmationSummary,
+    communityModInstallExecutionLabel,
+    communityModInstallExecutionSummary,
 } from "../shared/community-mod-status.js";
 
 const state = {
@@ -22,9 +24,11 @@ const state = {
     modArtifactVerification: null,
     modArtifactStaging: null,
     modInstallConfirmation: null,
+    modInstallExecution: null,
     modReleaseChecking: false,
     modArtifactVerifying: false,
     modInstallConfirming: false,
+    modInstallExecuting: false,
 };
 
 const elements = {
@@ -51,10 +55,13 @@ const elements = {
     modStagingDetail: document.querySelector("#about-mod-staging-detail"),
     modConfirmationState: document.querySelector("#about-mod-confirmation-state"),
     modConfirmationDetail: document.querySelector("#about-mod-confirmation-detail"),
+    modExecutionState: document.querySelector("#about-mod-execution-state"),
+    modExecutionDetail: document.querySelector("#about-mod-execution-detail"),
     refreshModStatus: document.querySelector("#refresh-mod-status"),
     checkModRelease: document.querySelector("#check-mod-release"),
     verifyModArtifact: document.querySelector("#verify-mod-artifact"),
     prepareModConfirmation: document.querySelector("#prepare-mod-confirmation"),
+    executeModInstall: document.querySelector("#execute-mod-install"),
     modReleaseLink: document.querySelector("#about-mod-release-link"),
     diagnosticsState: document.querySelector("#diagnostics-state"),
     diagnosticsPreview: document.querySelector("#diagnostics-preview"),
@@ -72,6 +79,7 @@ elements.refreshModStatus?.addEventListener("click", () => void refreshModStatus
 elements.checkModRelease?.addEventListener("click", () => void checkModRelease());
 elements.verifyModArtifact?.addEventListener("click", () => void verifyModArtifact());
 elements.prepareModConfirmation?.addEventListener("click", () => void prepareModInstallConfirmation());
+elements.executeModInstall?.addEventListener("click", () => void executeModInstall());
 
 await loadMode();
 
@@ -201,6 +209,8 @@ function renderCommunityModStatus() {
     elements.modStagingDetail.textContent = communityModArtifactStagingSummary(state.modArtifactStaging);
     elements.modConfirmationState.textContent = communityModInstallConfirmationLabel(state.modInstallConfirmation);
     elements.modConfirmationDetail.textContent = communityModInstallConfirmationSummary(state.modInstallConfirmation);
+    elements.modExecutionState.textContent = communityModInstallExecutionLabel(state.modInstallExecution);
+    elements.modExecutionDetail.textContent = communityModInstallExecutionSummary(state.modInstallExecution);
     setModReleaseLink(state.modReleaseCatalog?.release?.htmlUrl);
     elements.checkModRelease.disabled = state.modReleaseChecking;
     elements.verifyModArtifact.disabled = state.modReleaseChecking
@@ -210,6 +220,11 @@ function renderCommunityModStatus() {
         || state.modArtifactVerifying
         || state.modInstallConfirming
         || !state.modInstallPlan?.target?.assetName;
+    elements.executeModInstall.disabled = state.modReleaseChecking
+        || state.modArtifactVerifying
+        || state.modInstallConfirming
+        || state.modInstallExecuting
+        || !isInstallExecutionReady(state.modInstallConfirmation);
 }
 
 async function checkModRelease() {
@@ -219,6 +234,7 @@ async function checkModRelease() {
     state.modArtifactVerification = null;
     state.modArtifactStaging = null;
     state.modInstallConfirmation = null;
+    state.modInstallExecution = null;
     renderCommunityModStatus();
 
     try {
@@ -428,6 +444,7 @@ async function prepareModInstallConfirmation() {
     state.modInstallConfirming = true;
     state.modArtifactStaging = null;
     state.modInstallConfirmation = null;
+    state.modInstallExecution = null;
     renderCommunityModStatus();
 
     try {
@@ -463,4 +480,70 @@ async function fetchModInstallConfirmation() {
     }
 
     return result;
+}
+
+async function executeModInstall() {
+    if (!isInstallExecutionReady(state.modInstallConfirmation)) {
+        return;
+    }
+
+    const confirmed = typeof window.confirm === "function"
+        ? window.confirm("Execute the prepared Community Mod install now?")
+        : true;
+    if (!confirmed) {
+        return;
+    }
+
+    state.modInstallExecuting = true;
+    state.modInstallExecution = null;
+    renderCommunityModStatus();
+
+    try {
+        state.modInstallExecution = await fetchModInstallExecution(state.modInstallConfirmation);
+        if (state.modInstallExecution.confirmation) {
+            state.modInstallConfirmation = state.modInstallExecution.confirmation;
+        }
+        if (state.modInstallExecution.status === "installed" || state.modInstallExecution.status === "replaced") {
+            await loadMode();
+        }
+    } catch (error) {
+        state.modInstallExecution = {
+            ok: false,
+            status: "error",
+            error: error instanceof Error ? error.message : String(error),
+        };
+    } finally {
+        state.modInstallExecuting = false;
+        renderCommunityModStatus();
+    }
+}
+
+async function fetchModInstallExecution(confirmation) {
+    const profile = encodeURIComponent(state.bootstrap?.modProfile ?? state.bootstrap?.settingsProfile ?? "");
+    const response = await fetch(`/api/mod/install-execution?profile=${profile}`, {
+        cache: "no-store",
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+            enableExecution: true,
+            acknowledgement: confirmation.confirmation?.acknowledgement ?? "",
+            confirmedStagedSha256: confirmation.staged?.dllSha256 ?? "",
+            confirmedDestinationPath: confirmation.target?.destinationPath ?? "",
+        }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok === false) {
+        throw new Error(result.error
+            ? `Mod install execution failed: ${result.error}`
+            : `Mod install execution failed: ${response.status}`);
+    }
+
+    return result;
+}
+
+function isInstallExecutionReady(confirmation) {
+    return confirmation?.status === "ready_for_confirmation"
+        && Boolean(confirmation.confirmation?.acknowledgement)
+        && Boolean(confirmation.staged?.dllSha256)
+        && Boolean(confirmation.target?.destinationPath);
 }
