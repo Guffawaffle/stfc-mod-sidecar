@@ -1,27 +1,35 @@
-import { viewerPages } from "./pages.js";
+import { visibleViewerPages } from "./pages.js";
+
+const defaultViewerState = Object.freeze({
+    developerMode: false,
+    capabilities: {},
+});
 
 for (const nav of document.querySelectorAll("[data-viewer-nav]")) {
-    renderNavigation(nav, false);
+    renderNavigation(nav, defaultViewerState);
 }
 
-applyDeveloperMode(false);
-void refreshDeveloperMode({ retries: 6 });
+applyViewerState(defaultViewerState);
+void refreshViewerState({ retries: 6 });
 window.addEventListener("stfc:mode-changed", (event) => {
-    applyDeveloperMode(Boolean(event.detail?.developerMode));
+    applyViewerState({
+        developerMode: Boolean(event.detail?.developerMode),
+        capabilities: event.detail?.capabilities ?? {},
+    });
 });
-window.addEventListener("pageshow", () => void refreshDeveloperMode());
-window.addEventListener("focus", () => void refreshDeveloperMode());
+window.addEventListener("pageshow", () => void refreshViewerState());
+window.addEventListener("focus", () => void refreshViewerState());
 document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
-        void refreshDeveloperMode();
+        void refreshViewerState();
     }
 });
 
-function renderNavigation(nav, developerMode) {
+function renderNavigation(nav, state) {
     const currentPage = nav.dataset.currentPage ?? "";
     nav.textContent = "";
 
-    for (const page of viewerPages.filter((item) => developerMode || !item.developerOnly)) {
+    for (const page of visibleViewerPages(state)) {
         const link = document.createElement("a");
         link.className = page.id === currentPage ? "site-nav__link site-nav__link--active" : "site-nav__link";
         link.href = page.href;
@@ -30,14 +38,17 @@ function renderNavigation(nav, developerMode) {
     }
 }
 
-async function refreshDeveloperMode(options = {}) {
+async function refreshViewerState(options = {}) {
     const retries = options.retries ?? 0;
     for (let attempt = 0; attempt <= retries; attempt += 1) {
         try {
             const response = await fetch("/api/health", { cache: "no-store" });
             if (response.ok) {
                 const health = await response.json();
-                applyDeveloperMode(Boolean(health.developerMode));
+                applyViewerState({
+                    developerMode: Boolean(health.developerMode),
+                    capabilities: health.capabilities ?? {},
+                });
                 return;
             }
         } catch {
@@ -49,16 +60,20 @@ async function refreshDeveloperMode(options = {}) {
         }
     }
 
-    applyDeveloperMode(false);
+    applyViewerState(defaultViewerState);
 }
 
-function applyDeveloperMode(developerMode) {
+function applyViewerState(state) {
     for (const nav of document.querySelectorAll("[data-viewer-nav]")) {
-        renderNavigation(nav, developerMode);
+        renderNavigation(nav, state);
     }
 
     for (const element of document.querySelectorAll("[data-developer-only]")) {
-        element.hidden = !developerMode;
+        element.hidden = !state.developerMode;
+    }
+
+    for (const element of document.querySelectorAll("[data-capability]")) {
+        element.hidden = state.capabilities?.[element.dataset.capability] === false;
     }
 }
 

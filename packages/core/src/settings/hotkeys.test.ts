@@ -4,6 +4,9 @@ import {
   applyCommunityModHotkeySettingsPatch,
   buildCommunityModHotkeySettingsSnapshot,
   formatShortcutValue,
+  hotkeyActionCatalogForProfile,
+  hotkeyHardSettingCatalogForProfile,
+  normalizeCommunityModSettingsProfile,
   normalizeHotkeySettingsPatch,
 } from "./hotkeys.js";
 
@@ -108,5 +111,42 @@ zoom_preset1 = "F1"
     expect(updated).toContain("allow_key_fallthrough = true");
     expect(updated).toContain('zoom_preset1 = "NONE"');
     expect(updated).toContain('action_view = "V|MOUSE2"');
+  });
+
+  it("filters fork-only settings from the netniV Basic profile", () => {
+    const snapshot = buildCommunityModHotkeySettingsSnapshot(`
+[control]
+allow_key_fallthrough = true
+
+[ui]
+escape_exit_timer = 300
+`, { profile: "netniv-basic" });
+
+    expect(snapshot.profile).toBe("netniv-basic");
+    expect(snapshot.hardSettings.map((setting) => setting.id)).not.toContain("control.allow_key_fallthrough");
+    expect(snapshot.hardSettings.map((setting) => setting.id)).not.toContain("ui.escape_exit_timer");
+    expect(snapshot.actions.map((action) => action.id)).not.toContain("move_up");
+    expect(snapshot.actions.map((action) => action.id)).not.toContain("set_hotkeys_disable");
+  });
+
+  it("keeps existing settings behavior in the advanced profile", () => {
+    expect(hotkeyHardSettingCatalogForProfile("guff-advanced").map((setting) => setting.id)).toContain("control.allow_key_fallthrough");
+    expect(hotkeyActionCatalogForProfile("guff-advanced").map((action) => action.id)).toContain("move_up");
+  });
+
+  it("rejects advanced-only patches in the netniV Basic profile", () => {
+    expect(() => normalizeHotkeySettingsPatch({
+      hardSettings: { "control.allow_key_fallthrough": true },
+    }, { profile: "netniv-basic" })).toThrow(/Unknown hard setting/);
+
+    expect(() => normalizeHotkeySettingsPatch({
+      shortcuts: { move_up: "W" },
+    }, { profile: "netniv-basic" })).toThrow(/Unknown shortcut action/);
+  });
+
+  it("normalizes profile aliases while defaulting to the current advanced behavior", () => {
+    expect(normalizeCommunityModSettingsProfile("official")).toBe("netniv-basic");
+    expect(normalizeCommunityModSettingsProfile("alpha")).toBe("guff-advanced");
+    expect(normalizeCommunityModSettingsProfile(undefined)).toBe("guff-advanced");
   });
 });

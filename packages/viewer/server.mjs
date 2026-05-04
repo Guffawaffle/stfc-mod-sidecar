@@ -21,6 +21,24 @@ import {
 import { buildReleaseInfo } from "./release-info.mjs";
 import { fetchReleaseUpdateCheck } from "./release-update.mjs";
 import { buildDiagnosticsBundle, buildDiagnosticsMarkdown } from "./diagnostics-bundle.mjs";
+import { detectCommunityModInstall } from "./community-mod-install.mjs";
+import { verifyCommunityModArtifact } from "./community-mod-artifact-verification.mjs";
+import { stageCommunityModArtifact } from "./community-mod-artifact-staging.mjs";
+import { buildCommunityModInstallConfirmation } from "./community-mod-install-confirmation.mjs";
+import {
+    buildCommunityModInstallExecutionBlocked,
+    buildCommunityModInstallExecutionRequest,
+    executeCommunityModInstall,
+} from "./community-mod-install-execution.mjs";
+import {
+    buildCommunityModInstallPreflight,
+    detectStfcGameProcess,
+} from "./community-mod-install-preflight.mjs";
+import {
+    fetchCommunityModReleaseCatalog,
+    normalizeCommunityModReleaseProfile,
+} from "./community-mod-release-catalog.mjs";
+import { buildCommunityModInstallPlan } from "./community-mod-install-plan.mjs";
 
 const DEFAULT_GAME_DIR = "C:\\Games\\Star Trek Fleet Command\\default\\game";
 const DEFAULT_FEED_FILE = "community_patch_battle_feed.jsonl";
@@ -41,6 +59,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..");
 const publicDir = path.join(__dirname, "public");
+const DEFAULT_ARTIFACT_CACHE_DIR = path.join(repoRoot, ".sidecar", "mod-artifacts");
 
 const { gameDir, feedPath, settingsPath, port, defaultLimit, developerMode } = parseArgs(process.argv.slice(2));
 const companionMode = companionModeFromDeveloperMode(developerMode);
@@ -68,6 +87,7 @@ let exitTimer;
 let createSqlSidecarEventStore;
 let applyCommunityModHotkeySettingsPatch;
 let buildCommunityModHotkeySettingsSnapshot;
+let normalizeCommunityModSettingsProfile;
 let isSidecarEvent;
 let parseEventJsonLine;
 try {
@@ -76,6 +96,7 @@ try {
         buildCommunityModHotkeySettingsSnapshot,
         createSqlSidecarEventStore,
         isSidecarEvent,
+        normalizeCommunityModSettingsProfile,
         parseEventJsonLine,
     } = await import(new URL("../core/dist/index.js", import.meta.url)));
 } catch (error) {
@@ -84,6 +105,8 @@ try {
     process.exit(1);
 }
 
+const communityModSettingsProfile = normalizeCommunityModSettingsProfile(process.env.STFC_SIDECAR_MOD_PROFILE);
+const communityModCapabilities = buildCommunityModCapabilities(communityModSettingsProfile);
 const eventStore = await createConfiguredEventStore();
 
 const server = createServer(async (request, response) => {
@@ -91,6 +114,10 @@ const server = createServer(async (request, response) => {
 
     if (isDeveloperOnlyApiPath(requestUrl.pathname) && !developerMode) {
         return sendJson(response, 403, developerModeRequiredPayload());
+    }
+
+    if (isBattleLogApiPath(requestUrl.pathname) && !communityModCapabilities.battleLog) {
+        return sendJson(response, 403, capabilityUnavailablePayload("battleLog"));
     }
 
     if (requestUrl.pathname === "/api/events") {
@@ -164,6 +191,211 @@ const server = createServer(async (request, response) => {
         }
     }
 
+    if (requestUrl.pathname === "/api/mod/release-catalog") {
+        if (request.method && request.method !== "GET") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        try {
+            return sendJson(response, 200, await fetchCommunityModReleaseCatalog({
+                profile: normalizeCommunityModReleaseProfile(
+                    requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
+                ),
+            }));
+        } catch (error) {
+            return sendJson(response, 502, {
+                ok: false,
+                status: "error",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
+            });
+        }
+    }
+
+    if (requestUrl.pathname === "/api/mod/install-plan") {
+        if (request.method && request.method !== "GET") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        try {
+            const profile = normalizeCommunityModReleaseProfile(
+                requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
+            );
+            const [install, catalog] = await Promise.all([
+                readCommunityModInstallStatus(),
+                fetchCommunityModReleaseCatalog({ profile }),
+            ]);
+            return sendJson(response, 200, buildCommunityModInstallPlan({ profile, install, catalog }));
+        } catch (error) {
+            return sendJson(response, 502, {
+                ok: false,
+                status: "error",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
+            });
+        }
+    }
+
+    if (requestUrl.pathname === "/api/mod/verify-artifact") {
+        if (request.method !== "POST") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        try {
+            const profile = normalizeCommunityModReleaseProfile(
+                requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
+            );
+            const catalog = await fetchCommunityModReleaseCatalog({ profile });
+            return sendJson(response, 200, await verifyCommunityModArtifact({
+                catalog,
+                cacheDir: process.env.STFC_SIDECAR_CACHE_DIR || DEFAULT_ARTIFACT_CACHE_DIR,
+            }));
+        } catch (error) {
+            return sendJson(response, 502, {
+                ok: false,
+                status: "error",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
+            });
+        }
+    }
+
+    if (requestUrl.pathname === "/api/mod/install-preflight") {
+        if (request.method !== "POST") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        try {
+            const profile = normalizeCommunityModReleaseProfile(
+                requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
+            );
+            const [install, catalog] = await Promise.all([
+                readCommunityModInstallStatus(),
+                fetchCommunityModReleaseCatalog({ profile }),
+            ]);
+            const installPlan = buildCommunityModInstallPlan({ profile, install, catalog });
+            const gameProcess = await detectStfcGameProcess();
+            let preflight = buildCommunityModInstallPreflight({ installPlan, gameProcess });
+            if (preflight.status === "artifact_not_verified") {
+                const artifactVerification = await verifyCommunityModArtifact({
+                    catalog,
+                    cacheDir: process.env.STFC_SIDECAR_CACHE_DIR || DEFAULT_ARTIFACT_CACHE_DIR,
+                });
+                preflight = buildCommunityModInstallPreflight({ installPlan, artifactVerification, gameProcess });
+            }
+
+            return sendJson(response, 200, preflight);
+        } catch (error) {
+            return sendJson(response, 502, {
+                ok: false,
+                status: "error",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
+            });
+        }
+    }
+
+    if (requestUrl.pathname === "/api/mod/stage-artifact") {
+        if (request.method !== "POST") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        try {
+            const profile = normalizeCommunityModReleaseProfile(
+                requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
+            );
+            const catalog = await fetchCommunityModReleaseCatalog({ profile });
+            const cacheDir = process.env.STFC_SIDECAR_CACHE_DIR || DEFAULT_ARTIFACT_CACHE_DIR;
+            const verification = await verifyCommunityModArtifact({ catalog, cacheDir });
+            return sendJson(response, 200, await stageCommunityModArtifact({ catalog, verification, cacheDir }));
+        } catch (error) {
+            return sendJson(response, 502, {
+                ok: false,
+                status: "error",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
+            });
+        }
+    }
+
+    if (requestUrl.pathname === "/api/mod/install-confirmation") {
+        if (request.method !== "POST") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        try {
+            const profile = normalizeCommunityModReleaseProfile(
+                requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
+            );
+            return sendJson(response, 200, await buildCurrentCommunityModInstallConfirmation(profile));
+        } catch (error) {
+            return sendJson(response, 502, {
+                ok: false,
+                status: "error",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
+            });
+        }
+    }
+
+    if (requestUrl.pathname === "/api/mod/install-execution") {
+        if (request.method !== "POST") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        let payload;
+        try {
+            payload = await readJsonBody(request);
+        } catch (error) {
+            return sendJson(response, 400, {
+                ok: false,
+                status: "invalid_request",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
+            });
+        }
+
+        try {
+            const profile = normalizeCommunityModReleaseProfile(
+                requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
+            );
+            const confirmation = await buildCurrentCommunityModInstallConfirmation(profile);
+            if (confirmation.status !== "ready_for_confirmation") {
+                return sendJson(response, 200, buildCommunityModInstallExecutionBlocked({
+                    confirmation,
+                    executionRequest: {
+                        ok: true,
+                        status: confirmation.status,
+                        summary: confirmation.summary,
+                        warnings: ["Install execution is blocked by confirmation preflight."],
+                    },
+                }));
+            }
+
+            const executionRequest = buildCommunityModInstallExecutionRequest({
+                payload,
+                confirmation,
+                env: process.env,
+            });
+            if (executionRequest.status !== "ready") {
+                return sendJson(response, 200, buildCommunityModInstallExecutionBlocked({ confirmation, executionRequest }));
+            }
+
+            return sendJson(response, 200, await executeCommunityModInstall({
+                confirmation,
+                gameProcess: await detectStfcGameProcess(),
+                enableExecution: true,
+            }));
+        } catch (error) {
+            return sendJson(response, 502, {
+                ok: false,
+                status: "error",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
+            });
+        }
+    }
+
     const eventLineMatch = /^\/api\/events\/([0-9]+)$/.exec(requestUrl.pathname);
     if (eventLineMatch) {
         if (request.method && request.method !== "GET") {
@@ -177,6 +409,7 @@ const server = createServer(async (request, response) => {
 
     if (requestUrl.pathname === "/api/health") {
         const storedEvents = eventStore ? await eventStore.count() : 0;
+        const communityModInstall = await readCommunityModInstallStatus();
         return sendJson(response, 200, {
             ok: true,
             pid: process.pid,
@@ -187,6 +420,10 @@ const server = createServer(async (request, response) => {
             defaultLimit,
             developerMode,
             companionMode,
+            modProfile: communityModSettingsProfile,
+            settingsProfile: communityModSettingsProfile,
+            capabilities: communityModCapabilities,
+            communityModInstall,
             release: releaseInfo,
             eventStoreBackend: eventStore?.backend ?? "none",
             storedEvents,
@@ -207,6 +444,9 @@ const server = createServer(async (request, response) => {
             ok: true,
             developerMode,
             companionMode,
+            modProfile: communityModSettingsProfile,
+            settingsProfile: communityModSettingsProfile,
+            capabilities: communityModCapabilities,
             feedPath,
             settingsPath,
             eventStoreBackend: eventStore?.backend ?? "none",
@@ -242,6 +482,10 @@ const server = createServer(async (request, response) => {
         return sendJson(response, 403, developerModeRequiredPayload());
     }
 
+    if (isBattleLogPublicPath(requestUrl.pathname) && !communityModCapabilities.battleLog) {
+        return sendJson(response, 403, capabilityUnavailablePayload("battleLog"));
+    }
+
     const publicAsset = await resolvePublicAsset(requestUrl.pathname);
     if (publicAsset) {
         return sendFile(response, publicAsset.filePath, publicAsset.contentType);
@@ -258,8 +502,12 @@ server.on("error", (error) => {
 server.listen(port, "127.0.0.1", () => {
     console.log(`[sidecar-viewer] pid ${process.pid}`);
     console.log(`[sidecar-viewer] listening on http://127.0.0.1:${port}`);
-    console.log(`[sidecar-viewer] feed path: ${feedPath}`);
-    ensureFeedWatcher();
+    if (communityModCapabilities.battleLog) {
+        console.log(`[sidecar-viewer] feed path: ${feedPath}`);
+        ensureFeedWatcher();
+    } else {
+        console.log(`[sidecar-viewer] battle log surfaces disabled for profile ${communityModSettingsProfile}`);
+    }
 });
 
 process.on("SIGINT", () => {
@@ -271,7 +519,7 @@ process.on("SIGTERM", () => {
 });
 
 async function createConfiguredEventStore() {
-    const backend = (process.env.STFC_SIDECAR_STORE_BACKEND ?? "sqlite").trim().toLowerCase();
+    const backend = (process.env.STFC_SIDECAR_STORE_BACKEND ?? (communityModCapabilities.eventStore ? "sqlite" : "none")).trim().toLowerCase();
     if (backend === "none") {
         return null;
     }
@@ -298,11 +546,80 @@ async function createConfiguredEventStore() {
     throw new Error(`Unsupported STFC_SIDECAR_STORE_BACKEND: ${backend}`);
 }
 
+function buildCommunityModCapabilities(profile) {
+    const battleLog = profile !== "netniv-basic";
+    return {
+        settings: true,
+        installStatus: true,
+        battleLog,
+        eventStore: battleLog,
+    };
+}
+
+function isBattleLogApiPath(pathname) {
+    return pathname === "/api/events" || pathname === "/api/events/stream" || /^\/api\/events\/[0-9]+$/.test(pathname);
+}
+
+function isBattleLogPublicPath(pathname) {
+    return pathname === "/battle-log" || pathname.startsWith("/battle-log/");
+}
+
+function capabilityUnavailablePayload(capability) {
+    return {
+        ok: false,
+        code: "profile_capability_unavailable",
+        error: `${capability} is not available for the active Community Mod profile.`,
+        capability,
+        modProfile: communityModSettingsProfile,
+    };
+}
+
+async function readCommunityModInstallStatus() {
+    try {
+        return await detectCommunityModInstall(gameDir);
+    } catch (error) {
+        return {
+            ok: false,
+            state: "error",
+            classification: "unknown",
+            profile: "unknown",
+            error: error instanceof Error ? error.message : String(error),
+            generatedAt: new Date().toISOString(),
+        };
+    }
+}
+
+async function buildCurrentCommunityModInstallConfirmation(profile) {
+    const [install, catalog] = await Promise.all([
+        readCommunityModInstallStatus(),
+        fetchCommunityModReleaseCatalog({ profile }),
+    ]);
+    const cacheDir = process.env.STFC_SIDECAR_CACHE_DIR || DEFAULT_ARTIFACT_CACHE_DIR;
+    const installPlan = buildCommunityModInstallPlan({ profile, install, catalog });
+    const gameProcess = await detectStfcGameProcess();
+    let artifactVerification = null;
+    let artifactStaging = null;
+    let preflight = buildCommunityModInstallPreflight({ installPlan, gameProcess });
+    if (preflight.status === "artifact_not_verified") {
+        artifactVerification = await verifyCommunityModArtifact({ catalog, cacheDir });
+        if (artifactVerification.status === "verified") {
+            artifactStaging = await stageCommunityModArtifact({ catalog, verification: artifactVerification, cacheDir });
+        }
+        preflight = buildCommunityModInstallPreflight({ installPlan, artifactVerification, gameProcess });
+    }
+
+    return buildCommunityModInstallConfirmation({
+        installPlan,
+        preflight,
+        artifactStaging,
+    });
+}
+
 async function readHotkeySettingsSnapshot() {
     const generatedAt = new Date().toISOString();
     const exists = existsSync(settingsPath);
     const contents = exists ? await readFile(settingsPath, "utf8") : "";
-    const snapshot = buildCommunityModHotkeySettingsSnapshot(contents);
+    const snapshot = buildCommunityModHotkeySettingsSnapshot(contents, { profile: communityModSettingsProfile });
 
     return {
         ...snapshot,
@@ -313,6 +630,7 @@ async function readHotkeySettingsSnapshot() {
         settingsSaveMode,
         saveSupported: true,
         applyMode: "next_launch",
+        modProfile: communityModSettingsProfile,
     };
 }
 
@@ -320,12 +638,19 @@ async function readDiagnosticsBundle() {
     const generatedAt = new Date().toISOString();
     const [storedEvents, feed, settings] = await Promise.all([
         eventStore ? eventStore.count() : Promise.resolve(0),
-        readEventsSnapshot(25, { includeDetails: false }).catch((error) => ({
-            ok: false,
-            exists: false,
-            source: "unknown",
-            error: error instanceof Error ? error.message : String(error),
-        })),
+        communityModCapabilities.battleLog
+            ? readEventsSnapshot(25, { includeDetails: false }).catch((error) => ({
+                ok: false,
+                exists: false,
+                source: "unknown",
+                error: error instanceof Error ? error.message : String(error),
+            }))
+            : Promise.resolve({
+                ok: true,
+                exists: false,
+                source: "disabled",
+                error: "Battle Log is not available for the active Community Mod profile.",
+            }),
         readHotkeySettingsSnapshot().catch((error) => ({
             exists: false,
             parseError: true,
@@ -364,7 +689,7 @@ async function handleHotkeySettingsUpdate(request, response) {
     try {
         const payload = await readJsonBody(request);
         const previousContents = existsSync(settingsPath) ? await readFile(settingsPath, "utf8") : "";
-        const nextContents = applyCommunityModHotkeySettingsPatch(previousContents, payload);
+        const nextContents = applyCommunityModHotkeySettingsPatch(previousContents, payload, { profile: communityModSettingsProfile });
         await mkdir(path.dirname(settingsPath), { recursive: true });
 
         if (existsSync(settingsPath)) {

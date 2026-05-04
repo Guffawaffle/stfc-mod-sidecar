@@ -24,6 +24,22 @@ Official release artifacts are built by `.github/workflows/release-windows.yml`
 with `WIN_SIGN_MODE=azure`. That workflow must verify every generated `.exe`
 with `signtool verify /pa /v` and `Get-AuthenticodeSignature` before upload.
 
+## Latest Local Readiness Snapshot
+
+Recorded on 2026-05-04 after the Basic companion install/update sprint:
+
+- `npm run ax -- check`: passed.
+- `npm run ax -- ci`: passed, including Windows NSIS and portable packaging.
+- VS Code diagnostics: no errors.
+- `git diff --check`: passed.
+- Packaged launch, silent setup, silent uninstall, source-server install flow,
+  About-page install execution, different-DLL profile handling, and manual
+  recovery smokes were run in the preceding full smoke pass.
+
+This snapshot does not make the product signed-release-ready. Interactive
+installer smoke, signed artifact verification, full uninstall behavior, and the
+remaining release/security roadmap work still need their own release records.
+
 ## Manual Smoke Matrix
 
 Record each result as `pass`, `fail`, `not run`, or `blocked`, with a short note.
@@ -49,6 +65,10 @@ Record each result as `pass`, `fail`, `not run`, or `blocked`, with a short note
 | Battle Log | Open Battle Log against the live feed. | Existing entries render and detail views open without console/runtime errors. |
 | Battle Log | Wait for new live entries. | Live updates arrive through `/api/events/stream` without the old two-second browser polling loop; record observed delay, reconnect behavior, and any stale state. |
 | Release Info | Open About and run Check for Updates. | Version, release channel, update mode, signing expectation, and manual update result match the artifact being tested. No unsigned asset is downloaded automatically. |
+| Community Mod Install | Run `npm run smoke:mod-install`. | Temporary install and replacement both succeed, replacement creates a backup, and the real STFC directory is not touched. |
+| Community Mod Install | With STFC closed and a disposable game directory selected, enable `STFC_SIDECAR_ENABLE_MOD_INSTALL_EXECUTION=1`, prepare confirmation, and click Execute Install. | Endpoint returns installed/replaced receipt, About shows recovery guidance, and writes are limited to the disposable directory. |
+| Community Mod Install | Repeat the live endpoint smoke while `prime.exe` is running. | Execution is blocked with no game-directory write attempted. |
+| Community Mod Recovery | For a replacement receipt with a backup path, manually restore the backup over `version.dll` in the disposable directory. | Refresh Status reclassifies the restored DLL and no stale manifest is trusted when the DLL hash differs. |
 | Upgrade | Install over an existing version with `desktop-settings.json`. | Existing game directory and `developerMode` remain authoritative. |
 | Uninstall | Run uninstaller. | Installed files are removed. Record whether user-data settings/logs remain by design or need cleanup work. |
 
@@ -98,6 +118,7 @@ Copy this into the release issue, pull request, or release notes draft.
 - npm run check:
 - git diff --check:
 - npm run desktop:dist:win:
+- npm run smoke:mod-install:
 - CI Authenticode verification:
 
 ### Manual Smoke
@@ -117,6 +138,10 @@ Copy this into the release issue, pull request, or release notes draft.
 | Settings save | not run | |
 | Battle Log live feed | not run | |
 | About release info | not run | |
+| Community Mod temp-dir smoke | not run | |
+| Community Mod live endpoint smoke | not run | |
+| Community Mod running-game block | not run | |
+| Community Mod rollback restore | not run | |
 | Upgrade preserves settings | not run | |
 | Uninstall | not run | |
 
