@@ -10,6 +10,10 @@ import {
     communityModInstallPlanSummary,
     communityModArtifactVerificationLabel,
     communityModArtifactVerificationSummary,
+    communityModArtifactStagingLabel,
+    communityModArtifactStagingSummary,
+    communityModInstallConfirmationLabel,
+    communityModInstallConfirmationSummary,
     modProfileLabel,
 } from "../../viewer/public/shared/community-mod-status.js";
 
@@ -118,5 +122,41 @@ describe("Community Mod status formatting", () => {
         expect(communityModArtifactVerificationLabel(verification)).toBe("Artifact verified");
         expect(communityModArtifactVerificationSummary(verification)).toContain("SHA-256 945E73F7A122...");
         expect(communityModArtifactVerificationSummary(verification)).toContain("cached");
+    });
+
+    test("formats staged artifacts as sidecar-cache only", () => {
+        const staging = {
+            ok: true,
+            status: "staged",
+            summary: "Community Mod version.dll staged in the sidecar cache.",
+            staged: {
+                bytes: 10860032,
+                dllSha256: "45DBE5FA43E23B05467A3FC3C7237DCD0C45EE0ED193658307B6001EC5508ACA",
+            },
+            safety: { writesGameDirectory: false },
+        };
+
+        expect(communityModArtifactStagingLabel(staging)).toBe("version.dll staged");
+        expect(communityModArtifactStagingSummary(staging)).toContain("DLL SHA-256 45DBE5FA43E2...");
+        expect(communityModArtifactStagingSummary(staging)).toContain("sidecar cache only");
+    });
+
+    test("formats install confirmation without implying copy execution", () => {
+        const confirmation = {
+            ok: true,
+            status: "ready_for_confirmation",
+            summary: "Replace unknown version.dll is ready for explicit user confirmation.",
+            staged: { dllSha256: "45DBE5FA43E23B05467A3FC3C7237DCD0C45EE0ED193658307B6001EC5508ACA" },
+            target: {
+                destinationPath: "C:\\Games\\Star Trek Fleet Command\\default\\game\\version.dll",
+                backupPath: "C:\\Games\\Star Trek Fleet Command\\default\\game\\.stfc-sidecar\\backups\\version.dll.bak",
+            },
+            execution: { enabled: false },
+        };
+
+        expect(communityModInstallConfirmationLabel(confirmation)).toBe("Confirmation ready");
+        expect(communityModInstallConfirmationSummary(confirmation)).toContain("Staged SHA-256 45DBE5FA43E2...");
+        expect(communityModInstallConfirmationSummary(confirmation)).toContain("Destination C:\\Games");
+        expect(communityModInstallConfirmationSummary(confirmation)).toContain("copy disabled");
     });
 });

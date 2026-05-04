@@ -22,6 +22,7 @@
 - Added a Community Mod install preflight endpoint that checks plan, artifact
   verification, and `prime.exe` status before any write path exists.
 - Added cache-only Community Mod `version.dll` staging from verified artifacts without writing into the game directory.
+- Added a Community Mod install confirmation contract that plans destination, backup, and staged hash details while DLL copy execution remains disabled.
 - Added `POST /api/events` ingest endpoint with Bearer token auth
   (`STFC_SIDECAR_SYNC_TOKEN`, or a launch-scoped generated token when unset)
 - Added manual `/api/release/check` update checks and About-page release status

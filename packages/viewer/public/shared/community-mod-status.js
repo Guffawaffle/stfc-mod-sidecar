@@ -235,6 +235,86 @@ export function communityModArtifactVerificationSummary(verification) {
     return `${verification.summary ?? "Artifact verification unavailable."}${sha}${dll}${cache}`;
 }
 
+export function communityModArtifactStagingLabel(staging) {
+    if (!staging) {
+        return "version.dll not staged";
+    }
+
+    if (staging.ok === false || staging.status === "error") {
+        return "Staging failed";
+    }
+
+    switch (staging.status) {
+        case "staged":
+            return "version.dll staged";
+        case "artifact_not_verified":
+            return "Artifact not verified";
+        case "artifact_cache_mismatch":
+            return "Cached artifact mismatch";
+        case "unsafe_zip_entries":
+            return "Unsafe zip entries detected";
+        case "missing_expected_dll":
+            return "version.dll missing from artifact";
+        default:
+            return "Staging unavailable";
+    }
+}
+
+export function communityModArtifactStagingSummary(staging) {
+    if (!staging) {
+        return "Prepare Confirmation stages the verified version.dll in the sidecar cache.";
+    }
+
+    if (staging.ok === false) {
+        return String(staging.error ?? "Community Mod artifact staging failed.");
+    }
+
+    const sha = staging.staged?.dllSha256 ? ` | DLL SHA-256 ${shortSha256(staging.staged.dllSha256)}` : "";
+    const bytes = Number.isFinite(staging.staged?.bytes) ? ` | ${staging.staged.bytes} bytes` : "";
+    const sidecarOnly = staging.safety?.writesGameDirectory === false ? " | sidecar cache only" : "";
+    return `${staging.summary ?? "Artifact staging unavailable."}${sha}${bytes}${sidecarOnly}`;
+}
+
+export function communityModInstallConfirmationLabel(confirmation) {
+    if (!confirmation) {
+        return "Confirmation not prepared";
+    }
+
+    if (confirmation.ok === false || confirmation.status === "error") {
+        return "Confirmation failed";
+    }
+
+    switch (confirmation.status) {
+        case "ready_for_confirmation":
+            return "Confirmation ready";
+        case "game_running":
+            return "Close STFC first";
+        case "artifact_not_staged":
+        case "artifact_cache_mismatch":
+            return "Staged DLL required";
+        case "game_directory_unavailable":
+            return "Game directory required";
+        default:
+            return "Confirmation blocked";
+    }
+}
+
+export function communityModInstallConfirmationSummary(confirmation) {
+    if (!confirmation) {
+        return "Prepare Confirmation builds the final review text without copying files.";
+    }
+
+    if (confirmation.ok === false) {
+        return String(confirmation.error ?? "Community Mod install confirmation failed.");
+    }
+
+    const staged = confirmation.staged?.dllSha256 ? ` | Staged SHA-256 ${shortSha256(confirmation.staged.dllSha256)}` : "";
+    const destination = confirmation.target?.destinationPath ? ` | Destination ${confirmation.target.destinationPath}` : "";
+    const backup = confirmation.target?.backupPath ? ` | Backup ${confirmation.target.backupPath}` : "";
+    const execution = confirmation.execution?.enabled === false ? " | copy disabled" : "";
+    return `${confirmation.summary ?? "Install confirmation unavailable."}${staged}${destination}${backup}${execution}`;
+}
+
 export function modProfileLabel(profile) {
     return normalizeModProfile(profile) === "netniv-basic" ? "Official Basic" : "Advanced Alpha";
 }

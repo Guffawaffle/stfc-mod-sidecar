@@ -7,6 +7,10 @@ import {
     communityModInstallPlanSummary,
     communityModArtifactVerificationLabel,
     communityModArtifactVerificationSummary,
+    communityModArtifactStagingLabel,
+    communityModArtifactStagingSummary,
+    communityModInstallConfirmationLabel,
+    communityModInstallConfirmationSummary,
 } from "../shared/community-mod-status.js";
 
 const state = {
@@ -16,8 +20,11 @@ const state = {
     modReleaseCatalog: null,
     modInstallPlan: null,
     modArtifactVerification: null,
+    modArtifactStaging: null,
+    modInstallConfirmation: null,
     modReleaseChecking: false,
     modArtifactVerifying: false,
+    modInstallConfirming: false,
 };
 
 const elements = {
@@ -40,9 +47,14 @@ const elements = {
     modPlanDetail: document.querySelector("#about-mod-plan-detail"),
     modArtifactState: document.querySelector("#about-mod-artifact-state"),
     modArtifactDetail: document.querySelector("#about-mod-artifact-detail"),
+    modStagingState: document.querySelector("#about-mod-staging-state"),
+    modStagingDetail: document.querySelector("#about-mod-staging-detail"),
+    modConfirmationState: document.querySelector("#about-mod-confirmation-state"),
+    modConfirmationDetail: document.querySelector("#about-mod-confirmation-detail"),
     refreshModStatus: document.querySelector("#refresh-mod-status"),
     checkModRelease: document.querySelector("#check-mod-release"),
     verifyModArtifact: document.querySelector("#verify-mod-artifact"),
+    prepareModConfirmation: document.querySelector("#prepare-mod-confirmation"),
     modReleaseLink: document.querySelector("#about-mod-release-link"),
     diagnosticsState: document.querySelector("#diagnostics-state"),
     diagnosticsPreview: document.querySelector("#diagnostics-preview"),
@@ -59,6 +71,7 @@ elements.checkReleaseUpdate?.addEventListener("click", () => void checkReleaseUp
 elements.refreshModStatus?.addEventListener("click", () => void refreshModStatus());
 elements.checkModRelease?.addEventListener("click", () => void checkModRelease());
 elements.verifyModArtifact?.addEventListener("click", () => void verifyModArtifact());
+elements.prepareModConfirmation?.addEventListener("click", () => void prepareModInstallConfirmation());
 
 await loadMode();
 
@@ -184,10 +197,18 @@ function renderCommunityModStatus() {
     elements.modPlanDetail.textContent = communityModInstallPlanSummary(state.modInstallPlan);
     elements.modArtifactState.textContent = communityModArtifactVerificationLabel(state.modArtifactVerification);
     elements.modArtifactDetail.textContent = communityModArtifactVerificationSummary(state.modArtifactVerification);
+    elements.modStagingState.textContent = communityModArtifactStagingLabel(state.modArtifactStaging);
+    elements.modStagingDetail.textContent = communityModArtifactStagingSummary(state.modArtifactStaging);
+    elements.modConfirmationState.textContent = communityModInstallConfirmationLabel(state.modInstallConfirmation);
+    elements.modConfirmationDetail.textContent = communityModInstallConfirmationSummary(state.modInstallConfirmation);
     setModReleaseLink(state.modReleaseCatalog?.release?.htmlUrl);
     elements.checkModRelease.disabled = state.modReleaseChecking;
     elements.verifyModArtifact.disabled = state.modReleaseChecking
         || state.modArtifactVerifying
+        || !state.modInstallPlan?.target?.assetName;
+    elements.prepareModConfirmation.disabled = state.modReleaseChecking
+        || state.modArtifactVerifying
+        || state.modInstallConfirming
         || !state.modInstallPlan?.target?.assetName;
 }
 
@@ -196,6 +217,8 @@ async function checkModRelease() {
     state.modReleaseCatalog = null;
     state.modInstallPlan = null;
     state.modArtifactVerification = null;
+    state.modArtifactStaging = null;
+    state.modInstallConfirmation = null;
     renderCommunityModStatus();
 
     try {
@@ -396,6 +419,47 @@ async function fetchModArtifactVerification() {
         throw new Error(result.error
             ? `Mod artifact verification failed: ${result.error}`
             : `Mod artifact verification failed: ${response.status}`);
+    }
+
+    return result;
+}
+
+async function prepareModInstallConfirmation() {
+    state.modInstallConfirming = true;
+    state.modArtifactStaging = null;
+    state.modInstallConfirmation = null;
+    renderCommunityModStatus();
+
+    try {
+        state.modInstallConfirmation = await fetchModInstallConfirmation();
+        state.modArtifactStaging = state.modInstallConfirmation.artifactStaging ?? null;
+        const verification = state.modArtifactStaging?.artifactVerification;
+        if (verification) {
+            state.modArtifactVerification = verification;
+        }
+    } catch (error) {
+        state.modInstallConfirmation = {
+            ok: false,
+            status: "error",
+            error: error instanceof Error ? error.message : String(error),
+        };
+    } finally {
+        state.modInstallConfirming = false;
+        renderCommunityModStatus();
+    }
+}
+
+async function fetchModInstallConfirmation() {
+    const profile = encodeURIComponent(state.bootstrap?.modProfile ?? state.bootstrap?.settingsProfile ?? "");
+    const response = await fetch(`/api/mod/install-confirmation?profile=${profile}`, {
+        cache: "no-store",
+        method: "POST",
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok === false) {
+        throw new Error(result.error
+            ? `Mod install confirmation failed: ${result.error}`
+            : `Mod install confirmation failed: ${response.status}`);
     }
 
     return result;
