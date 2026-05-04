@@ -19,6 +19,8 @@
 - Added About and Settings status surfaces for installed Community Mod provenance and profile release metadata.
 - Added a dry-run Community Mod install/update plan endpoint and About-page plan status without enabling DLL writes yet.
 - Added cached Community Mod artifact verification with SHA-256 and zip structure checks, still without game-directory writes.
+- Added a Community Mod install preflight endpoint that checks plan, artifact
+  verification, and `prime.exe` status before any write path exists.
 - Added `POST /api/events` ingest endpoint with Bearer token auth
   (`STFC_SIDECAR_SYNC_TOKEN`, or a launch-scoped generated token when unset)
 - Added manual `/api/release/check` update checks and About-page release status
