@@ -21,6 +21,7 @@ import {
 import { buildReleaseInfo } from "./release-info.mjs";
 import { fetchReleaseUpdateCheck } from "./release-update.mjs";
 import { buildDiagnosticsBundle, buildDiagnosticsMarkdown } from "./diagnostics-bundle.mjs";
+import { detectCommunityModInstall } from "./community-mod-install.mjs";
 
 const DEFAULT_GAME_DIR = "C:\\Games\\Star Trek Fleet Command\\default\\game";
 const DEFAULT_FEED_FILE = "community_patch_battle_feed.jsonl";
@@ -180,6 +181,7 @@ const server = createServer(async (request, response) => {
 
     if (requestUrl.pathname === "/api/health") {
         const storedEvents = eventStore ? await eventStore.count() : 0;
+        const communityModInstall = await readCommunityModInstallStatus();
         return sendJson(response, 200, {
             ok: true,
             pid: process.pid,
@@ -192,6 +194,7 @@ const server = createServer(async (request, response) => {
             companionMode,
             modProfile: communityModSettingsProfile,
             settingsProfile: communityModSettingsProfile,
+            communityModInstall,
             release: releaseInfo,
             eventStoreBackend: eventStore?.backend ?? "none",
             storedEvents,
@@ -303,6 +306,21 @@ async function createConfiguredEventStore() {
     }
 
     throw new Error(`Unsupported STFC_SIDECAR_STORE_BACKEND: ${backend}`);
+}
+
+async function readCommunityModInstallStatus() {
+    try {
+        return await detectCommunityModInstall(gameDir);
+    } catch (error) {
+        return {
+            ok: false,
+            state: "error",
+            classification: "unknown",
+            profile: "unknown",
+            error: error instanceof Error ? error.message : String(error),
+            generatedAt: new Date().toISOString(),
+        };
+    }
 }
 
 async function readHotkeySettingsSnapshot() {
