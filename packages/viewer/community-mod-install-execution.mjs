@@ -9,6 +9,103 @@ import {
 } from "./community-mod-install.mjs";
 
 const REPLACE_ACTIONS = new Set(["update", "reinstall", "replace_unknown", "replace_profile"]);
+export const COMMUNITY_MOD_INSTALL_EXECUTION_ACKNOWLEDGEMENT = "I understand this will modify version.dll in the selected STFC game directory.";
+
+export function buildCommunityModInstallExecutionRequest(options = {}) {
+    const payload = isRecord(options.payload) ? options.payload : {};
+    const confirmation = options.confirmation ?? null;
+    const env = options.env ?? process.env;
+    const serverEnabled = parseBooleanFlag(env.STFC_SIDECAR_ENABLE_MOD_INSTALL_EXECUTION);
+    const requested = payload.enableExecution === true;
+    const acknowledgement = String(payload.acknowledgement ?? "").trim();
+    const expectedAcknowledgement = confirmation?.confirmation?.acknowledgement
+        || COMMUNITY_MOD_INSTALL_EXECUTION_ACKNOWLEDGEMENT;
+    const confirmedStagedSha256 = normalizeSha256(payload.confirmedStagedSha256);
+    const expectedStagedSha256 = normalizeSha256(confirmation?.staged?.dllSha256);
+    const confirmedDestinationPath = String(payload.confirmedDestinationPath ?? "");
+    const expectedDestinationPath = String(confirmation?.target?.destinationPath ?? "");
+
+    const base = {
+        ok: true,
+        status: "ready",
+        requested,
+        serverEnabled,
+        acknowledgementAccepted: acknowledgement === expectedAcknowledgement,
+        expectedAcknowledgement,
+        confirmedStagedSha256,
+        expectedStagedSha256,
+        confirmedDestinationPath,
+        expectedDestinationPath,
+    };
+
+    if (!serverEnabled) {
+        return executionRequestResult(base, {
+            status: "server_execution_disabled",
+            summary: "Install execution endpoint is disabled for this process.",
+            warnings: ["Set STFC_SIDECAR_ENABLE_MOD_INSTALL_EXECUTION=1 to enable this endpoint."],
+        });
+    }
+
+    if (!requested) {
+        return executionRequestResult(base, {
+            status: "execution_not_requested",
+            summary: "Request body must explicitly set enableExecution to true.",
+            warnings: ["Execution request did not opt in."],
+        });
+    }
+
+    if (acknowledgement !== expectedAcknowledgement) {
+        return executionRequestResult(base, {
+            status: "acknowledgement_required",
+            summary: "Install execution acknowledgement text did not match the prepared confirmation.",
+            warnings: ["Exact acknowledgement text is required before execution."],
+        });
+    }
+
+    if (!expectedStagedSha256 || confirmedStagedSha256 !== expectedStagedSha256) {
+        return executionRequestResult(base, {
+            status: "staged_hash_confirmation_required",
+            summary: "Request must confirm the staged version.dll SHA-256 from the prepared confirmation.",
+            warnings: ["Confirmed staged SHA-256 did not match."],
+        });
+    }
+
+    if (!expectedDestinationPath || confirmedDestinationPath !== expectedDestinationPath) {
+        return executionRequestResult(base, {
+            status: "destination_confirmation_required",
+            summary: "Request must confirm the destination version.dll path from the prepared confirmation.",
+            warnings: ["Confirmed destination path did not match."],
+        });
+    }
+
+    return executionRequestResult(base, { status: "ready", summary: "Install execution request is explicitly confirmed." });
+}
+
+export function buildCommunityModInstallExecutionBlocked(options = {}) {
+    const confirmation = options.confirmation ?? null;
+    const executionRequest = options.executionRequest ?? null;
+    const backupRequired = confirmation?.safety?.backupBeforeReplace === true || REPLACE_ACTIONS.has(confirmation?.action);
+    return {
+        ok: true,
+        checkedAt: normalizeIsoTimestamp(options.checkedAt),
+        status: executionRequest?.status ?? "execution_request_blocked",
+        action: confirmation?.action ?? "none",
+        profile: confirmation?.profile ?? "unknown",
+        summary: executionRequest?.summary ?? "Install execution request is blocked.",
+        confirmation,
+        executionRequest,
+        target: normalizeTarget(confirmation?.target),
+        staged: normalizeStaged(confirmation?.staged ?? confirmation?.artifactStaging?.staged),
+        safety: executionSafety({ backupRequired, writesGameDirectory: false }),
+        execution: {
+            enabled: false,
+            writesAttempted: false,
+            reason: "Install execution request was rejected before write handling.",
+        },
+        receipt: null,
+        warnings: [...(confirmation?.warnings ?? []), ...(executionRequest?.warnings ?? [])],
+    };
+}
 
 export async function executeCommunityModInstall(options = {}) {
     const checkedAt = normalizeIsoTimestamp(options.checkedAt);
@@ -212,6 +309,15 @@ function executionResult(base, result) {
     };
 }
 
+function executionRequestResult(base, result) {
+    return {
+        ...base,
+        ...result,
+        ok: true,
+        warnings: result.warnings ?? [],
+    };
+}
+
 function executionSafety({ backupRequired, writesGameDirectory }) {
     return {
         writesGameDirectory,
@@ -352,9 +458,17 @@ function normalizeSha256(value) {
     return String(value ?? "").trim().replace(/^sha256:/i, "").toUpperCase();
 }
 
+function parseBooleanFlag(value) {
+    return ["1", "true", "yes", "on"].includes(String(value ?? "").trim().toLowerCase());
+}
+
 function normalizeIsoTimestamp(value) {
     const timestamp = value ? new Date(value) : new Date();
     return Number.isNaN(timestamp.getTime()) ? new Date().toISOString() : timestamp.toISOString();
+}
+
+function isRecord(value) {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function stringOrEmpty(value) {
