@@ -315,6 +315,69 @@ export function communityModInstallConfirmationSummary(confirmation) {
     return `${confirmation.summary ?? "Install confirmation unavailable."}${staged}${destination}${backup}${execution}`;
 }
 
+export function communityModInstallExecutionLabel(execution) {
+    if (!execution) {
+        return "Execution not run";
+    }
+
+    if (execution.ok === false || execution.status === "error" || execution.status === "execution_failed") {
+        return "Execution failed";
+    }
+
+    switch (execution.status) {
+        case "installed":
+            return "Community Mod installed";
+        case "replaced":
+            return "version.dll replaced";
+        case "server_execution_disabled":
+        case "execution_disabled":
+            return "Execution disabled";
+        case "game_running":
+            return "Close STFC first";
+        case "acknowledgement_required":
+        case "staged_hash_confirmation_required":
+        case "destination_confirmation_required":
+            return "Confirmation required";
+        case "staged_hash_mismatch":
+        case "post_copy_hash_mismatch":
+            return "Hash verification failed";
+        case "unsafe_target_path":
+            return "Target path blocked";
+        case "destination_exists_for_install":
+        case "destination_missing_for_backup":
+        case "backup_path_unavailable":
+            return "Destination blocked";
+        default:
+            return "Execution blocked";
+    }
+}
+
+export function communityModInstallExecutionSummary(execution) {
+    if (!execution) {
+        return "Execute Install is available only after confirmation and remains disabled unless the local endpoint is explicitly enabled.";
+    }
+
+    if (execution.ok === false && execution.error) {
+        return String(execution.error);
+    }
+
+    const destination = execution.receipt?.destination?.dllSha256
+        ? ` | Installed SHA-256 ${shortSha256(execution.receipt.destination.dllSha256)}`
+        : execution.target?.destinationPath
+            ? ` | Destination ${execution.target.destinationPath}`
+            : "";
+    const backup = execution.receipt?.backup?.created && execution.receipt.backup.path
+        ? ` | Backup ${execution.receipt.backup.path}`
+        : "";
+    const manifest = execution.receipt?.manifest?.written && execution.receipt.manifest.path
+        ? ` | Manifest ${execution.receipt.manifest.path}`
+        : "";
+    const writes = execution.safety?.writesGameDirectory === false || execution.execution?.writesAttempted === false
+        ? " | no game-directory write attempted"
+        : "";
+    return `${execution.summary ?? "Install execution status unavailable."}${destination}${backup}${manifest}${writes}`;
+}
+
 export function modProfileLabel(profile) {
     return normalizeModProfile(profile) === "netniv-basic" ? "Official Basic" : "Advanced Alpha";
 }

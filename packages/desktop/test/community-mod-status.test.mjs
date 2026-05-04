@@ -14,6 +14,8 @@ import {
     communityModArtifactStagingSummary,
     communityModInstallConfirmationLabel,
     communityModInstallConfirmationSummary,
+    communityModInstallExecutionLabel,
+    communityModInstallExecutionSummary,
     modProfileLabel,
 } from "../../viewer/public/shared/community-mod-status.js";
 
@@ -158,5 +160,39 @@ describe("Community Mod status formatting", () => {
         expect(communityModInstallConfirmationSummary(confirmation)).toContain("Staged SHA-256 45DBE5FA43E2...");
         expect(communityModInstallConfirmationSummary(confirmation)).toContain("Destination C:\\Games");
         expect(communityModInstallConfirmationSummary(confirmation)).toContain("copy disabled");
+    });
+
+    test("formats blocked install execution without implying writes", () => {
+        const execution = {
+            ok: true,
+            status: "server_execution_disabled",
+            summary: "Install execution endpoint is disabled for this process.",
+            target: { destinationPath: "C:\\Games\\Star Trek Fleet Command\\default\\game\\version.dll" },
+            safety: { writesGameDirectory: false },
+            execution: { enabled: false, writesAttempted: false },
+        };
+
+        expect(communityModInstallExecutionLabel(execution)).toBe("Execution disabled");
+        expect(communityModInstallExecutionSummary(execution)).toContain("no game-directory write attempted");
+        expect(communityModInstallExecutionSummary(execution)).toContain("Destination C:\\Games");
+    });
+
+    test("formats completed install execution with receipt details", () => {
+        const execution = {
+            ok: true,
+            status: "installed",
+            summary: "Installed Community Mod version.dll and verified the copied hash.",
+            receipt: {
+                destination: { dllSha256: "45DBE5FA43E23B05467A3FC3C7237DCD0C45EE0ED193658307B6001EC5508ACA" },
+                backup: { created: false },
+                manifest: { written: true, path: "C:\\Games\\Star Trek Fleet Command\\default\\game\\.stfc-sidecar\\community-mod-install.json" },
+            },
+            safety: { writesGameDirectory: true },
+            execution: { writesAttempted: true },
+        };
+
+        expect(communityModInstallExecutionLabel(execution)).toBe("Community Mod installed");
+        expect(communityModInstallExecutionSummary(execution)).toContain("Installed SHA-256 45DBE5FA43E2...");
+        expect(communityModInstallExecutionSummary(execution)).toContain("Manifest C:\\Games");
     });
 });
