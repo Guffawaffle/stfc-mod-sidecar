@@ -68,6 +68,7 @@ let exitTimer;
 let createSqlSidecarEventStore;
 let applyCommunityModHotkeySettingsPatch;
 let buildCommunityModHotkeySettingsSnapshot;
+let normalizeCommunityModSettingsProfile;
 let isSidecarEvent;
 let parseEventJsonLine;
 try {
@@ -76,6 +77,7 @@ try {
         buildCommunityModHotkeySettingsSnapshot,
         createSqlSidecarEventStore,
         isSidecarEvent,
+        normalizeCommunityModSettingsProfile,
         parseEventJsonLine,
     } = await import(new URL("../core/dist/index.js", import.meta.url)));
 } catch (error) {
@@ -84,6 +86,7 @@ try {
     process.exit(1);
 }
 
+const communityModSettingsProfile = normalizeCommunityModSettingsProfile(process.env.STFC_SIDECAR_MOD_PROFILE);
 const eventStore = await createConfiguredEventStore();
 
 const server = createServer(async (request, response) => {
@@ -187,6 +190,8 @@ const server = createServer(async (request, response) => {
             defaultLimit,
             developerMode,
             companionMode,
+            modProfile: communityModSettingsProfile,
+            settingsProfile: communityModSettingsProfile,
             release: releaseInfo,
             eventStoreBackend: eventStore?.backend ?? "none",
             storedEvents,
@@ -207,6 +212,8 @@ const server = createServer(async (request, response) => {
             ok: true,
             developerMode,
             companionMode,
+            modProfile: communityModSettingsProfile,
+            settingsProfile: communityModSettingsProfile,
             feedPath,
             settingsPath,
             eventStoreBackend: eventStore?.backend ?? "none",
@@ -302,7 +309,7 @@ async function readHotkeySettingsSnapshot() {
     const generatedAt = new Date().toISOString();
     const exists = existsSync(settingsPath);
     const contents = exists ? await readFile(settingsPath, "utf8") : "";
-    const snapshot = buildCommunityModHotkeySettingsSnapshot(contents);
+    const snapshot = buildCommunityModHotkeySettingsSnapshot(contents, { profile: communityModSettingsProfile });
 
     return {
         ...snapshot,
@@ -313,6 +320,7 @@ async function readHotkeySettingsSnapshot() {
         settingsSaveMode,
         saveSupported: true,
         applyMode: "next_launch",
+        modProfile: communityModSettingsProfile,
     };
 }
 
@@ -364,7 +372,7 @@ async function handleHotkeySettingsUpdate(request, response) {
     try {
         const payload = await readJsonBody(request);
         const previousContents = existsSync(settingsPath) ? await readFile(settingsPath, "utf8") : "";
-        const nextContents = applyCommunityModHotkeySettingsPatch(previousContents, payload);
+        const nextContents = applyCommunityModHotkeySettingsPatch(previousContents, payload, { profile: communityModSettingsProfile });
         await mkdir(path.dirname(settingsPath), { recursive: true });
 
         if (existsSync(settingsPath)) {

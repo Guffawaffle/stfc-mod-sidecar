@@ -191,6 +191,8 @@ async function loadServerBootstrap() {
       developerMode: Boolean(health.developerMode),
       companionMode: health.companionMode,
       modeLabel: modeLabel(health.developerMode),
+      modProfile: health.modProfile,
+      settingsProfile: health.settingsProfile,
       gameDirectory: health.gameDir,
       feedPath: health.feedPath,
       settingsPath: health.settingsPath,

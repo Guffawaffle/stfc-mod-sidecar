@@ -1,6 +1,9 @@
+export const DEFAULT_MOD_PROFILE = "guff-advanced";
+
 export const DEFAULT_DESKTOP_SETTINGS = Object.freeze({
     gameDirectory: "",
     developerMode: false,
+    modProfile: DEFAULT_MOD_PROFILE,
 });
 
 export function normalizeDesktopSettings(input = {}, options = {}) {
@@ -10,7 +13,21 @@ export function normalizeDesktopSettings(input = {}, options = {}) {
         developerMode: typeof parsed.developerMode === "boolean"
             ? parsed.developerMode
             : parseDeveloperModeValue(options.initialDeveloperMode),
+        modProfile: normalizeModProfile(parsed.modProfile),
     };
+}
+
+export function normalizeModProfile(value) {
+    const normalized = String(value ?? "").trim().toLowerCase();
+    if (["netniv-basic", "netniv", "official", "official-basic", "basic"].includes(normalized)) {
+        return "netniv-basic";
+    }
+
+    if (["guff-advanced", "guff", "advanced", "alpha", "advanced-alpha"].includes(normalized)) {
+        return "guff-advanced";
+    }
+
+    return DEFAULT_MOD_PROFILE;
 }
 
 export function initialDeveloperModeFromSources(options = {}) {
