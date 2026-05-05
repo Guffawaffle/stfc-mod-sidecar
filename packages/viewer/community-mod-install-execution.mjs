@@ -219,8 +219,16 @@ export async function executeCommunityModInstall(options = {}) {
             });
         }
 
+        const backupSha256 = backupCreated ? await sha256File(target.backupPath) : "";
         await mkdir(path.dirname(target.manifestPath), { recursive: true });
-        const manifest = buildInstallManifest({ confirmation, dllSha256: destinationSha256, installedAt: checkedAt });
+        const manifest = buildInstallManifest({
+            confirmation,
+            target,
+            backupCreated,
+            backupSha256,
+            dllSha256: destinationSha256,
+            installedAt: checkedAt,
+        });
         await writeFile(target.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
         return executionResult(base, {
@@ -388,6 +396,9 @@ function normalizeGameProcessStatus(value = {}) {
         checked: Boolean(value.checked),
         running: Boolean(value.running),
         processName: typeof value.processName === "string" ? value.processName : "prime.exe",
+        scopedToTarget: value.scopedToTarget === true,
+        targetPath: stringOrEmpty(value.targetPath) || stringOrEmpty(value.targetExecutablePath),
+        candidateCount: Number.isFinite(value.candidateCount) ? value.candidateCount : 0,
         error: typeof value.error === "string" ? value.error : "",
     };
 }
@@ -449,15 +460,34 @@ async function rollbackDestination({ target, backupCreated, destinationWritten }
     return rollback;
 }
 
-function buildInstallManifest({ confirmation, dllSha256, installedAt }) {
+function buildInstallManifest({ confirmation, target, backupCreated, backupSha256, dllSha256, installedAt }) {
     const catalog = confirmation.artifactStaging?.catalog ?? confirmation.installPlan?.catalog ?? null;
+    const previousInstall = confirmation.installPlan?.install ?? null;
+    const backupRequired = confirmation.safety?.backupBeforeReplace === true || REPLACE_ACTIONS.has(confirmation.action);
     return {
-        schemaVersion: 1,
+        schemaVersion: 2,
         distribution: catalog?.distribution ?? distributionFromProfile(confirmation.profile),
+        action: stringOrEmpty(confirmation.action),
         repo: catalog?.repository ?? "",
         tag: catalog?.release?.tagName ?? confirmation.installPlan?.target?.tag ?? "",
         assetName: catalog?.windowsAsset?.name ?? confirmation.installPlan?.target?.assetName ?? "",
         dllSha256,
+        destinationPath: stringOrEmpty(target?.destinationPath),
+        manifestPath: stringOrEmpty(target?.manifestPath),
+        backup: {
+            required: backupRequired,
+            created: backupCreated === true,
+            path: backupCreated ? stringOrEmpty(target?.backupPath) : "",
+            sha256: normalizeSha256(backupSha256),
+        },
+        previous: {
+            classification: stringOrEmpty(previousInstall?.classification),
+            profile: stringOrEmpty(previousInstall?.profile),
+            dllSha256: normalizeSha256(previousInstall?.dll?.sha256),
+            tag: previousInstall?.matchedRelease?.tag || previousInstall?.manifest?.tag || "",
+            assetName: previousInstall?.matchedRelease?.assetName || previousInstall?.manifest?.assetName || "",
+        },
+        sidecarVersion: stringOrEmpty(process.env.STFC_SIDECAR_APP_VERSION),
         installedAt,
     };
 }

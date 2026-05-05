@@ -14,6 +14,13 @@ import {
     communityModInstallExecutionLabel,
     communityModInstallExecutionSummary,
     communityModInstallExecutionRecoverySummary,
+    communityModUninstallPlanLabel,
+    communityModUninstallPlanSummary,
+    communityModUninstallConfirmationLabel,
+    communityModUninstallConfirmationSummary,
+    communityModUninstallExecutionLabel,
+    communityModUninstallExecutionSummary,
+    communityModUninstallExecutionRecoverySummary,
 } from "../shared/community-mod-status.js";
 
 const state = {
@@ -26,10 +33,17 @@ const state = {
     modArtifactStaging: null,
     modInstallConfirmation: null,
     modInstallExecution: null,
+    modUninstallPlan: null,
+    modUninstallConfirmation: null,
+    modUninstallExecution: null,
+    modUninstallDeleteSettingsAndLogs: false,
     modReleaseChecking: false,
     modArtifactVerifying: false,
     modInstallConfirming: false,
     modInstallExecuting: false,
+    modUninstallChecking: false,
+    modUninstallConfirming: false,
+    modUninstallExecuting: false,
 };
 
 const elements = {
@@ -59,11 +73,22 @@ const elements = {
     modExecutionState: document.querySelector("#about-mod-execution-state"),
     modExecutionDetail: document.querySelector("#about-mod-execution-detail"),
     modRecoveryDetail: document.querySelector("#about-mod-recovery-detail"),
+    modUninstallPlanState: document.querySelector("#about-mod-uninstall-plan-state"),
+    modUninstallPlanDetail: document.querySelector("#about-mod-uninstall-plan-detail"),
+    modUninstallConfirmationState: document.querySelector("#about-mod-uninstall-confirmation-state"),
+    modUninstallConfirmationDetail: document.querySelector("#about-mod-uninstall-confirmation-detail"),
+    modUninstallExecutionState: document.querySelector("#about-mod-uninstall-execution-state"),
+    modUninstallExecutionDetail: document.querySelector("#about-mod-uninstall-execution-detail"),
+    modUninstallRecoveryDetail: document.querySelector("#about-mod-uninstall-recovery-detail"),
+    modUninstallDeleteSettingsAndLogs: document.querySelector("#about-mod-uninstall-delete-settings-logs"),
     refreshModStatus: document.querySelector("#refresh-mod-status"),
     checkModRelease: document.querySelector("#check-mod-release"),
     verifyModArtifact: document.querySelector("#verify-mod-artifact"),
     prepareModConfirmation: document.querySelector("#prepare-mod-confirmation"),
     executeModInstall: document.querySelector("#execute-mod-install"),
+    checkModUninstall: document.querySelector("#check-mod-uninstall"),
+    prepareModUninstall: document.querySelector("#prepare-mod-uninstall"),
+    executeModUninstall: document.querySelector("#execute-mod-uninstall"),
     modReleaseLink: document.querySelector("#about-mod-release-link"),
     diagnosticsState: document.querySelector("#diagnostics-state"),
     diagnosticsPreview: document.querySelector("#diagnostics-preview"),
@@ -82,6 +107,15 @@ elements.checkModRelease?.addEventListener("click", () => void checkModRelease()
 elements.verifyModArtifact?.addEventListener("click", () => void verifyModArtifact());
 elements.prepareModConfirmation?.addEventListener("click", () => void prepareModInstallConfirmation());
 elements.executeModInstall?.addEventListener("click", () => void executeModInstall());
+elements.checkModUninstall?.addEventListener("click", () => void checkModUninstall());
+elements.prepareModUninstall?.addEventListener("click", () => void prepareModUninstallConfirmation());
+elements.executeModUninstall?.addEventListener("click", () => void executeModUninstall());
+elements.modUninstallDeleteSettingsAndLogs?.addEventListener("change", () => {
+    state.modUninstallDeleteSettingsAndLogs = elements.modUninstallDeleteSettingsAndLogs.checked;
+    state.modUninstallConfirmation = null;
+    state.modUninstallExecution = null;
+    renderCommunityModStatus();
+});
 
 await loadMode();
 
@@ -214,6 +248,17 @@ function renderCommunityModStatus() {
     elements.modExecutionState.textContent = communityModInstallExecutionLabel(state.modInstallExecution);
     elements.modExecutionDetail.textContent = communityModInstallExecutionSummary(state.modInstallExecution);
     elements.modRecoveryDetail.textContent = communityModInstallExecutionRecoverySummary(state.modInstallExecution);
+    elements.modUninstallPlanState.textContent = communityModUninstallPlanLabel(state.modUninstallPlan);
+    elements.modUninstallPlanDetail.textContent = communityModUninstallPlanSummary(state.modUninstallPlan);
+    elements.modUninstallConfirmationState.textContent = communityModUninstallConfirmationLabel(state.modUninstallConfirmation);
+    elements.modUninstallConfirmationDetail.textContent = communityModUninstallConfirmationSummary(state.modUninstallConfirmation);
+    elements.modUninstallExecutionState.textContent = communityModUninstallExecutionLabel(state.modUninstallExecution);
+    elements.modUninstallExecutionDetail.textContent = communityModUninstallExecutionSummary(state.modUninstallExecution);
+    elements.modUninstallRecoveryDetail.textContent = communityModUninstallExecutionRecoverySummary(state.modUninstallExecution);
+    elements.modUninstallDeleteSettingsAndLogs.checked = state.modUninstallDeleteSettingsAndLogs;
+    elements.modUninstallDeleteSettingsAndLogs.disabled = state.modUninstallChecking
+        || state.modUninstallConfirming
+        || state.modUninstallExecuting;
     setModReleaseLink(state.modReleaseCatalog?.release?.htmlUrl);
     elements.checkModRelease.disabled = state.modReleaseChecking;
     elements.verifyModArtifact.disabled = state.modReleaseChecking
@@ -228,6 +273,14 @@ function renderCommunityModStatus() {
         || state.modInstallConfirming
         || state.modInstallExecuting
         || !isInstallExecutionReady(state.modInstallConfirmation);
+    elements.checkModUninstall.disabled = state.modUninstallChecking;
+    elements.prepareModUninstall.disabled = state.modUninstallChecking
+        || state.modUninstallConfirming
+        || !isUninstallPlanActionable(state.modUninstallPlan);
+    elements.executeModUninstall.disabled = state.modUninstallChecking
+        || state.modUninstallConfirming
+        || state.modUninstallExecuting
+        || !isUninstallExecutionReady(state.modUninstallConfirmation);
 }
 
 async function checkModRelease() {
@@ -548,5 +601,146 @@ function isInstallExecutionReady(confirmation) {
     return confirmation?.status === "ready_for_confirmation"
         && Boolean(confirmation.confirmation?.acknowledgement)
         && Boolean(confirmation.staged?.dllSha256)
+        && Boolean(confirmation.target?.destinationPath);
+}
+
+async function checkModUninstall() {
+    state.modUninstallChecking = true;
+    state.modUninstallPlan = null;
+    state.modUninstallConfirmation = null;
+    state.modUninstallExecution = null;
+    renderCommunityModStatus();
+
+    try {
+        state.modUninstallPlan = await fetchModUninstallPlan();
+    } catch (error) {
+        state.modUninstallPlan = {
+            ok: false,
+            status: "error",
+            error: error instanceof Error ? error.message : String(error),
+        };
+    } finally {
+        state.modUninstallChecking = false;
+        renderCommunityModStatus();
+    }
+}
+
+async function fetchModUninstallPlan() {
+    const response = await fetch("/api/mod/uninstall-plan", { cache: "no-store" });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok === false) {
+        throw new Error(result.error
+            ? `Mod uninstall plan failed: ${result.error}`
+            : `Mod uninstall plan failed: ${response.status}`);
+    }
+
+    return result;
+}
+
+async function prepareModUninstallConfirmation() {
+    state.modUninstallConfirming = true;
+    state.modUninstallConfirmation = null;
+    state.modUninstallExecution = null;
+    renderCommunityModStatus();
+
+    try {
+        state.modUninstallConfirmation = await fetchModUninstallConfirmation();
+        state.modUninstallPlan = state.modUninstallConfirmation.uninstallPlan ?? state.modUninstallPlan;
+    } catch (error) {
+        state.modUninstallConfirmation = {
+            ok: false,
+            status: "error",
+            error: error instanceof Error ? error.message : String(error),
+        };
+    } finally {
+        state.modUninstallConfirming = false;
+        renderCommunityModStatus();
+    }
+}
+
+async function fetchModUninstallConfirmation() {
+    const response = await fetch("/api/mod/uninstall-confirmation", {
+        cache: "no-store",
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ deleteSettingsAndLogs: state.modUninstallDeleteSettingsAndLogs }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok === false) {
+        throw new Error(result.error
+            ? `Mod uninstall confirmation failed: ${result.error}`
+            : `Mod uninstall confirmation failed: ${response.status}`);
+    }
+
+    return result;
+}
+
+async function executeModUninstall() {
+    if (!isUninstallExecutionReady(state.modUninstallConfirmation)) {
+        return;
+    }
+
+    const confirmed = typeof window.confirm === "function"
+        ? window.confirm("Execute the prepared Community Mod uninstall now?")
+        : true;
+    if (!confirmed) {
+        return;
+    }
+
+    state.modUninstallExecuting = true;
+    state.modUninstallExecution = null;
+    renderCommunityModStatus();
+
+    try {
+        state.modUninstallExecution = await fetchModUninstallExecution(state.modUninstallConfirmation);
+        if (state.modUninstallExecution.confirmation) {
+            state.modUninstallConfirmation = state.modUninstallExecution.confirmation;
+        }
+        if (["removed", "restored_backup"].includes(state.modUninstallExecution.status)) {
+            await loadMode();
+        }
+    } catch (error) {
+        state.modUninstallExecution = {
+            ok: false,
+            status: "error",
+            error: error instanceof Error ? error.message : String(error),
+        };
+    } finally {
+        state.modUninstallExecuting = false;
+        renderCommunityModStatus();
+    }
+}
+
+async function fetchModUninstallExecution(confirmation) {
+    const response = await fetch("/api/mod/uninstall-execution", {
+        cache: "no-store",
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+            enableExecution: true,
+            acknowledgement: confirmation.confirmation?.acknowledgement ?? "",
+            confirmedCurrentSha256: confirmation.current?.dllSha256 ?? "",
+            confirmedDestinationPath: confirmation.target?.destinationPath ?? "",
+            deleteSettingsAndLogs: confirmation.settings?.delete === true && state.modUninstallDeleteSettingsAndLogs,
+        }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok === false) {
+        throw new Error(result.error
+            ? `Mod uninstall execution failed: ${result.error}`
+            : `Mod uninstall execution failed: ${response.status}`);
+    }
+
+    return result;
+}
+
+function isUninstallPlanActionable(plan) {
+    return ["remove_fresh_install", "restore_backup", "remove_unknown"].includes(plan?.action);
+}
+
+function isUninstallExecutionReady(confirmation) {
+    return confirmation?.status === "ready_for_confirmation"
+        && Boolean(confirmation.confirmation?.acknowledgement)
+        && Boolean(confirmation.current?.dllSha256)
         && Boolean(confirmation.target?.destinationPath);
 }

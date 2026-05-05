@@ -70,21 +70,28 @@ describe("Community Mod install plan", () => {
         });
     });
 
-    test("does not plan execution for unsupported profiles", () => {
+    test("plans an advanced alpha install from a supported Guffawaffle release", () => {
         const plan = buildCommunityModInstallPlan({
             profile: "guff-advanced",
             install: install({ state: "none", classification: "none" }),
             catalog: readyCatalog({
                 profile: "guff-advanced",
-                installSupported: false,
-                unsupportedReason: "Advanced Alpha install is not enabled.",
+                distribution: "advanced-alpha",
+                repository: "Guffawaffle/stfc-mod",
+                release: { tagName: "v1.0.0-guffa.9", version: "1.0.0-guffa.9" },
+                windowsAsset: { name: "version.dll", digest: "sha256:latest" },
             }),
         });
 
         expect(plan).toMatchObject({
-            status: "profile_unsupported",
-            action: "none",
-            summary: "Advanced Alpha install is not enabled.",
+            status: "install_available",
+            action: "install",
+            profile: "guff-advanced",
+            target: {
+                repository: "Guffawaffle/stfc-mod",
+                tag: "v1.0.0-guffa.9",
+                assetName: "version.dll",
+            },
         });
     });
 

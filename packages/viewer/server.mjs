@@ -39,6 +39,13 @@ import {
     normalizeCommunityModReleaseProfile,
 } from "./community-mod-release-catalog.mjs";
 import { buildCommunityModInstallPlan } from "./community-mod-install-plan.mjs";
+import { buildCommunityModUninstallPlan } from "./community-mod-uninstall-plan.mjs";
+import {
+    buildCommunityModUninstallConfirmation,
+    buildCommunityModUninstallExecutionBlocked,
+    buildCommunityModUninstallExecutionRequest,
+    executeCommunityModUninstall,
+} from "./community-mod-uninstall-execution.mjs";
 
 const DEFAULT_GAME_DIR = "C:\\Games\\Star Trek Fleet Command\\default\\game";
 const DEFAULT_FEED_FILE = "community_patch_battle_feed.jsonl";
@@ -236,6 +243,113 @@ const server = createServer(async (request, response) => {
         }
     }
 
+    if (requestUrl.pathname === "/api/mod/uninstall-plan") {
+        if (request.method && request.method !== "GET") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        try {
+            return sendJson(response, 200, buildCommunityModUninstallPlan({
+                install: await readCommunityModInstallStatus(),
+            }));
+        } catch (error) {
+            return sendJson(response, 502, {
+                ok: false,
+                status: "error",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
+            });
+        }
+    }
+
+    if (requestUrl.pathname === "/api/mod/uninstall-confirmation") {
+        if (request.method !== "POST") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        let payload;
+        try {
+            payload = await readOptionalJsonBody(request);
+        } catch (error) {
+            return sendJson(response, 400, {
+                ok: false,
+                status: "invalid_request",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
+            });
+        }
+
+        try {
+            return sendJson(response, 200, await buildCurrentCommunityModUninstallConfirmation({
+                deleteSettingsAndLogs: payload.deleteSettingsAndLogs === true,
+            }));
+        } catch (error) {
+            return sendJson(response, 502, {
+                ok: false,
+                status: "error",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
+            });
+        }
+    }
+
+    if (requestUrl.pathname === "/api/mod/uninstall-execution") {
+        if (request.method !== "POST") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        let payload;
+        try {
+            payload = await readJsonBody(request);
+        } catch (error) {
+            return sendJson(response, 400, {
+                ok: false,
+                status: "invalid_request",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
+            });
+        }
+
+        try {
+            const confirmation = await buildCurrentCommunityModUninstallConfirmation({
+                deleteSettingsAndLogs: payload.deleteSettingsAndLogs === true,
+            });
+            if (confirmation.status !== "ready_for_confirmation") {
+                return sendJson(response, 200, buildCommunityModUninstallExecutionBlocked({
+                    confirmation,
+                    executionRequest: {
+                        ok: true,
+                        status: confirmation.status,
+                        summary: confirmation.summary,
+                        warnings: ["Uninstall execution is blocked by confirmation preflight."],
+                    },
+                }));
+            }
+
+            const executionRequest = buildCommunityModUninstallExecutionRequest({
+                payload,
+                confirmation,
+                env: process.env,
+            });
+            if (executionRequest.status !== "ready") {
+                return sendJson(response, 200, buildCommunityModUninstallExecutionBlocked({ confirmation, executionRequest }));
+            }
+
+            return sendJson(response, 200, await executeCommunityModUninstall({
+                confirmation,
+                gameProcess: await detectStfcGameProcess({ gameDirectory: gameDir }),
+                enableExecution: true,
+            }));
+        } catch (error) {
+            return sendJson(response, 502, {
+                ok: false,
+                status: "error",
+                error: error instanceof Error ? error.message : String(error),
+                checkedAt: new Date().toISOString(),
+            });
+        }
+    }
+
     if (requestUrl.pathname === "/api/mod/verify-artifact") {
         if (request.method !== "POST") {
             return sendJson(response, 405, { ok: false, error: "Method not allowed" });
@@ -274,7 +388,7 @@ const server = createServer(async (request, response) => {
                 fetchCommunityModReleaseCatalog({ profile }),
             ]);
             const installPlan = buildCommunityModInstallPlan({ profile, install, catalog });
-            const gameProcess = await detectStfcGameProcess();
+            const gameProcess = await detectStfcGameProcess({ gameDirectory: gameDir });
             let preflight = buildCommunityModInstallPreflight({ installPlan, gameProcess });
             if (preflight.status === "artifact_not_verified") {
                 const artifactVerification = await verifyCommunityModArtifact({
@@ -383,7 +497,7 @@ const server = createServer(async (request, response) => {
 
             return sendJson(response, 200, await executeCommunityModInstall({
                 confirmation,
-                gameProcess: await detectStfcGameProcess(),
+                gameProcess: await detectStfcGameProcess({ gameDirectory: gameDir }),
                 enableExecution: true,
             }));
         } catch (error) {
@@ -596,7 +710,7 @@ async function buildCurrentCommunityModInstallConfirmation(profile) {
     ]);
     const cacheDir = process.env.STFC_SIDECAR_CACHE_DIR || DEFAULT_ARTIFACT_CACHE_DIR;
     const installPlan = buildCommunityModInstallPlan({ profile, install, catalog });
-    const gameProcess = await detectStfcGameProcess();
+    const gameProcess = await detectStfcGameProcess({ gameDirectory: gameDir });
     let artifactVerification = null;
     let artifactStaging = null;
     let preflight = buildCommunityModInstallPreflight({ installPlan, gameProcess });
@@ -612,6 +726,18 @@ async function buildCurrentCommunityModInstallConfirmation(profile) {
         installPlan,
         preflight,
         artifactStaging,
+    });
+}
+
+async function buildCurrentCommunityModUninstallConfirmation(options = {}) {
+    const install = await readCommunityModInstallStatus();
+    const uninstallPlan = buildCommunityModUninstallPlan({ install });
+    const gameProcess = await detectStfcGameProcess({ gameDirectory: gameDir });
+    return buildCommunityModUninstallConfirmation({
+        uninstallPlan,
+        gameProcess,
+        deleteSettingsAndLogs: options.deleteSettingsAndLogs,
+        settingsFiles: uninstallPlan.settings?.files,
     });
 }
 
@@ -1117,6 +1243,28 @@ async function readJsonBody(request) {
     }
 
     return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+async function readOptionalJsonBody(request) {
+    let totalBytes = 0;
+    const chunks = [];
+
+    for await (const chunk of request) {
+        const buffer = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+        totalBytes += buffer.length;
+        if (totalBytes > MAX_EVENT_INGEST_BYTES) {
+            throw new Error(`Request body exceeds ${MAX_EVENT_INGEST_BYTES} bytes.`);
+        }
+
+        chunks.push(buffer);
+    }
+
+    if (chunks.length === 0) {
+        return {};
+    }
+
+    const body = Buffer.concat(chunks).toString("utf8").trim();
+    return body ? JSON.parse(body) : {};
 }
 
 function normalizeIncomingEvents(payload) {

@@ -20,6 +20,8 @@
     "server:restart": "node ./scripts/viewer-server-control.mjs restart",
     "server:logs": "node ./scripts/viewer-server-control.mjs logs",
     "smoke:mod-install": "node ./scripts/community-mod-install-smoke.mjs",
+    "smoke:mod-dev-reinstall": "node ./scripts/community-mod-dev-reinstall-smoke.mjs",
+    "smoke:mod-dev-reinstall:guff": "node ./scripts/community-mod-dev-reinstall-smoke.mjs --profile guff-advanced",
     "desktop:dev": "npm run dev --workspace @stfc-mod-sidecar/desktop",
     "desktop:pack": "npm run pack --workspace @stfc-mod-sidecar/desktop",
     "desktop:dist": "npm run dist --workspace @stfc-mod-sidecar/desktop",

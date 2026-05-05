@@ -15,9 +15,7 @@ export const COMMUNITY_MOD_RELEASE_PROFILES = Object.freeze({
         distribution: "advanced-alpha",
         repository: "Guffawaffle/stfc-mod",
         channel: "alpha",
-        installSupported: false,
-        unsupportedReason:
-            "Advanced Alpha install requires a fresh supported fork release marker before it is offered to users.",
+        installSupported: true,
     }),
 });
 
@@ -130,7 +128,7 @@ export function selectCommunityModWindowsAsset(release, releaseProfile) {
         const tagName = String(release.tag_name ?? "");
         return assetSummary(
             assets.find((asset) => normalizedAssetName(asset) === `stfc-community-mod-${tagName.toLowerCase()}.zip`)
-                ?? assets.find((asset) => normalizedAssetName(asset) === "stfc-community-mod.zip"),
+            ?? assets.find((asset) => normalizedAssetName(asset) === "stfc-community-mod.zip"),
             "zip",
         );
     }

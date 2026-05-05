@@ -97,12 +97,26 @@ describe("Community Mod install execution", () => {
 
         const manifest = JSON.parse(await fs.readFile(communityModInstallManifestPath(fixture.gameDirectory), "utf8"));
         expect(manifest).toMatchObject({
-            schemaVersion: 1,
+            schemaVersion: 2,
             distribution: "official-basic",
+            action: "install",
             repo: "netniV/stfc-mod",
             tag: "v1.1.0",
             assetName: "stfc-community-mod-v1.1.0.zip",
             dllSha256: fixture.stagedSha256,
+            destinationPath: path.join(fixture.gameDirectory, COMMUNITY_MOD_DLL_FILE),
+            manifestPath: communityModInstallManifestPath(fixture.gameDirectory),
+            backup: {
+                required: false,
+                created: false,
+                path: "",
+                sha256: "",
+            },
+            previous: {
+                classification: "",
+                profile: "",
+                dllSha256: "",
+            },
             installedAt: "2026-05-04T08:00:00.000Z",
         });
 
@@ -132,6 +146,23 @@ describe("Community Mod install execution", () => {
         });
         expect(await fs.readFile(fixture.confirmation.target.backupPath, "utf8")).toBe(originalDll.toString());
         expect(sha256(await fs.readFile(path.join(fixture.gameDirectory, COMMUNITY_MOD_DLL_FILE)))).toBe(fixture.stagedSha256);
+
+        const manifest = JSON.parse(await fs.readFile(communityModInstallManifestPath(fixture.gameDirectory), "utf8"));
+        expect(manifest).toMatchObject({
+            schemaVersion: 2,
+            action: "replace_unknown",
+            backup: {
+                required: true,
+                created: true,
+                path: fixture.confirmation.target.backupPath,
+                sha256: sha256(originalDll),
+            },
+            previous: {
+                classification: "",
+                profile: "",
+                dllSha256: "",
+            },
+        });
     });
 
     test("refuses execution when the staged DLL hash changed", async () => {

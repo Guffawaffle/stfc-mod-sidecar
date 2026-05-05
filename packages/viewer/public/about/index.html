@@ -103,12 +103,26 @@
               Execute Install stays disabled unless the local execution endpoint is explicitly enabled.
             </p>
             <p id="about-mod-recovery-detail" class="page-copy">No recovery action is needed before execution runs.</p>
+            <p id="about-mod-uninstall-plan-state" class="page-copy">Uninstall plan not checked</p>
+            <p id="about-mod-uninstall-plan-detail" class="page-copy">Check Uninstall Plan to inspect removable Community Mod state.</p>
+            <p id="about-mod-uninstall-confirmation-state" class="page-copy">Uninstall confirmation not prepared</p>
+            <p id="about-mod-uninstall-confirmation-detail" class="page-copy">Prepare Uninstall builds the final review text without changing files.</p>
+            <p id="about-mod-uninstall-execution-state" class="page-copy">Uninstall execution not run</p>
+            <p id="about-mod-uninstall-execution-detail" class="page-copy">Execute Uninstall is available after confirmation and endpoint enablement.</p>
+            <p id="about-mod-uninstall-recovery-detail" class="page-copy">No uninstall recovery action is needed before execution runs.</p>
+            <label class="toggle">
+              <input id="about-mod-uninstall-delete-settings-logs" type="checkbox" />
+              <span>Also Delete Settings And Logs</span>
+            </label>
             <div class="diagnostics-actions">
               <button id="refresh-mod-status" type="button">Refresh Status</button>
               <button id="check-mod-release" type="button">Check Mod Release</button>
               <button id="verify-mod-artifact" type="button">Verify Artifact</button>
               <button id="prepare-mod-confirmation" type="button">Prepare Confirmation</button>
               <button id="execute-mod-install" type="button">Execute Install</button>
+              <button id="check-mod-uninstall" type="button">Check Uninstall Plan</button>
+              <button id="prepare-mod-uninstall" type="button">Prepare Uninstall</button>
+              <button id="execute-mod-uninstall" type="button">Execute Uninstall</button>
               <a
                 id="about-mod-release-link"
                 class="link-button link-button--secondary"
