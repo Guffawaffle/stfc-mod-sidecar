@@ -441,12 +441,17 @@ function isInsideDirectory(parent, child) {
 async function validateInstallPathSafety({ target, staged, backupRequired }) {
     try {
         const gameDirectory = await realpath(target.gameDirectory);
-        const expectedDestination = path.join(gameDirectory, COMMUNITY_MOD_DLL_FILE);
-        if (!samePath(target.destinationPath, expectedDestination)) {
+        const targetGameDirectory = path.resolve(target.gameDirectory);
+        if (await existingPathIsSymlink(target.gameDirectory)) {
+            return pathSafetyBlocked("unsafe_target_path", "Selected game directory is a symlink; automated install is blocked.");
+        }
+
+        if (!samePath(target.destinationPath, path.join(targetGameDirectory, COMMUNITY_MOD_DLL_FILE))
+            || !samePath(await realpath(path.dirname(target.destinationPath)), gameDirectory)) {
             return pathSafetyBlocked("unsafe_target_path", "Destination version.dll is outside the real selected game directory boundary.");
         }
 
-        if (!samePath(target.manifestPath, communityModInstallManifestPath(gameDirectory))) {
+        if (!samePath(target.manifestPath, communityModInstallManifestPath(targetGameDirectory))) {
             return pathSafetyBlocked("unsafe_target_path", "Install manifest path is outside the real selected game directory boundary.");
         }
 
@@ -464,7 +469,7 @@ async function validateInstallPathSafety({ target, staged, backupRequired }) {
         }
 
         if (backupRequired) {
-            const backupRoot = path.join(gameDirectory, ".stfc-sidecar", "backups");
+            const backupRoot = path.join(targetGameDirectory, ".stfc-sidecar", "backups");
             if (!isInsideDirectory(backupRoot, target.backupPath)) {
                 return pathSafetyBlocked("unsafe_target_path", "Backup path is outside the real selected game directory boundary.");
             }

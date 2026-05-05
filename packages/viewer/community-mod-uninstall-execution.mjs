@@ -804,11 +804,17 @@ function isInsideDirectory(parent, child) {
 async function validateUninstallPathSafety({ target, settings, action }) {
     try {
         const gameDirectory = await realpath(target.gameDirectory);
-        if (!samePath(target.destinationPath, path.join(gameDirectory, COMMUNITY_MOD_DLL_FILE))) {
+        const targetGameDirectory = path.resolve(target.gameDirectory);
+        if (await existingPathIsSymlink(target.gameDirectory)) {
+            return pathSafetyBlocked("unsafe_target_path", "Selected game directory is a symlink; automated uninstall is blocked.");
+        }
+
+        if (!samePath(target.destinationPath, path.join(targetGameDirectory, COMMUNITY_MOD_DLL_FILE))
+            || !samePath(await realpath(path.dirname(target.destinationPath)), gameDirectory)) {
             return pathSafetyBlocked("unsafe_target_path", "Destination version.dll is outside the real selected game directory boundary.");
         }
 
-        if (!samePath(target.manifestPath, communityModInstallManifestPath(gameDirectory))) {
+        if (!samePath(target.manifestPath, communityModInstallManifestPath(targetGameDirectory))) {
             return pathSafetyBlocked("unsafe_target_path", "Install manifest path is outside the real selected game directory boundary.");
         }
 
@@ -821,7 +827,7 @@ async function validateUninstallPathSafety({ target, settings, action }) {
         }
 
         if (action === "restore_backup") {
-            const backupRoot = path.join(gameDirectory, ".stfc-sidecar", "backups");
+            const backupRoot = path.join(targetGameDirectory, ".stfc-sidecar", "backups");
             if (!isInsideDirectory(backupRoot, target.backupPath)) {
                 return pathSafetyBlocked("unsafe_target_path", "Backup path is outside the real selected game directory boundary.");
             }
@@ -832,8 +838,8 @@ async function validateUninstallPathSafety({ target, settings, action }) {
         }
 
         if (normalizeSettingsRetention(settings).delete) {
-            for (const file of normalizeSettingsFiles(settings.files, gameDirectory, true)) {
-                if (!isSafeCleanupFile(gameDirectory, file.path) || await existingPathIsSymlink(file.path)) {
+            for (const file of normalizeSettingsFiles(settings.files, targetGameDirectory, true)) {
+                if (!isSafeCleanupFile(targetGameDirectory, file.path) || await existingPathIsSymlink(file.path)) {
                     return pathSafetyBlocked("unsafe_settings_cleanup_path", "Settings/log cleanup path is outside the real selected game directory boundary or crosses a symlink.");
                 }
             }
