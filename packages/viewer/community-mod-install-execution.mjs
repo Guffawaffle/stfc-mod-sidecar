@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
-import { access, copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { access, copyFile, lstat, mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -168,6 +168,11 @@ export async function executeCommunityModInstall(options = {}) {
     const blocked = validateBeforeWrite({ base, confirmation, platform, gameProcess, executionEnabled, backupRequired });
     if (blocked) {
         return executionResult(base, blocked);
+    }
+
+    const pathBlocked = await validateInstallPathSafety({ target, staged, backupRequired });
+    if (pathBlocked) {
+        return executionResult(base, pathBlocked);
     }
 
     const stagedSha256 = await sha256File(staged.path);
@@ -431,6 +436,79 @@ function isSafeTarget(target) {
 function isInsideDirectory(parent, child) {
     const relative = path.relative(path.resolve(parent), path.resolve(child));
     return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+async function validateInstallPathSafety({ target, staged, backupRequired }) {
+    try {
+        const gameDirectory = await realpath(target.gameDirectory);
+        const expectedDestination = path.join(gameDirectory, COMMUNITY_MOD_DLL_FILE);
+        if (!samePath(target.destinationPath, expectedDestination)) {
+            return pathSafetyBlocked("unsafe_target_path", "Destination version.dll is outside the real selected game directory boundary.");
+        }
+
+        if (!samePath(target.manifestPath, communityModInstallManifestPath(gameDirectory))) {
+            return pathSafetyBlocked("unsafe_target_path", "Install manifest path is outside the real selected game directory boundary.");
+        }
+
+        const stagedStats = await lstat(staged.path).catch(() => null);
+        if (!stagedStats?.isFile() || stagedStats.isSymbolicLink()) {
+            return pathSafetyBlocked("unsafe_staged_path", "Staged version.dll must be a regular file, not a symlink or missing path.");
+        }
+
+        if (await existingPathIsSymlink(target.destinationPath)) {
+            return pathSafetyBlocked("unsafe_target_path", "Destination version.dll is a symlink; automated install is blocked.");
+        }
+
+        if (await existingPathIsSymlink(target.manifestPath) || await existingPathIsSymlink(path.dirname(target.manifestPath))) {
+            return pathSafetyBlocked("unsafe_target_path", "Install manifest path crosses a symlink; automated install is blocked.");
+        }
+
+        if (backupRequired) {
+            const backupRoot = path.join(gameDirectory, ".stfc-sidecar", "backups");
+            if (!isInsideDirectory(backupRoot, target.backupPath)) {
+                return pathSafetyBlocked("unsafe_target_path", "Backup path is outside the real selected game directory boundary.");
+            }
+
+            if (await existingPathIsSymlink(target.backupPath) || await existingPathIsSymlink(path.dirname(target.backupPath))) {
+                return pathSafetyBlocked("unsafe_target_path", "Backup path crosses a symlink; automated install is blocked.");
+            }
+        }
+
+        return null;
+    } catch (error) {
+        return pathSafetyBlocked(
+            "path_safety_check_failed",
+            error instanceof Error ? error.message : String(error),
+        );
+    }
+}
+
+function pathSafetyBlocked(status, summary) {
+    return {
+        status,
+        summary,
+        warnings: ["Realpath/lstat safety validation blocked install before any game-directory write."],
+    };
+}
+
+async function existingPathIsSymlink(filePath) {
+    try {
+        return (await lstat(filePath)).isSymbolicLink();
+    } catch (error) {
+        if (error?.code === "ENOENT") {
+            return false;
+        }
+
+        throw error;
+    }
+}
+
+function samePath(left, right) {
+    return normalizePathForCompare(path.resolve(left)) === normalizePathForCompare(path.resolve(right));
+}
+
+function normalizePathForCompare(value) {
+    return process.platform === "win32" ? value.toLowerCase() : value;
 }
 
 async function rollbackDestination({ target, backupCreated, destinationWritten }) {

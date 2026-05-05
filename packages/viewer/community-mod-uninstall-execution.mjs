@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { copyFile, readFile, readdir, rm, stat } from "node:fs/promises";
+import { copyFile, lstat, readFile, readdir, realpath, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -147,8 +147,7 @@ export function buildCommunityModUninstallExecutionRequest(options = {}) {
         ?? buildCommunityModInstallPlatformCapability({ platform: options.platform });
     const env = options.env ?? process.env;
     const serverEnabled = parseBooleanFlag(env.STFC_SIDECAR_ENABLE_MOD_UNINSTALL_EXECUTION)
-        || parseBooleanFlag(env.STFC_SIDECAR_ENABLE_MOD_WRITE_EXECUTION)
-        || parseBooleanFlag(env.STFC_SIDECAR_ENABLE_MOD_INSTALL_EXECUTION);
+        || parseBooleanFlag(env.STFC_SIDECAR_ENABLE_MOD_WRITE_EXECUTION);
     const requested = payload.enableExecution === true;
     const acknowledgement = String(payload.acknowledgement ?? "").trim();
     const expectedAcknowledgement = confirmation?.confirmation?.acknowledgement
@@ -300,6 +299,11 @@ export async function executeCommunityModUninstall(options = {}) {
     const blocked = validateBeforeWrite({ base, confirmation, platform, gameProcess, executionEnabled, action });
     if (blocked) {
         return executionResult(base, blocked);
+    }
+
+    const pathBlocked = await validateUninstallPathSafety({ target, settings, action });
+    if (pathBlocked) {
+        return executionResult(base, pathBlocked);
     }
 
     const currentSha256 = await sha256File(target.destinationPath).catch(() => "");
@@ -667,6 +671,10 @@ async function applySettingsCleanup(settings, gameDirectory) {
     const files = await resolveSettingsCleanupFiles(normalized, gameDirectory);
     const results = [];
     for (const file of files) {
+        if (await existingPathIsSymlink(file.path)) {
+            throw new Error(`Refusing to delete symlinked Community Mod artifact: ${file.path}`);
+        }
+
         const existed = await fileExists(file.path);
         await rm(file.path, { force: true });
         results.push({ ...file, action: "deleted", existed, deleted: existed });
@@ -791,6 +799,81 @@ function isSafeTarget(target, action) {
 function isInsideDirectory(parent, child) {
     const relative = path.relative(path.resolve(parent), path.resolve(child));
     return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+async function validateUninstallPathSafety({ target, settings, action }) {
+    try {
+        const gameDirectory = await realpath(target.gameDirectory);
+        if (!samePath(target.destinationPath, path.join(gameDirectory, COMMUNITY_MOD_DLL_FILE))) {
+            return pathSafetyBlocked("unsafe_target_path", "Destination version.dll is outside the real selected game directory boundary.");
+        }
+
+        if (!samePath(target.manifestPath, communityModInstallManifestPath(gameDirectory))) {
+            return pathSafetyBlocked("unsafe_target_path", "Install manifest path is outside the real selected game directory boundary.");
+        }
+
+        if (await existingPathIsSymlink(target.destinationPath)) {
+            return pathSafetyBlocked("unsafe_target_path", "Destination version.dll is a symlink; automated uninstall is blocked.");
+        }
+
+        if (await existingPathIsSymlink(target.manifestPath) || await existingPathIsSymlink(path.dirname(target.manifestPath))) {
+            return pathSafetyBlocked("unsafe_target_path", "Install manifest path crosses a symlink; automated uninstall is blocked.");
+        }
+
+        if (action === "restore_backup") {
+            const backupRoot = path.join(gameDirectory, ".stfc-sidecar", "backups");
+            if (!isInsideDirectory(backupRoot, target.backupPath)) {
+                return pathSafetyBlocked("unsafe_target_path", "Backup path is outside the real selected game directory boundary.");
+            }
+
+            if (await existingPathIsSymlink(target.backupPath) || await existingPathIsSymlink(path.dirname(target.backupPath))) {
+                return pathSafetyBlocked("unsafe_target_path", "Backup path crosses a symlink; automated restore is blocked.");
+            }
+        }
+
+        if (normalizeSettingsRetention(settings).delete) {
+            for (const file of normalizeSettingsFiles(settings.files, gameDirectory, true)) {
+                if (!isSafeCleanupFile(gameDirectory, file.path) || await existingPathIsSymlink(file.path)) {
+                    return pathSafetyBlocked("unsafe_settings_cleanup_path", "Settings/log cleanup path is outside the real selected game directory boundary or crosses a symlink.");
+                }
+            }
+        }
+
+        return null;
+    } catch (error) {
+        return pathSafetyBlocked(
+            "path_safety_check_failed",
+            error instanceof Error ? error.message : String(error),
+        );
+    }
+}
+
+function pathSafetyBlocked(status, summary) {
+    return {
+        status,
+        summary,
+        warnings: ["Realpath/lstat safety validation blocked uninstall before any game-directory write."],
+    };
+}
+
+async function existingPathIsSymlink(filePath) {
+    try {
+        return (await lstat(filePath)).isSymbolicLink();
+    } catch (error) {
+        if (error?.code === "ENOENT") {
+            return false;
+        }
+
+        throw error;
+    }
+}
+
+function samePath(left, right) {
+    return normalizePathForCompare(path.resolve(left)) === normalizePathForCompare(path.resolve(right));
+}
+
+function normalizePathForCompare(value) {
+    return process.platform === "win32" ? value.toLowerCase() : value;
 }
 
 function normalizeTarget(target = {}) {

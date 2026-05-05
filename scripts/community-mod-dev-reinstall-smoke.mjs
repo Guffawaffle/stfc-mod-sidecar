@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
@@ -19,10 +19,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
 const controlScript = path.join(repoRoot, "scripts", "viewer-server-control.mjs");
+let smokeConfig = null;
 
 async function main() {
     const startedAt = Date.now();
     const config = parseArgs(process.argv.slice(2));
+    smokeConfig = config;
     assertSafeDevGameDirectory(config);
 
     const paths = smokePaths(config.gameDirectory);
@@ -203,6 +205,7 @@ async function startServer(config) {
     ], {
         STFC_SIDECAR_ENABLE_MOD_UNINSTALL_EXECUTION: "1",
         STFC_SIDECAR_ENABLE_MOD_INSTALL_EXECUTION: "1",
+        STFC_SIDECAR_MOD_TOKEN: config.modToken,
         STFC_SIDECAR_MOD_PROFILE: config.profile,
     });
 }
@@ -238,7 +241,7 @@ function runControl(args, env = {}) {
 }
 
 async function getJson(url) {
-    const response = await fetch(url, { cache: "no-store" });
+    const response = await fetch(url, { cache: "no-store", headers: requestHeaders() });
     const body = await response.json().catch(() => ({}));
     if (!response.ok || body.ok === false) {
         throw new Error(body.error ? `${url}: ${body.error}` : `${url}: HTTP ${response.status}`);
@@ -250,7 +253,7 @@ async function postJson(url, body) {
     const response = await fetch(url, {
         cache: "no-store",
         method: "POST",
-        headers: body === undefined ? undefined : { "content-type": "application/json" },
+        headers: requestHeaders({ json: body !== undefined }),
         body: body === undefined ? undefined : JSON.stringify(body),
     });
     const result = await response.json().catch(() => ({}));
@@ -258,6 +261,17 @@ async function postJson(url, body) {
         throw new Error(result.error ? `${url}: ${result.error}` : `${url}: HTTP ${response.status}`);
     }
     return result;
+}
+
+function requestHeaders(options = {}) {
+    const headers = {
+        authorization: `Bearer ${smokeConfig?.modToken ?? ""}`,
+        "x-sidecar-network-consent": "github-release",
+    };
+    if (options.json) {
+        headers["content-type"] = "application/json";
+    }
+    return headers;
 }
 
 async function snapshotSettingsArtifacts(gameDirectory) {
@@ -364,6 +378,7 @@ function parseArgs(args) {
     let port = parseInteger(process.env.STFC_SIDECAR_DEV_SMOKE_PORT, DEFAULT_PORT);
     let profile = normalizeCommunityModReleaseProfile(process.env.STFC_SIDECAR_DEV_SMOKE_PROFILE || DEFAULT_PROFILE);
     let allowNonDevGameDirectory = false;
+    const modToken = process.env.STFC_SIDECAR_DEV_SMOKE_MOD_TOKEN?.trim() || randomUUID();
 
     for (let index = 0; index < args.length; index += 1) {
         const arg = args[index];
@@ -403,7 +418,7 @@ function parseArgs(args) {
         throw new Error(`unknown argument: ${arg}`);
     }
 
-    return { gameDirectory: path.resolve(gameDirectory), port, profile, allowNonDevGameDirectory };
+    return { gameDirectory: path.resolve(gameDirectory), port, profile, allowNonDevGameDirectory, modToken };
 }
 
 function assertSafeDevGameDirectory(config) {

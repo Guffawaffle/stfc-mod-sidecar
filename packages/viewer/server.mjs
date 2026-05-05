@@ -12,9 +12,11 @@ import {
     parseDeveloperModeFlag,
 } from "./runtime-mode.mjs";
 import {
+    isAuthorizedModRequest as isModRequestAuthorized,
     isAuthorizedSettingsRequest as isSettingsRequestAuthorized,
     isAuthorizedShutdownRequest as isShutdownRequestAuthorized,
     isAuthorizedSyncRequest as isSyncRequestAuthorized,
+    resolveModToken,
     resolveSettingsToken,
     resolveSyncToken,
 } from "./local-auth.mjs";
@@ -74,6 +76,7 @@ const startedAt = new Date();
 const shutdownToken = process.env.STFC_SIDECAR_SHUTDOWN_TOKEN ?? "";
 const syncToken = resolveSyncToken(process.env);
 const settingsToken = resolveSettingsToken(process.env);
+const modToken = resolveModToken(process.env);
 const settingsSaveMode = parseSettingsSaveMode(process.env.STFC_SIDECAR_SETTINGS_SAVE_MODE);
 const releaseInfo = buildReleaseInfo({
     version: process.env.STFC_SIDECAR_APP_VERSION ?? readPackageVersion(),
@@ -87,6 +90,7 @@ let feedWatcher = null;
 let feedWatcherPath = "";
 let feedWatcherDebounce = null;
 const eventStreamClients = new Set();
+const communityModOperationLocks = new Map();
 
 let shutdownRequested = false;
 let exitTimer;
@@ -125,6 +129,23 @@ const server = createServer(async (request, response) => {
 
     if (isBattleLogApiPath(requestUrl.pathname) && !communityModCapabilities.battleLog) {
         return sendJson(response, 403, capabilityUnavailablePayload("battleLog"));
+    }
+
+    if (isPrivilegedModApiPath(requestUrl.pathname) && !isAuthorizedModRequest(request)) {
+        return sendJson(response, 401, {
+            ok: false,
+            status: "unauthorized",
+            error: "Unauthorized Community Mod operation request",
+        });
+    }
+
+    if (isGithubNetworkApiPath(requestUrl.pathname) && !hasGithubNetworkConsent(request)) {
+        return sendJson(response, 428, {
+            ok: false,
+            status: "network_consent_required",
+            error: "Explicit GitHub network consent is required for this request.",
+            network: { host: "github.com", consentHeader: "x-sidecar-network-consent" },
+        });
     }
 
     if (requestUrl.pathname === "/api/events") {
@@ -311,35 +332,37 @@ const server = createServer(async (request, response) => {
         }
 
         try {
-            const confirmation = await buildCurrentCommunityModUninstallConfirmation({
-                deleteSettingsAndLogs: payload.deleteSettingsAndLogs === true,
-            });
-            if (confirmation.status !== "ready_for_confirmation") {
-                return sendJson(response, 200, buildCommunityModUninstallExecutionBlocked({
+            return await withCommunityModOperationLock(response, "uninstall", async () => {
+                const confirmation = await buildCurrentCommunityModUninstallConfirmation({
+                    deleteSettingsAndLogs: payload.deleteSettingsAndLogs === true,
+                });
+                if (confirmation.status !== "ready_for_confirmation") {
+                    return sendJson(response, 200, buildCommunityModUninstallExecutionBlocked({
+                        confirmation,
+                        executionRequest: {
+                            ok: true,
+                            status: confirmation.status,
+                            summary: confirmation.summary,
+                            warnings: ["Uninstall execution is blocked by confirmation preflight."],
+                        },
+                    }));
+                }
+
+                const executionRequest = buildCommunityModUninstallExecutionRequest({
+                    payload,
                     confirmation,
-                    executionRequest: {
-                        ok: true,
-                        status: confirmation.status,
-                        summary: confirmation.summary,
-                        warnings: ["Uninstall execution is blocked by confirmation preflight."],
-                    },
+                    env: process.env,
+                });
+                if (executionRequest.status !== "ready") {
+                    return sendJson(response, 200, buildCommunityModUninstallExecutionBlocked({ confirmation, executionRequest }));
+                }
+
+                return sendJson(response, 200, await executeCommunityModUninstall({
+                    confirmation,
+                    gameProcess: await detectStfcGameProcess({ gameDirectory: gameDir }),
+                    enableExecution: true,
                 }));
-            }
-
-            const executionRequest = buildCommunityModUninstallExecutionRequest({
-                payload,
-                confirmation,
-                env: process.env,
             });
-            if (executionRequest.status !== "ready") {
-                return sendJson(response, 200, buildCommunityModUninstallExecutionBlocked({ confirmation, executionRequest }));
-            }
-
-            return sendJson(response, 200, await executeCommunityModUninstall({
-                confirmation,
-                gameProcess: await detectStfcGameProcess({ gameDirectory: gameDir }),
-                enableExecution: true,
-            }));
         } catch (error) {
             return sendJson(response, 502, {
                 ok: false,
@@ -470,36 +493,38 @@ const server = createServer(async (request, response) => {
         }
 
         try {
-            const profile = normalizeCommunityModReleaseProfile(
-                requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
-            );
-            const confirmation = await buildCurrentCommunityModInstallConfirmation(profile);
-            if (confirmation.status !== "ready_for_confirmation") {
-                return sendJson(response, 200, buildCommunityModInstallExecutionBlocked({
+            return await withCommunityModOperationLock(response, "install", async () => {
+                const profile = normalizeCommunityModReleaseProfile(
+                    requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
+                );
+                const confirmation = await buildCurrentCommunityModInstallConfirmation(profile);
+                if (confirmation.status !== "ready_for_confirmation") {
+                    return sendJson(response, 200, buildCommunityModInstallExecutionBlocked({
+                        confirmation,
+                        executionRequest: {
+                            ok: true,
+                            status: confirmation.status,
+                            summary: confirmation.summary,
+                            warnings: ["Install execution is blocked by confirmation preflight."],
+                        },
+                    }));
+                }
+
+                const executionRequest = buildCommunityModInstallExecutionRequest({
+                    payload,
                     confirmation,
-                    executionRequest: {
-                        ok: true,
-                        status: confirmation.status,
-                        summary: confirmation.summary,
-                        warnings: ["Install execution is blocked by confirmation preflight."],
-                    },
+                    env: process.env,
+                });
+                if (executionRequest.status !== "ready") {
+                    return sendJson(response, 200, buildCommunityModInstallExecutionBlocked({ confirmation, executionRequest }));
+                }
+
+                return sendJson(response, 200, await executeCommunityModInstall({
+                    confirmation,
+                    gameProcess: await detectStfcGameProcess({ gameDirectory: gameDir }),
+                    enableExecution: true,
                 }));
-            }
-
-            const executionRequest = buildCommunityModInstallExecutionRequest({
-                payload,
-                confirmation,
-                env: process.env,
             });
-            if (executionRequest.status !== "ready") {
-                return sendJson(response, 200, buildCommunityModInstallExecutionBlocked({ confirmation, executionRequest }));
-            }
-
-            return sendJson(response, 200, await executeCommunityModInstall({
-                confirmation,
-                gameProcess: await detectStfcGameProcess({ gameDirectory: gameDir }),
-                enableExecution: true,
-            }));
         } catch (error) {
             return sendJson(response, 502, {
                 ok: false,
@@ -678,6 +703,26 @@ function isBattleLogPublicPath(pathname) {
     return pathname === "/battle-log" || pathname.startsWith("/battle-log/");
 }
 
+function isPrivilegedModApiPath(pathname) {
+    return pathname === "/api/release/check" || pathname.startsWith("/api/mod/");
+}
+
+function isGithubNetworkApiPath(pathname) {
+    return pathname === "/api/release/check"
+        || pathname === "/api/mod/release-catalog"
+        || pathname === "/api/mod/install-plan"
+        || pathname === "/api/mod/verify-artifact"
+        || pathname === "/api/mod/install-preflight"
+        || pathname === "/api/mod/stage-artifact"
+        || pathname === "/api/mod/install-confirmation"
+        || pathname === "/api/mod/install-execution";
+}
+
+function hasGithubNetworkConsent(request) {
+    const consent = headerValue(request?.headers?.["x-sidecar-network-consent"]).trim().toLowerCase();
+    return ["github", "github-release", "release-artifact", "1", "true"].includes(consent);
+}
+
 function capabilityUnavailablePayload(capability) {
     return {
         ok: false,
@@ -686,6 +731,29 @@ function capabilityUnavailablePayload(capability) {
         capability,
         modProfile: communityModSettingsProfile,
     };
+}
+
+async function withCommunityModOperationLock(response, operation, handler) {
+    const lockKey = path.resolve(gameDir).toLowerCase();
+    if (communityModOperationLocks.has(lockKey)) {
+        return sendJson(response, 409, {
+            ok: false,
+            status: "operation_in_progress",
+            error: "Another Community Mod operation is already running for the selected game directory.",
+            operation: communityModOperationLocks.get(lockKey),
+            requestedOperation: operation,
+            gameDir,
+        });
+    }
+
+    communityModOperationLocks.set(lockKey, operation);
+    try {
+        return await handler();
+    } finally {
+        if (communityModOperationLocks.get(lockKey) === operation) {
+            communityModOperationLocks.delete(lockKey);
+        }
+    }
 }
 
 async function readCommunityModInstallStatus() {
@@ -1208,6 +1276,18 @@ function isAuthorizedSyncRequest(request) {
 
 function isAuthorizedSettingsRequest(request) {
     return isSettingsRequestAuthorized(request, { settingsSaveMode, settingsToken });
+}
+
+function isAuthorizedModRequest(request) {
+    return isModRequestAuthorized(request, modToken);
+}
+
+function headerValue(value) {
+    if (Array.isArray(value)) {
+        return String(value[0] ?? "");
+    }
+
+    return String(value ?? "");
 }
 
 function parseSettingsSaveMode(value) {

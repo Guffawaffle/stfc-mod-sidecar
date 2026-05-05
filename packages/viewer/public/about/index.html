@@ -112,7 +112,7 @@
             <p id="about-mod-uninstall-recovery-detail" class="page-copy">No uninstall recovery action is needed before execution runs.</p>
             <label class="toggle">
               <input id="about-mod-uninstall-delete-settings-logs" type="checkbox" />
-              <span>Also Delete Settings And Logs</span>
+              <span>Also delete settings and logs</span>
             </label>
             <div class="diagnostics-actions">
               <button id="refresh-mod-status" type="button">Refresh Status</button>
@@ -151,6 +151,18 @@
 
       </section>
     </main>
+
+    <dialog id="about-confirmation-dialog" class="action-dialog" aria-labelledby="about-confirmation-dialog-title">
+      <form method="dialog" class="action-dialog__panel">
+        <h2 id="about-confirmation-dialog-title">Confirm Action</h2>
+        <p id="about-confirmation-dialog-message" class="page-copy"></p>
+        <ul id="about-confirmation-dialog-checks" class="module-list"></ul>
+        <div class="diagnostics-actions action-dialog__actions">
+          <button id="about-confirmation-dialog-cancel" class="button-secondary" type="submit" value="cancel">Cancel</button>
+          <button id="about-confirmation-dialog-confirm" type="submit" value="confirm">Confirm</button>
+        </div>
+      </form>
+    </dialog>
 
     <script type="module" src="/about/app.js"></script>
     <script type="module" src="/shared/shell.js"></script>

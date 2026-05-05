@@ -37,6 +37,7 @@ const state = {
     modUninstallConfirmation: null,
     modUninstallExecution: null,
     modUninstallDeleteSettingsAndLogs: false,
+    githubNetworkConsent: false,
     modReleaseChecking: false,
     modArtifactVerifying: false,
     modInstallConfirming: false,
@@ -95,6 +96,11 @@ const elements = {
     previewDiagnostics: document.querySelector("#preview-diagnostics"),
     copyDiagnostics: document.querySelector("#copy-diagnostics"),
     downloadDiagnostics: document.querySelector("#download-diagnostics"),
+    confirmationDialog: document.querySelector("#about-confirmation-dialog"),
+    confirmationDialogTitle: document.querySelector("#about-confirmation-dialog-title"),
+    confirmationDialogMessage: document.querySelector("#about-confirmation-dialog-message"),
+    confirmationDialogChecks: document.querySelector("#about-confirmation-dialog-checks"),
+    confirmationDialogConfirm: document.querySelector("#about-confirmation-dialog-confirm"),
 };
 
 elements.developerModeToggle?.addEventListener("change", () => void setDeveloperMode(elements.developerModeToggle.checked));
@@ -284,6 +290,10 @@ function renderCommunityModStatus() {
 }
 
 async function checkModRelease() {
+    if (!await ensureGithubNetworkConsent()) {
+        return;
+    }
+
     state.modReleaseChecking = true;
     state.modReleaseCatalog = null;
     state.modInstallPlan = null;
@@ -310,7 +320,7 @@ async function checkModRelease() {
 
 async function fetchModInstallPlan() {
     const profile = encodeURIComponent(state.bootstrap?.modProfile ?? state.bootstrap?.settingsProfile ?? "");
-    const response = await fetch(`/api/mod/install-plan?profile=${profile}`, { cache: "no-store" });
+    const response = await fetch(`/api/mod/install-plan?profile=${profile}`, modFetchOptions({ network: true }));
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result.ok === false) {
         throw new Error(result.error
@@ -328,6 +338,11 @@ function setModReleaseLink(url) {
 }
 
 async function checkReleaseUpdate() {
+    if (!await ensureGithubNetworkConsent()) {
+        setReleaseUpdateState("Update check cancelled");
+        return;
+    }
+
     elements.checkReleaseUpdate.disabled = true;
     setReleaseUpdateState("Checking updates...");
     setReleaseUpdateLink("");
@@ -343,7 +358,7 @@ async function checkReleaseUpdate() {
 }
 
 async function fetchReleaseUpdateCheck() {
-    const response = await fetch("/api/release/check", { cache: "no-store" });
+    const response = await fetch("/api/release/check", modFetchOptions({ network: true }));
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result.ok === false) {
         throw new Error(result.error ? `Update check failed: ${result.error}` : `Update check failed: ${response.status}`);
@@ -462,6 +477,10 @@ function safeTimestamp(value) {
 }
 
 async function verifyModArtifact() {
+    if (!await ensureGithubNetworkConsent()) {
+        return;
+    }
+
     state.modArtifactVerifying = true;
     state.modArtifactVerification = null;
     renderCommunityModStatus();
@@ -482,10 +501,7 @@ async function verifyModArtifact() {
 
 async function fetchModArtifactVerification() {
     const profile = encodeURIComponent(state.bootstrap?.modProfile ?? state.bootstrap?.settingsProfile ?? "");
-    const response = await fetch(`/api/mod/verify-artifact?profile=${profile}`, {
-        method: "POST",
-        cache: "no-store",
-    });
+    const response = await fetch(`/api/mod/verify-artifact?profile=${profile}`, modFetchOptions({ method: "POST", network: true }));
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result.ok === false) {
         throw new Error(result.error
@@ -497,6 +513,10 @@ async function fetchModArtifactVerification() {
 }
 
 async function prepareModInstallConfirmation() {
+    if (!await ensureGithubNetworkConsent()) {
+        return;
+    }
+
     state.modInstallConfirming = true;
     state.modArtifactStaging = null;
     state.modInstallConfirmation = null;
@@ -524,10 +544,7 @@ async function prepareModInstallConfirmation() {
 
 async function fetchModInstallConfirmation() {
     const profile = encodeURIComponent(state.bootstrap?.modProfile ?? state.bootstrap?.settingsProfile ?? "");
-    const response = await fetch(`/api/mod/install-confirmation?profile=${profile}`, {
-        cache: "no-store",
-        method: "POST",
-    });
+    const response = await fetch(`/api/mod/install-confirmation?profile=${profile}`, modFetchOptions({ method: "POST", network: true }));
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result.ok === false) {
         throw new Error(result.error
@@ -543,9 +560,17 @@ async function executeModInstall() {
         return;
     }
 
-    const confirmed = typeof window.confirm === "function"
-        ? window.confirm("Execute the prepared Community Mod install now?")
-        : true;
+    if (!await ensureGithubNetworkConsent()) {
+        return;
+    }
+
+    const confirmed = await showActionDialog({
+        title: "Execute Community Mod install",
+        message: state.modInstallConfirmation.summary ?? "Install the prepared version.dll now.",
+        checks: confirmationCheckLabels(state.modInstallConfirmation.confirmation?.checks),
+        confirmLabel: "Execute install",
+        danger: true,
+    });
     if (!confirmed) {
         return;
     }
@@ -576,17 +601,16 @@ async function executeModInstall() {
 
 async function fetchModInstallExecution(confirmation) {
     const profile = encodeURIComponent(state.bootstrap?.modProfile ?? state.bootstrap?.settingsProfile ?? "");
-    const response = await fetch(`/api/mod/install-execution?profile=${profile}`, {
-        cache: "no-store",
+    const response = await fetch(`/api/mod/install-execution?profile=${profile}`, modFetchOptions({
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+        network: true,
+        body: {
             enableExecution: true,
             acknowledgement: confirmation.confirmation?.acknowledgement ?? "",
             confirmedStagedSha256: confirmation.staged?.dllSha256 ?? "",
             confirmedDestinationPath: confirmation.target?.destinationPath ?? "",
-        }),
-    });
+        },
+    }));
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result.ok === false) {
         throw new Error(result.error
@@ -626,7 +650,7 @@ async function checkModUninstall() {
 }
 
 async function fetchModUninstallPlan() {
-    const response = await fetch("/api/mod/uninstall-plan", { cache: "no-store" });
+    const response = await fetch("/api/mod/uninstall-plan", modFetchOptions());
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result.ok === false) {
         throw new Error(result.error
@@ -659,12 +683,10 @@ async function prepareModUninstallConfirmation() {
 }
 
 async function fetchModUninstallConfirmation() {
-    const response = await fetch("/api/mod/uninstall-confirmation", {
-        cache: "no-store",
+    const response = await fetch("/api/mod/uninstall-confirmation", modFetchOptions({
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ deleteSettingsAndLogs: state.modUninstallDeleteSettingsAndLogs }),
-    });
+        body: { deleteSettingsAndLogs: state.modUninstallDeleteSettingsAndLogs },
+    }));
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result.ok === false) {
         throw new Error(result.error
@@ -680,9 +702,16 @@ async function executeModUninstall() {
         return;
     }
 
-    const confirmed = typeof window.confirm === "function"
-        ? window.confirm("Execute the prepared Community Mod uninstall now?")
-        : true;
+    const confirmed = await showActionDialog({
+        title: "Execute Community Mod uninstall",
+        message: state.modUninstallConfirmation.summary ?? "Remove or restore version.dll now.",
+        checks: [
+            ...confirmationCheckLabels(state.modUninstallConfirmation.confirmation?.checks),
+            state.modUninstallDeleteSettingsAndLogs ? "Settings and logs will be deleted" : "Settings and logs will be left untouched",
+        ],
+        confirmLabel: "Execute uninstall",
+        danger: true,
+    });
     if (!confirmed) {
         return;
     }
@@ -712,18 +741,16 @@ async function executeModUninstall() {
 }
 
 async function fetchModUninstallExecution(confirmation) {
-    const response = await fetch("/api/mod/uninstall-execution", {
-        cache: "no-store",
+    const response = await fetch("/api/mod/uninstall-execution", modFetchOptions({
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+        body: {
             enableExecution: true,
             acknowledgement: confirmation.confirmation?.acknowledgement ?? "",
             confirmedCurrentSha256: confirmation.current?.dllSha256 ?? "",
             confirmedDestinationPath: confirmation.target?.destinationPath ?? "",
             deleteSettingsAndLogs: confirmation.settings?.delete === true && state.modUninstallDeleteSettingsAndLogs,
-        }),
-    });
+        },
+    }));
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result.ok === false) {
         throw new Error(result.error
@@ -743,4 +770,75 @@ function isUninstallExecutionReady(confirmation) {
         && Boolean(confirmation.confirmation?.acknowledgement)
         && Boolean(confirmation.current?.dllSha256)
         && Boolean(confirmation.target?.destinationPath);
+}
+
+function modFetchOptions(options = {}) {
+    const headers = {};
+    const token = state.bootstrap?.modOperationToken;
+    if (token) {
+        headers.authorization = `Bearer ${token}`;
+    }
+
+    if (options.network) {
+        headers["x-sidecar-network-consent"] = "github-release";
+    }
+
+    if (options.body !== undefined) {
+        headers["content-type"] = "application/json";
+    }
+
+    return {
+        cache: "no-store",
+        method: options.method ?? "GET",
+        headers,
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    };
+}
+
+async function ensureGithubNetworkConsent() {
+    if (state.githubNetworkConsent) {
+        return true;
+    }
+
+    const confirmed = await showActionDialog({
+        title: "Allow GitHub connection",
+        message: "This action connects to GitHub to read release metadata or download the selected release artifact.",
+        checks: ["Use GitHub release URLs only", "Cache downloads locally before install", "Verify SHA-256 metadata before staging"],
+        confirmLabel: "Allow GitHub",
+        danger: false,
+    });
+    state.githubNetworkConsent = confirmed;
+    return confirmed;
+}
+
+function confirmationCheckLabels(checks) {
+    return Array.isArray(checks)
+        ? checks.map((check) => `${check.passed ? "Ready" : "Blocked"}: ${check.label ?? check.id ?? "check"}`)
+        : [];
+}
+
+function showActionDialog(options = {}) {
+    if (!elements.confirmationDialog?.showModal) {
+        const lines = [options.title, options.message, ...(options.checks ?? [])].filter(Boolean);
+        return Promise.resolve(typeof window.confirm === "function" ? window.confirm(lines.join("\n\n")) : true);
+    }
+
+    elements.confirmationDialogTitle.textContent = options.title ?? "Confirm Action";
+    elements.confirmationDialogMessage.textContent = options.message ?? "Confirm this action.";
+    elements.confirmationDialogChecks.replaceChildren(...(options.checks ?? []).map((label) => {
+        const item = document.createElement("li");
+        item.textContent = label;
+        return item;
+    }));
+    elements.confirmationDialogConfirm.textContent = options.confirmLabel ?? "Confirm";
+    elements.confirmationDialogConfirm.classList.toggle("button-secondary", !options.danger);
+
+    return new Promise((resolve) => {
+        const handleClose = () => {
+            elements.confirmationDialog.removeEventListener("close", handleClose);
+            resolve(elements.confirmationDialog.returnValue === "confirm");
+        };
+        elements.confirmationDialog.addEventListener("close", handleClose);
+        elements.confirmationDialog.showModal();
+    });
 }

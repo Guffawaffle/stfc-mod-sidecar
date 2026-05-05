@@ -25,6 +25,7 @@ let mainWindow = null;
 let sidecarProcess = null;
 let sidecarShutdownToken = "";
 let sidecarSyncToken = "";
+let sidecarModToken = "";
 let sidecarUrl = "";
 let logPath = "";
 let desktopSettingsPath = "";
@@ -123,6 +124,7 @@ async function startSidecarServer(url) {
     const gameDirectory = await validatedDesktopGameDirectoryForStartup();
     sidecarShutdownToken = randomUUID();
     sidecarSyncToken = process.env.STFC_SIDECAR_SYNC_TOKEN?.trim() || randomUUID();
+    sidecarModToken = process.env.STFC_SIDECAR_MOD_TOKEN?.trim() || randomUUID();
     writeLog(
         "log",
         `[sidecar-desktop] starting server cwd=${paths.cwd} serverScript=${paths.serverScript} gameDirectory=${gameDirectory || "default"} mode=${companionMode()} serverExists=${fs.existsSync(paths.serverScript)}`,
@@ -146,6 +148,7 @@ async function startSidecarServer(url) {
             ...releaseEnvironment(),
             STFC_SIDECAR_SHUTDOWN_TOKEN: sidecarShutdownToken,
             STFC_SIDECAR_SYNC_TOKEN: sidecarSyncToken,
+            STFC_SIDECAR_MOD_TOKEN: sidecarModToken,
         },
     });
 
@@ -404,6 +407,7 @@ async function bootstrapSnapshot(options = {}) {
         settingsProfile: desktopSettings.modProfile || health?.settingsProfile || "guff-advanced",
         communityModInstall: health?.communityModInstall ?? null,
         release: desktopReleaseInfo(health?.release),
+        modOperationToken: sidecarModToken,
         error: options.error ?? bootstrapWarning,
         requiredExecutable: STFC_GAME_EXECUTABLE,
         securityMotto: SECURITY_MOTTO,

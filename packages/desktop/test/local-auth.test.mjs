@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
     generateLocalCapabilityToken,
+    isAuthorizedModRequest,
     isAuthorizedSettingsRequest,
     isAuthorizedShutdownRequest,
     isAuthorizedSyncRequest,
     localCapabilityTokenFrom,
+    resolveModToken,
     resolveSettingsToken,
     resolveSyncToken,
 } from "../../viewer/local-auth.mjs";
@@ -34,6 +36,11 @@ describe("local API authorization", () => {
         expect(resolveSettingsToken({ STFC_SIDECAR_SETTINGS_TOKEN: " settings-secret " })).toBe("settings-secret");
     });
 
+    it("generates or uses a separate mod operation token", () => {
+        expect(resolveModToken({ STFC_SIDECAR_MOD_TOKEN: " mod-secret " })).toBe("mod-secret");
+        expect(resolveModToken({ STFC_SIDECAR_SYNC_TOKEN: "sync-secret" })).toMatch(/^[0-9a-f-]{36}$/i);
+    });
+
     it("authorizes sync requests only with the sync token", () => {
         expect(isAuthorizedSyncRequest(request({ authorization: "Bearer sync-secret" }), "sync-secret")).toBe(true);
         expect(isAuthorizedSyncRequest(request({ "stfc-sync-token": "sync-secret" }), "sync-secret")).toBe(true);
@@ -57,6 +64,13 @@ describe("local API authorization", () => {
             settingsSaveMode: "remote_protected",
             settingsToken: "settings-secret",
         })).toBe(false);
+    });
+
+    it("authorizes mod operations only with the mod token", () => {
+        expect(isAuthorizedModRequest(request({ authorization: "Bearer mod-secret" }), "mod-secret")).toBe(true);
+        expect(isAuthorizedModRequest(request({ "x-sidecar-mod-token": "mod-secret" }), "mod-secret")).toBe(true);
+        expect(isAuthorizedModRequest(request({ authorization: "Bearer sync-secret" }), "mod-secret")).toBe(false);
+        expect(isAuthorizedModRequest(request({ authorization: "Bearer anything" }), "")).toBe(false);
     });
 
     it("authorizes shutdown only with a configured shutdown token", () => {

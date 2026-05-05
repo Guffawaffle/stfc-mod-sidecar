@@ -187,6 +187,21 @@ describe("Community Mod uninstall execution", () => {
         });
     });
 
+    test("request contract is not enabled by the install execution flag", async () => {
+        const fixture = await makeFixture({ action: "install" });
+        const request = buildCommunityModUninstallExecutionRequest({
+            confirmation: fixture.confirmation,
+            payload: explicitExecutionPayload(fixture),
+            env: { STFC_SIDECAR_ENABLE_MOD_INSTALL_EXECUTION: "1" },
+        });
+
+        expect(request).toMatchObject({
+            status: "server_execution_disabled",
+            requested: true,
+            serverEnabled: false,
+        });
+    });
+
     test("request contract accepts explicit uninstall confirmation", async () => {
         const fixture = await makeFixture({ action: "install" });
         const request = buildCommunityModUninstallExecutionRequest({

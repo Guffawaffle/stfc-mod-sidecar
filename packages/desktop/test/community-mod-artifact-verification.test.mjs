@@ -68,6 +68,23 @@ describe("Community Mod artifact verification", () => {
         });
     });
 
+    test("fails closed when trusted release digest metadata is missing", async () => {
+        const zip = zipWithEntries(["version.dll"]);
+        const result = await verifyCommunityModArtifact({
+            cacheDir: await tempCacheDir(),
+            catalog: readyCatalog({ digest: "", size: zip.length }),
+            fetchImpl: () => {
+                throw new Error("fetch should not be called without a trusted digest");
+            },
+        });
+
+        expect(result).toMatchObject({
+            status: "trusted_digest_required",
+            cache: null,
+            artifact: { expectedSha256: "" },
+        });
+    });
+
     test("rejects zips that do not contain version.dll", async () => {
         const zip = zipWithEntries(["notes.txt"]);
         const result = await verifyCommunityModArtifact({

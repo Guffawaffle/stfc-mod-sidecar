@@ -1,6 +1,6 @@
 {
   "name": "stfc-mod-sidecar",
-  "version": "0.0.1-Alpha",
+  "version": "0.1.0-alpha.1",
   "private": true,
   "description": "Read-only diagnostic sidecar and integration bridge for STFC Community Mod events.",
   "type": "module",
