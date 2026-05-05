@@ -41,23 +41,33 @@ describe("community mod release catalog", () => {
         });
     });
 
-    test("keeps advanced alpha catalog visible but install-disabled until explicitly supported", () => {
+    test("selects the latest Guffawaffle tagged release for advanced alpha installs", () => {
         const result = buildCommunityModReleaseCatalog({
             profile: "guff-advanced",
-            releases: [release("v1.0.0-guffa.8", { assets: [asset("version.dll"), asset("SHA256SUMS.txt")] })],
+            releases: [
+                release("v1.0.0-guffa.8", {
+                    assets: [asset("version.dll", { digest: "sha256:older" }), asset("SHA256SUMS.txt")],
+                }),
+                release("v1.0.0-guffa.9", {
+                    prerelease: true,
+                    assets: [asset("version.dll", { digest: "sha256:latest" })],
+                }),
+            ],
         });
 
         expect(result).toMatchObject({
             status: "ready",
-            installSupported: false,
+            installSupported: true,
             profile: "guff-advanced",
             repository: "Guffawaffle/stfc-mod",
+            distribution: "advanced-alpha",
+            release: { tagName: "v1.0.0-guffa.9", prerelease: true },
             windowsAsset: {
                 kind: "dll",
                 name: "version.dll",
+                digest: "sha256:latest",
             },
         });
-        expect(result.unsupportedReason).toMatch(/fresh supported fork release/i);
     });
 
     test("reports missing asset separately from missing release", () => {

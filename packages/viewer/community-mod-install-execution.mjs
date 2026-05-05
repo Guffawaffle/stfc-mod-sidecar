@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
-import { access, copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { access, copyFile, lstat, mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -170,6 +170,11 @@ export async function executeCommunityModInstall(options = {}) {
         return executionResult(base, blocked);
     }
 
+    const pathBlocked = await validateInstallPathSafety({ target, staged, backupRequired });
+    if (pathBlocked) {
+        return executionResult(base, pathBlocked);
+    }
+
     const stagedSha256 = await sha256File(staged.path);
     if (stagedSha256 !== normalizeSha256(staged.dllSha256)) {
         return executionResult(base, {
@@ -219,8 +224,16 @@ export async function executeCommunityModInstall(options = {}) {
             });
         }
 
+        const backupSha256 = backupCreated ? await sha256File(target.backupPath) : "";
         await mkdir(path.dirname(target.manifestPath), { recursive: true });
-        const manifest = buildInstallManifest({ confirmation, dllSha256: destinationSha256, installedAt: checkedAt });
+        const manifest = buildInstallManifest({
+            confirmation,
+            target,
+            backupCreated,
+            backupSha256,
+            dllSha256: destinationSha256,
+            installedAt: checkedAt,
+        });
         await writeFile(target.manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
         return executionResult(base, {
@@ -388,6 +401,9 @@ function normalizeGameProcessStatus(value = {}) {
         checked: Boolean(value.checked),
         running: Boolean(value.running),
         processName: typeof value.processName === "string" ? value.processName : "prime.exe",
+        scopedToTarget: value.scopedToTarget === true,
+        targetPath: stringOrEmpty(value.targetPath) || stringOrEmpty(value.targetExecutablePath),
+        candidateCount: Number.isFinite(value.candidateCount) ? value.candidateCount : 0,
         error: typeof value.error === "string" ? value.error : "",
     };
 }
@@ -422,6 +438,79 @@ function isInsideDirectory(parent, child) {
     return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
+async function validateInstallPathSafety({ target, staged, backupRequired }) {
+    try {
+        const gameDirectory = await realpath(target.gameDirectory);
+        const expectedDestination = path.join(gameDirectory, COMMUNITY_MOD_DLL_FILE);
+        if (!samePath(target.destinationPath, expectedDestination)) {
+            return pathSafetyBlocked("unsafe_target_path", "Destination version.dll is outside the real selected game directory boundary.");
+        }
+
+        if (!samePath(target.manifestPath, communityModInstallManifestPath(gameDirectory))) {
+            return pathSafetyBlocked("unsafe_target_path", "Install manifest path is outside the real selected game directory boundary.");
+        }
+
+        const stagedStats = await lstat(staged.path).catch(() => null);
+        if (!stagedStats?.isFile() || stagedStats.isSymbolicLink()) {
+            return pathSafetyBlocked("unsafe_staged_path", "Staged version.dll must be a regular file, not a symlink or missing path.");
+        }
+
+        if (await existingPathIsSymlink(target.destinationPath)) {
+            return pathSafetyBlocked("unsafe_target_path", "Destination version.dll is a symlink; automated install is blocked.");
+        }
+
+        if (await existingPathIsSymlink(target.manifestPath) || await existingPathIsSymlink(path.dirname(target.manifestPath))) {
+            return pathSafetyBlocked("unsafe_target_path", "Install manifest path crosses a symlink; automated install is blocked.");
+        }
+
+        if (backupRequired) {
+            const backupRoot = path.join(gameDirectory, ".stfc-sidecar", "backups");
+            if (!isInsideDirectory(backupRoot, target.backupPath)) {
+                return pathSafetyBlocked("unsafe_target_path", "Backup path is outside the real selected game directory boundary.");
+            }
+
+            if (await existingPathIsSymlink(target.backupPath) || await existingPathIsSymlink(path.dirname(target.backupPath))) {
+                return pathSafetyBlocked("unsafe_target_path", "Backup path crosses a symlink; automated install is blocked.");
+            }
+        }
+
+        return null;
+    } catch (error) {
+        return pathSafetyBlocked(
+            "path_safety_check_failed",
+            error instanceof Error ? error.message : String(error),
+        );
+    }
+}
+
+function pathSafetyBlocked(status, summary) {
+    return {
+        status,
+        summary,
+        warnings: ["Realpath/lstat safety validation blocked install before any game-directory write."],
+    };
+}
+
+async function existingPathIsSymlink(filePath) {
+    try {
+        return (await lstat(filePath)).isSymbolicLink();
+    } catch (error) {
+        if (error?.code === "ENOENT") {
+            return false;
+        }
+
+        throw error;
+    }
+}
+
+function samePath(left, right) {
+    return normalizePathForCompare(path.resolve(left)) === normalizePathForCompare(path.resolve(right));
+}
+
+function normalizePathForCompare(value) {
+    return process.platform === "win32" ? value.toLowerCase() : value;
+}
+
 async function rollbackDestination({ target, backupCreated, destinationWritten }) {
     const rollback = {
         attempted: backupCreated || destinationWritten,
@@ -449,15 +538,34 @@ async function rollbackDestination({ target, backupCreated, destinationWritten }
     return rollback;
 }
 
-function buildInstallManifest({ confirmation, dllSha256, installedAt }) {
+function buildInstallManifest({ confirmation, target, backupCreated, backupSha256, dllSha256, installedAt }) {
     const catalog = confirmation.artifactStaging?.catalog ?? confirmation.installPlan?.catalog ?? null;
+    const previousInstall = confirmation.installPlan?.install ?? null;
+    const backupRequired = confirmation.safety?.backupBeforeReplace === true || REPLACE_ACTIONS.has(confirmation.action);
     return {
-        schemaVersion: 1,
+        schemaVersion: 2,
         distribution: catalog?.distribution ?? distributionFromProfile(confirmation.profile),
+        action: stringOrEmpty(confirmation.action),
         repo: catalog?.repository ?? "",
         tag: catalog?.release?.tagName ?? confirmation.installPlan?.target?.tag ?? "",
         assetName: catalog?.windowsAsset?.name ?? confirmation.installPlan?.target?.assetName ?? "",
         dllSha256,
+        destinationPath: stringOrEmpty(target?.destinationPath),
+        manifestPath: stringOrEmpty(target?.manifestPath),
+        backup: {
+            required: backupRequired,
+            created: backupCreated === true,
+            path: backupCreated ? stringOrEmpty(target?.backupPath) : "",
+            sha256: normalizeSha256(backupSha256),
+        },
+        previous: {
+            classification: stringOrEmpty(previousInstall?.classification),
+            profile: stringOrEmpty(previousInstall?.profile),
+            dllSha256: normalizeSha256(previousInstall?.dll?.sha256),
+            tag: previousInstall?.matchedRelease?.tag || previousInstall?.manifest?.tag || "",
+            assetName: previousInstall?.matchedRelease?.assetName || previousInstall?.manifest?.assetName || "",
+        },
+        sidecarVersion: stringOrEmpty(process.env.STFC_SIDECAR_APP_VERSION),
         installedAt,
     };
 }

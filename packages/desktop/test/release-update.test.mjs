@@ -100,6 +100,7 @@ describe("release update checks", () => {
         expect(compareReleaseVersions("0.0.2", "0.0.2-Alpha")).toBeGreaterThan(0);
         expect(compareReleaseVersions("0.0.2-Beta", "0.0.2-Alpha")).toBeGreaterThan(0);
         expect(compareReleaseVersions("0.0.2-Alpha", "0.0.1")).toBeGreaterThan(0);
+        expect(compareReleaseVersions("1.0.0-guffa.9", "1.0.0-guffa.8")).toBeGreaterThan(0);
     });
 });
 

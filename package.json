@@ -1,6 +1,6 @@
 {
   "name": "stfc-mod-sidecar",
-  "version": "0.0.1-Alpha",
+  "version": "0.1.0-alpha.1",
   "private": true,
   "description": "Read-only diagnostic sidecar and integration bridge for STFC Community Mod events.",
   "type": "module",
@@ -20,6 +20,8 @@
     "server:restart": "node ./scripts/viewer-server-control.mjs restart",
     "server:logs": "node ./scripts/viewer-server-control.mjs logs",
     "smoke:mod-install": "node ./scripts/community-mod-install-smoke.mjs",
+    "smoke:mod-dev-reinstall": "node ./scripts/community-mod-dev-reinstall-smoke.mjs",
+    "smoke:mod-dev-reinstall:guff": "node ./scripts/community-mod-dev-reinstall-smoke.mjs --profile guff-advanced",
     "desktop:dev": "npm run dev --workspace @stfc-mod-sidecar/desktop",
     "desktop:pack": "npm run pack --workspace @stfc-mod-sidecar/desktop",
     "desktop:dist": "npm run dist --workspace @stfc-mod-sidecar/desktop",

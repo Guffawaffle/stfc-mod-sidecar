@@ -104,7 +104,12 @@ export function compareReleaseVersions(left, right) {
         }
     }
 
-    return prereleaseRank(leftVersion.prerelease) - prereleaseRank(rightVersion.prerelease);
+    const rankComparison = prereleaseRank(leftVersion.prerelease) - prereleaseRank(rightVersion.prerelease);
+    if (rankComparison !== 0) {
+        return rankComparison;
+    }
+
+    return leftVersion.prerelease.localeCompare(rightVersion.prerelease, undefined, { numeric: true, sensitivity: "base" });
 }
 
 export function normalizeReleaseRepository(value) {

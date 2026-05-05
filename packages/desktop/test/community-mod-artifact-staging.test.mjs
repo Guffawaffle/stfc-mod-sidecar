@@ -99,6 +99,23 @@ describe("Community Mod artifact staging", () => {
         });
     });
 
+    test("refuses staging when trusted release digest metadata is missing", async () => {
+        const zip = zipWithEntries([{ name: "version.dll", data: Buffer.from("dll") }]);
+        const cacheDir = await tempCacheDir();
+        const cachePath = await cachedArtifact(cacheDir, zip);
+        const result = await stageCommunityModArtifact({
+            cacheDir,
+            catalog: readyCatalog({ digest: "", size: zip.length }),
+            verification: verifiedArtifact({ cachePath, bytes: zip.length }),
+        });
+
+        expect(result).toMatchObject({
+            status: "trusted_digest_required",
+            staged: null,
+            artifact: { expectedSha256: "", actualSha256: "" },
+        });
+    });
+
     test("rejects unsafe zip entries even when staging is called directly", async () => {
         const zip = zipWithEntries([
             { name: "version.dll", data: Buffer.from("dll") },

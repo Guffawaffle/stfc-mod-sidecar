@@ -60,8 +60,19 @@ export async function stageCommunityModArtifact(options = {}) {
 
     const artifactBuffer = await readFile(cachePath);
     const expectedArtifactSha256 = normalizeSha256(asset.digest);
+    if (!expectedArtifactSha256) {
+        return stagingResult({
+            checkedAt,
+            status: "trusted_digest_required",
+            summary: "Selected Community Mod artifact does not include trusted SHA-256 release metadata.",
+            catalog,
+            artifactVerification: verification,
+            artifact: { expectedSha256: "", actualSha256: "" },
+        });
+    }
+
     const actualArtifactSha256 = sha256Buffer(artifactBuffer);
-    if (expectedArtifactSha256 && actualArtifactSha256 !== expectedArtifactSha256) {
+    if (actualArtifactSha256 !== expectedArtifactSha256) {
         return stagingResult({
             checkedAt,
             status: "artifact_cache_mismatch",

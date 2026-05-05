@@ -1,6 +1,6 @@
 {
   "name": "@stfc-mod-sidecar/desktop",
-  "version": "0.0.1-Alpha",
+  "version": "0.1.0-alpha.1",
   "private": true,
   "description": "Desktop companion shell for STFC Mod Sidecar.",
   "author": "Joseph Gustavson",

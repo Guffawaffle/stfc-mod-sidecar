@@ -122,10 +122,16 @@ export async function readCommunityModInstallManifest(manifestPath) {
             schemaVersion: Number.isInteger(manifest.schemaVersion) ? manifest.schemaVersion : null,
             distribution: typeof manifest.distribution === "string" ? manifest.distribution : "",
             profile: profileFromDistribution(manifest.distribution),
+            action: typeof manifest.action === "string" ? manifest.action : "",
             repo: typeof manifest.repo === "string" ? manifest.repo : "",
             tag: typeof manifest.tag === "string" ? manifest.tag : "",
             assetName: typeof manifest.assetName === "string" ? manifest.assetName : "",
             dllSha256,
+            destinationPath: typeof manifest.destinationPath === "string" ? manifest.destinationPath : "",
+            manifestPath: typeof manifest.manifestPath === "string" ? manifest.manifestPath : "",
+            backup: normalizeManifestBackup(manifest.backup),
+            previous: normalizeManifestPrevious(manifest.previous),
+            sidecarVersion: typeof manifest.sidecarVersion === "string" ? manifest.sidecarVersion : "",
             installedAt: typeof manifest.installedAt === "string" ? manifest.installedAt : "",
         };
     } catch (error) {
@@ -231,6 +237,27 @@ async function fileExists(filePath) {
     } catch {
         return false;
     }
+}
+
+function normalizeManifestBackup(value) {
+    const backup = isRecord(value) ? value : {};
+    return {
+        required: backup.required === true,
+        created: backup.created === true,
+        path: typeof backup.path === "string" ? backup.path : "",
+        sha256: normalizeSha256(backup.sha256),
+    };
+}
+
+function normalizeManifestPrevious(value) {
+    const previous = isRecord(value) ? value : {};
+    return {
+        classification: typeof previous.classification === "string" ? previous.classification : "",
+        profile: typeof previous.profile === "string" ? previous.profile : "",
+        dllSha256: normalizeSha256(previous.dllSha256),
+        tag: typeof previous.tag === "string" ? previous.tag : "",
+        assetName: typeof previous.assetName === "string" ? previous.assetName : "",
+    };
 }
 
 function normalizeSha256(value) {

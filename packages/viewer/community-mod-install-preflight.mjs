@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import path from "node:path";
 
 import {
     buildCommunityModInstallPlatformCapability,
@@ -112,8 +113,10 @@ export function buildCommunityModInstallPreflight(options = {}) {
 }
 
 export async function detectStfcGameProcess(options = {}) {
+    const targetExecutablePath = targetGameExecutablePath(options.gameDirectory ?? options.gameDir ?? options.targetGameDirectory);
+
     if (typeof options.detectGameProcess === "function") {
-        return normalizeGameProcessStatus(await options.detectGameProcess());
+        return normalizeGameProcessStatus(await options.detectGameProcess({ targetExecutablePath }), { targetExecutablePath });
     }
 
     const platform = buildCommunityModInstallPlatformCapability({ platform: options.platform });
@@ -123,11 +126,11 @@ export async function detectStfcGameProcess(options = {}) {
             running: false,
             processName: platform.gameProcessName,
             error: `${platform.displayName} STFC process detection is not implemented yet.`,
-        });
+        }, { targetExecutablePath });
     }
 
     const command = `
-$matches = @(Get-Process -Name prime -ErrorAction SilentlyContinue | Select-Object -First 5 Id, ProcessName, Path)
+$matches = @(Get-Process -Name prime -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, Path)
 [pscustomobject]@{
   checked = $true
   running = $matches.Count -gt 0
@@ -139,14 +142,14 @@ $matches = @(Get-Process -Name prime -ErrorAction SilentlyContinue | Select-Obje
     try {
         const output = await runPowerShell(command);
         const parsed = JSON.parse(output);
-        return normalizeGameProcessStatus(parsed);
+        return normalizeGameProcessStatus(parsed, { targetExecutablePath });
     } catch (error) {
         return normalizeGameProcessStatus({
             checked: false,
             running: false,
             processName: "prime.exe",
             error: error instanceof Error ? error.message : String(error),
-        });
+        }, { targetExecutablePath });
     }
 }
 
@@ -184,19 +187,52 @@ function installPreflightExecution(platform) {
     };
 }
 
-function normalizeGameProcessStatus(value = {}) {
+function normalizeGameProcessStatus(value = {}, options = {}) {
     const rawMatches = Array.isArray(value.matches)
         ? value.matches
         : value.matches && typeof value.matches === "object"
             ? [value.matches]
             : [];
+    const allMatches = rawMatches.map(normalizeProcessMatch);
+    const targetExecutablePath = stringOrEmpty(options.targetExecutablePath)
+        || stringOrEmpty(value.targetExecutablePath)
+        || stringOrEmpty(value.targetPath);
+    const scopedToTarget = Boolean(targetExecutablePath);
+    const scopedMatches = scopedToTarget
+        ? allMatches.filter((match) => sameExecutablePath(match.path, targetExecutablePath))
+        : allMatches;
+    const scopedCheckMissingPath = scopedToTarget
+        && (allMatches.some((match) => !match.path) || (Boolean(value.running) && allMatches.length === 0));
+    const checked = Boolean(value.checked) && !scopedCheckMissingPath;
+    const error = scopedCheckMissingPath
+        ? "One or more prime.exe processes did not expose an executable path; scoped process status cannot be checked safely."
+        : typeof value.error === "string" ? value.error : "";
+
     return {
-        checked: Boolean(value.checked),
-        running: Boolean(value.running),
+        checked,
+        running: checked
+            ? scopedToTarget ? scopedMatches.length > 0 : Boolean(value.running)
+            : false,
         processName: typeof value.processName === "string" ? value.processName : "prime.exe",
-        matches: rawMatches.map(normalizeProcessMatch),
-        error: typeof value.error === "string" ? value.error : "",
+        matches: scopedMatches,
+        scopedToTarget,
+        targetPath: targetExecutablePath,
+        candidateCount: allMatches.length,
+        error,
     };
+}
+
+function targetGameExecutablePath(gameDirectory) {
+    const normalizedGameDirectory = stringOrEmpty(gameDirectory);
+    return normalizedGameDirectory ? path.join(path.resolve(normalizedGameDirectory), "prime.exe") : "";
+}
+
+function sameExecutablePath(left, right) {
+    return normalizeProcessPathForCompare(left) === normalizeProcessPathForCompare(right);
+}
+
+function normalizeProcessPathForCompare(value) {
+    return stringOrEmpty(value).replaceAll("/", "\\").replace(/\\+$/g, "").toLowerCase();
 }
 
 function normalizeProcessMatch(match = {}) {

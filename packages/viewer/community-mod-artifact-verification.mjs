@@ -69,6 +69,16 @@ export async function verifyCommunityModArtifact(options = {}) {
 
     const cachePath = artifactCachePath(cacheDir, catalog, asset);
     const expectedSha256 = normalizeSha256(asset.digest);
+    if (!expectedSha256) {
+        return artifactVerificationResult({
+            checkedAt,
+            status: "trusted_digest_required",
+            summary: "Selected Community Mod artifact does not include trusted SHA-256 release metadata.",
+            catalog,
+            artifact: artifactSummary(asset, { expectedSha256 }),
+        });
+    }
+
     const cached = await readCachedArtifact(cachePath, expectedSha256).catch(() => null);
     const artifactBuffer = cached?.buffer ?? await downloadArtifact(asset, fetchImpl, maxBytes);
     const actualSha256 = sha256Buffer(artifactBuffer);
@@ -183,10 +193,6 @@ function artifactVerificationResult(result) {
 }
 
 async function readCachedArtifact(cachePath, expectedSha256) {
-    if (!expectedSha256) {
-        return null;
-    }
-
     const buffer = await readFile(cachePath);
     return sha256Buffer(buffer) === expectedSha256 ? { buffer } : null;
 }

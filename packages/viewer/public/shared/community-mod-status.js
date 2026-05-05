@@ -432,12 +432,196 @@ export function communityModInstallExecutionRecoverySummary(execution) {
     return "If files changed, close STFC and use the execution receipt before retrying.";
 }
 
+export function communityModUninstallPlanLabel(plan) {
+    if (!plan) {
+        return "Uninstall plan not checked";
+    }
+
+    if (plan.ok === false || plan.status === "error") {
+        return "Uninstall plan unavailable";
+    }
+
+    switch (plan.status) {
+        case "fresh_install_removable":
+            return "Sidecar install removable";
+        case "replacement_restore_available":
+            return "Rollback available";
+        case "unknown_install_removable":
+        case "manual_install_removable":
+            return "Removal available";
+        case "game_directory_required":
+            return "Game directory required";
+        case "no_install_detected":
+            return "Nothing to uninstall";
+        case "game_running":
+            return "Close STFC first";
+        case "stale_manifest":
+            return "Manifest stale";
+        case "platform_unsupported":
+            return "Platform unsupported";
+        default:
+            return plan.actionLabel ?? "No uninstall action";
+    }
+}
+
+export function communityModUninstallPlanSummary(plan) {
+    if (!plan) {
+        return "Check Uninstall Plan to inspect removable Community Mod state.";
+    }
+
+    if (plan.ok === false) {
+        return String(plan.error ?? "Community Mod uninstall plan is unavailable.");
+    }
+
+    const destination = plan.target?.destinationPath ? ` | Destination ${plan.target.destinationPath}` : "";
+    const backup = plan.target?.backupPath ? ` | Backup ${plan.target.backupPath}` : "";
+    const settings = settingsRetentionSummary(plan.settings);
+    const warnings = Array.isArray(plan.warnings) && plan.warnings.length > 0 ? ` | ${plan.warnings.join(" | ")}` : "";
+    return `${plan.summary ?? "Uninstall plan unavailable."}${destination}${backup}${settings}${warnings}`;
+}
+
+export function communityModUninstallConfirmationLabel(confirmation) {
+    if (!confirmation) {
+        return "Uninstall confirmation not prepared";
+    }
+
+    if (confirmation.ok === false || confirmation.status === "error") {
+        return "Uninstall confirmation failed";
+    }
+
+    switch (confirmation.status) {
+        case "ready_for_confirmation":
+            return "Uninstall confirmation ready";
+        case "game_running":
+            return "Close STFC first";
+        case "target_unavailable":
+            return "Uninstall target unavailable";
+        case "backup_path_unavailable":
+        case "backup_hash_unavailable":
+            return "Backup required";
+        case "platform_unsupported":
+            return "Platform unsupported";
+        default:
+            return "Uninstall confirmation blocked";
+    }
+}
+
+export function communityModUninstallConfirmationSummary(confirmation) {
+    if (!confirmation) {
+        return "Prepare Uninstall builds the final review text without changing files.";
+    }
+
+    if (confirmation.ok === false) {
+        return String(confirmation.error ?? "Community Mod uninstall confirmation failed.");
+    }
+
+    const current = confirmation.current?.dllSha256 ? ` | Current SHA-256 ${shortSha256(confirmation.current.dllSha256)}` : "";
+    const destination = confirmation.target?.destinationPath ? ` | Destination ${confirmation.target.destinationPath}` : "";
+    const backup = confirmation.target?.backupPath ? ` | Backup ${confirmation.target.backupPath}` : "";
+    const settings = settingsRetentionSummary(confirmation.settings);
+    return `${confirmation.summary ?? "Uninstall confirmation unavailable."}${current}${destination}${backup}${settings}`;
+}
+
+export function communityModUninstallExecutionLabel(execution) {
+    if (!execution) {
+        return "Uninstall execution not run";
+    }
+
+    if (execution.ok === false || execution.status === "error" || execution.status === "execution_failed") {
+        return "Uninstall failed";
+    }
+
+    switch (execution.status) {
+        case "removed":
+            return "Community Mod removed";
+        case "restored_backup":
+            return "Previous DLL restored";
+        case "server_execution_disabled":
+        case "execution_disabled":
+            return "Uninstall disabled";
+        case "game_running":
+            return "Close STFC first";
+        case "acknowledgement_required":
+        case "current_hash_confirmation_required":
+        case "destination_confirmation_required":
+        case "settings_cleanup_confirmation_required":
+            return "Confirmation required";
+        case "current_hash_mismatch":
+        case "backup_hash_mismatch":
+        case "post_restore_hash_mismatch":
+            return "Hash verification failed";
+        case "unsafe_target_path":
+            return "Target path blocked";
+        case "unsafe_settings_cleanup_path":
+            return "Cleanup path blocked";
+        case "platform_unsupported":
+            return "Platform unsupported";
+        default:
+            return "Uninstall blocked";
+    }
+}
+
+export function communityModUninstallExecutionSummary(execution) {
+    if (!execution) {
+        return "Execute Uninstall is available after confirmation and endpoint enablement.";
+    }
+
+    if (execution.ok === false && execution.error) {
+        return String(execution.error);
+    }
+
+    const destination = execution.receipt?.destination?.dllSha256
+        ? ` | DLL SHA-256 ${shortSha256(execution.receipt.destination.dllSha256)}`
+        : execution.target?.destinationPath
+            ? ` | Destination ${execution.target.destinationPath}`
+            : "";
+    const backup = execution.receipt?.backup?.path ? ` | Backup ${execution.receipt.backup.path}` : "";
+    const settings = settingsRetentionSummary(execution.receipt?.settings ?? execution.settings);
+    const writes = execution.safety?.writesGameDirectory === false || execution.execution?.writesAttempted === false
+        ? " | no game-directory write attempted"
+        : "";
+    return `${execution.summary ?? "Uninstall execution status unavailable."}${destination}${backup}${settings}${writes}`;
+}
+
+export function communityModUninstallExecutionRecoverySummary(execution) {
+    if (!execution) {
+        return "No uninstall recovery action is needed before execution runs.";
+    }
+
+    if (execution.execution?.writesAttempted === false || execution.safety?.writesGameDirectory === false) {
+        return "No files were changed. Resolve the blocker, refresh status, and prepare uninstall again.";
+    }
+
+    if (execution.status === "restored_backup") {
+        return "Previous version.dll was restored. Refresh status before another install or uninstall action.";
+    }
+
+    if (execution.status === "removed") {
+        return "Fresh sidecar install was removed. Reinstall from the companion when needed.";
+    }
+
+    return "If files changed, close STFC and use the execution receipt before retrying.";
+}
+
 export function modProfileLabel(profile) {
     return normalizeModProfile(profile) === "netniv-basic" ? "Official Basic" : "Advanced Alpha";
 }
 
 export function normalizeModProfile(profile) {
     return String(profile ?? "").toLowerCase() === "netniv-basic" ? "netniv-basic" : "guff-advanced";
+}
+
+function settingsRetentionSummary(settings) {
+    if (!settings) {
+        return "";
+    }
+
+    if (settings.deleted === true || settings.delete === true || settings.policy === "delete_settings_and_logs") {
+        const count = Number.isFinite(settings.deletedCount) && settings.deletedCount > 0 ? ` (${settings.deletedCount} files)` : "";
+        return ` | Settings/logs deleted${count}`;
+    }
+
+    return " | Settings/logs left untouched";
 }
 
 function shortSha256(value) {

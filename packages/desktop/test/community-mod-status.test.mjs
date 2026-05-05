@@ -17,6 +17,13 @@ import {
     communityModInstallExecutionLabel,
     communityModInstallExecutionRecoverySummary,
     communityModInstallExecutionSummary,
+    communityModUninstallConfirmationLabel,
+    communityModUninstallConfirmationSummary,
+    communityModUninstallExecutionLabel,
+    communityModUninstallExecutionRecoverySummary,
+    communityModUninstallExecutionSummary,
+    communityModUninstallPlanLabel,
+    communityModUninstallPlanSummary,
     modProfileLabel,
 } from "../../viewer/public/shared/community-mod-status.js";
 
@@ -276,5 +283,50 @@ describe("Community Mod status formatting", () => {
         expect(communityModInstallExecutionRecoverySummary(restored)).toContain("restored the previous version.dll");
         expect(communityModInstallExecutionRecoverySummary(manual)).toContain("manual attention");
         expect(communityModInstallExecutionRecoverySummary(manual)).toContain("version.dll.bak");
+    });
+
+    test("formats uninstall plan, confirmation, and execution receipts", () => {
+        const plan = {
+            ok: true,
+            status: "unknown_install_removable",
+            action: "remove_unknown",
+            summary: "Unknown version.dll can be removed.",
+            target: {
+                destinationPath: "C:\\Games\\Star Trek Fleet Command\\default\\game\\version.dll",
+            },
+            settings: { policy: "leave_in_place", preserve: true, delete: false },
+            warnings: ["Unknown DLL provenance."],
+        };
+        const confirmation = {
+            ok: true,
+            status: "ready_for_confirmation",
+            summary: "version.dll removal is ready.",
+            current: { dllSha256: "D0F1418D61803762F8AA2DDC2F8C807616C8FA20D2437A32C4358B1DE7AD6961" },
+            target: plan.target,
+            settings: { policy: "leave_in_place", preserve: true, delete: false },
+        };
+        const execution = {
+            ok: true,
+            status: "removed",
+            summary: "Removed version.dll.",
+            receipt: {
+                destination: { dllSha256: "D0F1418D61803762F8AA2DDC2F8C807616C8FA20D2437A32C4358B1DE7AD6961" },
+                backup: { path: "" },
+                settings: { policy: "delete_settings_and_logs", preserved: false, deleted: true, touched: true, deletedCount: 4 },
+            },
+            safety: { writesGameDirectory: true },
+            execution: { writesAttempted: true, writesCompleted: true },
+        };
+
+        expect(communityModUninstallPlanLabel(plan)).toBe("Removal available");
+        expect(communityModUninstallPlanSummary(plan)).not.toContain("Backup");
+        expect(communityModUninstallPlanSummary(plan)).toContain("Settings/logs left untouched");
+        expect(communityModUninstallConfirmationLabel(confirmation)).toBe("Uninstall confirmation ready");
+        expect(communityModUninstallConfirmationSummary(confirmation)).toContain("Current SHA-256 D0F1418D6180...");
+        expect(communityModUninstallConfirmationSummary(confirmation)).toContain("Settings/logs left untouched");
+        expect(communityModUninstallExecutionLabel(execution)).toBe("Community Mod removed");
+        expect(communityModUninstallExecutionSummary(execution)).not.toContain("Backup C:\\Games");
+        expect(communityModUninstallExecutionSummary(execution)).toContain("Settings/logs deleted (4 files)");
+        expect(communityModUninstallExecutionRecoverySummary(execution)).toContain("Fresh sidecar install was removed");
     });
 });

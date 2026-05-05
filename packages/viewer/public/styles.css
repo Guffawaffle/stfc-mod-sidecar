@@ -177,6 +177,12 @@ button {
   box-shadow: 0 14px 26px rgba(179, 74, 47, 0.24);
 }
 
+.button-secondary {
+  color: var(--accent);
+  background: rgba(179, 74, 47, 0.12);
+  box-shadow: none;
+}
+
 .link-button {
   width: fit-content;
   margin-top: 8px;
@@ -239,6 +245,30 @@ button {
   color: var(--ink);
   background: rgba(255, 255, 255, 0.5);
   white-space: pre-wrap;
+}
+
+.action-dialog {
+  width: min(560px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  color: var(--ink);
+  background: var(--panel-strong);
+  box-shadow: var(--shadow);
+}
+
+.action-dialog::backdrop {
+  background: rgba(38, 27, 24, 0.42);
+}
+
+.action-dialog__panel {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+}
+
+.action-dialog__actions {
+  justify-content: end;
 }
 
 .module-list {

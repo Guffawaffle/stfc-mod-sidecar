@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 
-import { buildCommunityModInstallPreflight } from "../../viewer/community-mod-install-preflight.mjs";
+import {
+    buildCommunityModInstallPreflight,
+    detectStfcGameProcess,
+} from "../../viewer/community-mod-install-preflight.mjs";
 
 describe("Community Mod install preflight", () => {
     test("returns ready for confirmation when plan, artifact, and process checks are safe", () => {
@@ -123,6 +126,71 @@ describe("Community Mod install preflight", () => {
             confirmation: { backupRequired: true },
             warnings: ["Unknown installed DLL provenance."],
         });
+    });
+
+    test("scopes process detection to the selected game directory", async () => {
+        const status = await detectStfcGameProcess({
+            gameDirectory: "C:\\Games\\dev\\Star Trek Fleet Command\\default\\game",
+            detectGameProcess: () => ({
+                checked: true,
+                running: true,
+                processName: "prime.exe",
+                matches: [
+                    { Id: 42, ProcessName: "prime", Path: "C:\\Games\\Star Trek Fleet Command\\default\\game\\prime.exe" },
+                ],
+            }),
+        });
+
+        expect(status).toMatchObject({
+            checked: true,
+            running: false,
+            scopedToTarget: true,
+            candidateCount: 1,
+            matches: [],
+        });
+    });
+
+    test("reports running only when prime.exe belongs to the selected game directory", async () => {
+        const status = await detectStfcGameProcess({
+            gameDirectory: "C:\\Games\\dev\\Star Trek Fleet Command\\default\\game",
+            detectGameProcess: () => ({
+                checked: true,
+                running: true,
+                processName: "prime.exe",
+                matches: [
+                    { Id: 43, ProcessName: "prime", Path: "C:\\Games\\dev\\Star Trek Fleet Command\\default\\game\\prime.exe" },
+                    { Id: 42, ProcessName: "prime", Path: "C:\\Games\\Star Trek Fleet Command\\default\\game\\prime.exe" },
+                ],
+            }),
+        });
+
+        expect(status).toMatchObject({
+            checked: true,
+            running: true,
+            scopedToTarget: true,
+            candidateCount: 2,
+            matches: [{ pid: 43, name: "prime" }],
+        });
+    });
+
+    test("fails closed when scoped process paths are unavailable", async () => {
+        const status = await detectStfcGameProcess({
+            gameDirectory: "C:\\Games\\dev\\Star Trek Fleet Command\\default\\game",
+            detectGameProcess: () => ({
+                checked: true,
+                running: true,
+                processName: "prime.exe",
+                matches: [{ Id: 44, ProcessName: "prime" }],
+            }),
+        });
+
+        expect(status).toMatchObject({
+            checked: false,
+            running: false,
+            scopedToTarget: true,
+            candidateCount: 1,
+        });
+        expect(status.error).toContain("scoped process status cannot be checked safely");
     });
 });
 
