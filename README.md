@@ -6,8 +6,8 @@ This is an alpha build. It is intended for people who are comfortable testing ea
 
 ## Download
 
-1. Open the repository's Releases page and choose `v0.1.0-alpha.2`.
-2. Download the Windows installer named `STFC.Community.Mod.Companion-Setup-0.1.0-alpha.2-x64.exe`.
+1. Open the repository's Releases page and choose `v0.1.0-alpha.3`.
+2. Download the Windows installer named `STFC.Community.Mod.Companion-Setup-0.1.0-alpha.3-x64.exe`.
 3. Run the installer.
 4. Launch `STFC Community Mod Companion` from Windows.
 
