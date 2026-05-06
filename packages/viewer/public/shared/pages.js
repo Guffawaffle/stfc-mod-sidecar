@@ -40,7 +40,7 @@ export function isViewerPageVisible(page, state = {}) {
         return false;
     }
 
-    if (page.requiresCapability && capabilities[page.requiresCapability] === false) {
+    if (page.requiresCapability && capabilities[page.requiresCapability] !== true) {
         return false;
     }
 

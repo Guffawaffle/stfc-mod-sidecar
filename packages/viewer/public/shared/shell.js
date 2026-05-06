@@ -2,7 +2,7 @@ import { visibleViewerPages } from "./pages.js";
 
 const defaultViewerState = Object.freeze({
     developerMode: false,
-    capabilities: {},
+    capabilities: { battleLog: false },
 });
 
 for (const nav of document.querySelectorAll("[data-viewer-nav]")) {
@@ -73,7 +73,7 @@ function applyViewerState(state) {
     }
 
     for (const element of document.querySelectorAll("[data-capability]")) {
-        element.hidden = state.capabilities?.[element.dataset.capability] === false;
+        element.hidden = state.capabilities?.[element.dataset.capability] !== true;
     }
 }
 

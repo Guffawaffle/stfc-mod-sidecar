@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- Made capability-gated renderer surfaces fail closed until the active profile
+  explicitly enables them, preventing Basic mode from briefly showing Battle Log
+  actions during startup or mode switches.
+
 ## 0.1.0-alpha.2 - 2026-05-05
 
 ### Features

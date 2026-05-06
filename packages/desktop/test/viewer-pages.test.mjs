@@ -3,6 +3,14 @@ import { describe, expect, test } from "vitest";
 import { visibleViewerPages } from "../../viewer/public/shared/pages.js";
 
 describe("viewer page visibility", () => {
+    test("hides capability-gated pages until the capability is explicitly enabled", () => {
+        const pages = visibleViewerPages().map((page) => page.id);
+
+        expect(pages).not.toContain("battle-log");
+        expect(pages).not.toContain("battle-log-workbench");
+        expect(pages).toContain("settings");
+    });
+
     test("hides Battle Log surfaces when the active profile lacks battle log capability", () => {
         const pages = visibleViewerPages({
             developerMode: true,
