@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- Public Battle Log URLs now render a Companion unavailable page in Basic mode
+  instead of exposing the raw profile-capability JSON response.
+
 ## 0.1.0-alpha.3 - 2026-05-05
 
 ### Fixed

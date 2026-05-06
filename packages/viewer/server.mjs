@@ -23,6 +23,7 @@ import {
 import { buildReleaseInfo } from "./release-info.mjs";
 import { fetchReleaseUpdateCheck } from "./release-update.mjs";
 import { buildDiagnosticsBundle, buildDiagnosticsMarkdown } from "./diagnostics-bundle.mjs";
+import { buildCapabilityUnavailablePage } from "./public-page-responses.mjs";
 import { detectCommunityModInstall } from "./community-mod-install.mjs";
 import { verifyCommunityModArtifact } from "./community-mod-artifact-verification.mjs";
 import { stageCommunityModArtifact } from "./community-mod-artifact-staging.mjs";
@@ -622,7 +623,20 @@ const server = createServer(async (request, response) => {
     }
 
     if (isBattleLogPublicPath(requestUrl.pathname) && !communityModCapabilities.battleLog) {
-        return sendJson(response, 403, capabilityUnavailablePayload("battleLog"));
+        return sendText(response, 403, buildCapabilityUnavailablePage({
+            title: "Battle Log unavailable",
+            heading: "Battle Log Unavailable",
+            message: "Battle Log surfaces are not available for the active Community Mod profile.",
+            details: [
+                `Active profile: ${communityModSettingsProfile}`,
+                "Official Basic disables Battle Log ingestion, event storage, and related viewer pages.",
+                "Switch to Advanced Alpha in Settings to enable Battle Log surfaces.",
+            ],
+            primaryHref: "/",
+            primaryLabel: "Open Home",
+            secondaryHref: "/settings/",
+            secondaryLabel: "Open Settings",
+        }), "text/html; charset=utf-8");
     }
 
     const publicAsset = await resolvePublicAsset(requestUrl.pathname);
