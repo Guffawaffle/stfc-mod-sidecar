@@ -8,6 +8,10 @@
   shared on the viewer/desktop side, new-user profile intent defaults to
   Official Basic, and runtime Battle Log gates require both selected intent and
   installed DLL capability.
+- Added a session-only Security Is Paramount warning when the selected profile
+  and installed DLL variant differ, or when the installed DLL is unknown.
+- Hid the Home-page Workbench card unless Battle Log capability is available,
+  even when Developer Tools are enabled.
 
 ### Fixed
 

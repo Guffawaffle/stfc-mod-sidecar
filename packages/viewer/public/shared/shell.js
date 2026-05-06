@@ -1,9 +1,16 @@
 import { visibleViewerPages } from "./pages.js";
+import {
+    shouldShowVariantGateWarning,
+    variantGateWarningKey,
+    variantGateWarningViewModel,
+} from "./variant-gate-warning.js";
 
 const defaultViewerState = Object.freeze({
     developerMode: false,
     capabilities: { battleLog: false },
+    variantGate: null,
 });
+const VARIANT_GATE_WARNING_SESSION_KEY = "stfc.variantGateWarning.ignoredKey";
 
 for (const nav of document.querySelectorAll("[data-viewer-nav]")) {
     renderNavigation(nav, defaultViewerState);
@@ -15,6 +22,7 @@ window.addEventListener("stfc:mode-changed", (event) => {
     applyViewerState({
         developerMode: Boolean(event.detail?.developerMode),
         capabilities: event.detail?.capabilities ?? {},
+        variantGate: event.detail?.variantGate ?? null,
     });
 });
 window.addEventListener("pageshow", () => void refreshViewerState());
@@ -48,6 +56,7 @@ async function refreshViewerState(options = {}) {
                 applyViewerState({
                     developerMode: Boolean(health.developerMode),
                     capabilities: health.capabilities ?? {},
+                    variantGate: health.variantGate ?? null,
                 });
                 return;
             }
@@ -74,6 +83,94 @@ function applyViewerState(state) {
 
     for (const element of document.querySelectorAll("[data-capability]")) {
         element.hidden = state.capabilities?.[element.dataset.capability] !== true;
+    }
+
+    renderVariantGateWarning(state.variantGate);
+}
+
+function renderVariantGateWarning(variantGate) {
+    const ignoredKey = readSessionValue(VARIANT_GATE_WARNING_SESSION_KEY);
+    const warningKey = variantGateWarningKey(variantGate);
+    let warning = document.querySelector("[data-variant-gate-warning]");
+
+    if (!shouldShowVariantGateWarning(variantGate, ignoredKey)) {
+        warning?.remove();
+        return;
+    }
+
+    if (!warning) {
+        warning = document.createElement("section");
+        warning.className = "variant-gate-warning";
+        warning.dataset.variantGateWarning = "";
+        warning.setAttribute("role", "alert");
+        insertAfterNavigation(warning);
+    }
+
+    const view = variantGateWarningViewModel(variantGate);
+    warning.textContent = "";
+
+    const copy = document.createElement("div");
+    copy.className = "variant-gate-warning__copy";
+    const eyebrow = document.createElement("p");
+    eyebrow.className = "eyebrow";
+    eyebrow.textContent = "Security Is Paramount";
+    const title = document.createElement("h2");
+    title.textContent = view.title;
+    const summary = document.createElement("p");
+    summary.className = "page-copy";
+    summary.textContent = view.summary;
+    const details = document.createElement("ul");
+    details.className = "module-list";
+    for (const detail of view.details) {
+        const item = document.createElement("li");
+        item.textContent = detail;
+        details.appendChild(item);
+    }
+    copy.append(eyebrow, title, summary, details);
+
+    const actions = document.createElement("div");
+    actions.className = "variant-gate-warning__actions";
+    const settingsLink = document.createElement("a");
+    settingsLink.className = "link-button";
+    settingsLink.href = view.fixHref;
+    settingsLink.textContent = view.fixLabel;
+    const ignoreButton = document.createElement("button");
+    ignoreButton.type = "button";
+    ignoreButton.className = "button-secondary";
+    ignoreButton.textContent = "Ignore This Time";
+    ignoreButton.addEventListener("click", () => {
+        writeSessionValue(VARIANT_GATE_WARNING_SESSION_KEY, warningKey);
+        warning.remove();
+    }, { once: true });
+    actions.append(settingsLink, ignoreButton);
+
+    warning.append(copy, actions);
+}
+
+function insertAfterNavigation(element) {
+    const shell = document.querySelector(".site-shell") ?? document.body;
+    const nav = shell.querySelector("[data-viewer-nav]");
+    if (nav?.parentElement === shell) {
+        nav.insertAdjacentElement("afterend", element);
+        return;
+    }
+
+    shell.prepend(element);
+}
+
+function readSessionValue(key) {
+    try {
+        return window.sessionStorage?.getItem(key) ?? "";
+    } catch {
+        return "";
+    }
+}
+
+function writeSessionValue(key, value) {
+    try {
+        window.sessionStorage?.setItem(key, value);
+    } catch {
+        return;
     }
 }
 
