@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Changed
+
+- Began first-class Community Mod variant gates: profile definitions are now
+  shared on the viewer/desktop side, new-user profile intent defaults to
+  Official Basic, and runtime Battle Log gates require both selected intent and
+  installed DLL capability.
+
 ### Fixed
 
 - Public Battle Log URLs now render a Companion unavailable page in Basic mode

@@ -11,7 +11,7 @@ import {
     buildCompanionAppUninstallStatus,
     isDirectChildPath,
 } from "./companion-uninstall.mjs";
-import { initialDeveloperModeFromSources, normalizeDesktopSettings, normalizeModProfile } from "./desktop-settings.mjs";
+import { DEFAULT_MOD_PROFILE, initialDeveloperModeFromSources, normalizeDesktopSettings, normalizeModProfile } from "./desktop-settings.mjs";
 import { SECURITY_MOTTO, STFC_GAME_EXECUTABLE, validateStfcGameDirectory } from "./game-directory.mjs";
 import { buildReleaseInfo } from "../../viewer/release-info.mjs";
 
@@ -414,8 +414,8 @@ async function bootstrapSnapshot(options = {}) {
         developerMode: Boolean(desktopSettings.developerMode),
         companionMode: companionMode(),
         modeLabel: desktopSettings.developerMode ? "Developer Tools" : "Standard Companion",
-        modProfile: desktopSettings.modProfile || health?.modProfile || "guff-advanced",
-        settingsProfile: desktopSettings.modProfile || health?.settingsProfile || "guff-advanced",
+        modProfile: desktopSettings.modProfile || health?.modProfile || DEFAULT_MOD_PROFILE,
+        settingsProfile: desktopSettings.modProfile || health?.settingsProfile || DEFAULT_MOD_PROFILE,
         communityModInstall: health?.communityModInstall ?? null,
         release: desktopReleaseInfo(health?.release),
         modOperationToken: sidecarModToken,

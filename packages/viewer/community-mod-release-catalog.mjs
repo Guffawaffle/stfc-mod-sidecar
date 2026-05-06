@@ -1,23 +1,12 @@
 import { compareReleaseVersions } from "./release-update.mjs";
+import {
+    COMMUNITY_MOD_RELEASE_PROFILES,
+    normalizeCommunityModProfile,
+} from "./community-mod-profiles.mjs";
 
 const GITHUB_API_BASE_URL = "https://api.github.com/repos";
 
-export const COMMUNITY_MOD_RELEASE_PROFILES = Object.freeze({
-    "netniv-basic": Object.freeze({
-        profile: "netniv-basic",
-        distribution: "official-basic",
-        repository: "netniV/stfc-mod",
-        channel: "stable",
-        installSupported: true,
-    }),
-    "guff-advanced": Object.freeze({
-        profile: "guff-advanced",
-        distribution: "advanced-alpha",
-        repository: "Guffawaffle/stfc-mod",
-        channel: "alpha",
-        installSupported: true,
-    }),
-});
+export { COMMUNITY_MOD_RELEASE_PROFILES };
 
 export async function fetchCommunityModReleaseCatalog(options = {}) {
     const profile = normalizeCommunityModReleaseProfile(options.profile);
@@ -140,18 +129,7 @@ export function selectCommunityModWindowsAsset(release, releaseProfile) {
 }
 
 export function normalizeCommunityModReleaseProfile(value) {
-    const normalized = String(value ?? "").trim().toLowerCase();
-    if (["netniv-basic", "netniv", "official", "official-basic", "basic", "none", "unknown", "external"].includes(
-        normalized,
-    )) {
-        return "netniv-basic";
-    }
-
-    if (["guff-advanced", "guff", "advanced", "alpha", "advanced-alpha"].includes(normalized)) {
-        return "guff-advanced";
-    }
-
-    return "netniv-basic";
+    return normalizeCommunityModProfile(value);
 }
 
 function isEligibleCommunityModRelease(release, releaseProfile) {

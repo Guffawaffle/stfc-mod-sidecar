@@ -7,7 +7,7 @@ describe("desktop settings", () => {
         expect(normalizeDesktopSettings()).toEqual({
             gameDirectory: "",
             developerMode: false,
-            modProfile: "guff-advanced",
+            modProfile: "netniv-basic",
         });
     });
 
@@ -44,6 +44,6 @@ describe("desktop settings", () => {
     test("normalizes mod profile aliases", () => {
         expect(normalizeModProfile("official")).toBe("netniv-basic");
         expect(normalizeModProfile("alpha")).toBe("guff-advanced");
-        expect(normalizeModProfile("surprise")).toBe("guff-advanced");
+        expect(normalizeModProfile("surprise")).toBe("netniv-basic");
     });
 });

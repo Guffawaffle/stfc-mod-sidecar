@@ -3,7 +3,7 @@ import { parse as parseToml } from "smol-toml";
 export const HOTKEY_MAX_BINDINGS = 2;
 
 export const COMMUNITY_MOD_SETTINGS_PROFILES = ["netniv-basic", "guff-advanced"] as const;
-export const DEFAULT_COMMUNITY_MOD_SETTINGS_PROFILE: CommunityModSettingsProfile = "guff-advanced";
+export const DEFAULT_COMMUNITY_MOD_SETTINGS_PROFILE: CommunityModSettingsProfile = "netniv-basic";
 
 export type CommunityModSettingsProfile = typeof COMMUNITY_MOD_SETTINGS_PROFILES[number];
 

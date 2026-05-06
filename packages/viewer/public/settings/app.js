@@ -302,7 +302,7 @@ function renderBootstrap() {
   }
 
   const gameDirectory = bootstrap?.gameDirectory || "Not selected";
-  const modProfile = bootstrap?.modProfile ?? state.snapshot?.modProfile ?? state.snapshot?.profile ?? "guff-advanced";
+  const modProfile = bootstrap?.modProfile ?? state.snapshot?.modProfile ?? state.snapshot?.profile ?? "netniv-basic";
   elements.desktopGameDirectory.textContent = gameDirectory;
   elements.desktopFeedPath.textContent = bootstrap?.feedPath || "Unknown";
   elements.desktopModProfile.textContent = modProfileLabel(modProfile);

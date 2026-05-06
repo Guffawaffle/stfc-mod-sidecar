@@ -608,7 +608,10 @@ export function modProfileLabel(profile) {
 }
 
 export function normalizeModProfile(profile) {
-    return String(profile ?? "").toLowerCase() === "netniv-basic" ? "netniv-basic" : "guff-advanced";
+    const normalized = String(profile ?? "").toLowerCase();
+    return ["guff-advanced", "guff", "advanced", "alpha", "advanced-alpha"].includes(normalized)
+        ? "guff-advanced"
+        : "netniv-basic";
 }
 
 function settingsRetentionSummary(settings) {

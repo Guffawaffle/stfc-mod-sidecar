@@ -5,6 +5,7 @@ import { access, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { buildCommunityModInstallPlatformCapability } from "./community-mod-install-platform.mjs";
+import { communityModProfileFromDistribution } from "./community-mod-profiles.mjs";
 
 export const COMMUNITY_MOD_DLL_FILE = "version.dll";
 export const COMMUNITY_MOD_MANIFEST_DIRECTORY = ".stfc-sidecar";
@@ -151,16 +152,7 @@ export function findReleaseFingerprint(dllSha256, releaseFingerprints) {
 }
 
 export function profileFromDistribution(value) {
-    const normalized = String(value ?? "").trim().toLowerCase();
-    if (["official-basic", "netniv-basic", "netniv", "official", "basic"].includes(normalized)) {
-        return "netniv-basic";
-    }
-
-    if (["advanced-alpha", "guff-advanced", "guff", "advanced", "alpha"].includes(normalized)) {
-        return "guff-advanced";
-    }
-
-    return null;
+    return communityModProfileFromDistribution(value);
 }
 
 export async function readWindowsVersionInfo(filePath) {

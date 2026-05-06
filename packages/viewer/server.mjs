@@ -24,6 +24,7 @@ import { buildReleaseInfo } from "./release-info.mjs";
 import { fetchReleaseUpdateCheck } from "./release-update.mjs";
 import { buildDiagnosticsBundle, buildDiagnosticsMarkdown } from "./diagnostics-bundle.mjs";
 import { buildCapabilityUnavailablePage } from "./public-page-responses.mjs";
+import { buildCommunityModVariantGateContext } from "./community-mod-variant-gates.mjs";
 import { detectCommunityModInstall } from "./community-mod-install.mjs";
 import { verifyCommunityModArtifact } from "./community-mod-artifact-verification.mjs";
 import { stageCommunityModArtifact } from "./community-mod-artifact-staging.mjs";
@@ -118,8 +119,13 @@ try {
 }
 
 const communityModSettingsProfile = normalizeCommunityModSettingsProfile(process.env.STFC_SIDECAR_MOD_PROFILE);
-const communityModCapabilities = buildCommunityModCapabilities(communityModSettingsProfile);
-const eventStore = await createConfiguredEventStore();
+let communityModInstallStatus = await readCommunityModInstallStatus();
+let communityModVariantGate = buildCommunityModVariantGateContext({
+    install: communityModInstallStatus,
+    selectedProfile: communityModSettingsProfile,
+});
+let communityModCapabilities = communityModVariantGate.capabilities;
+let eventStore = await createConfiguredEventStore();
 
 const server = createServer(async (request, response) => {
     const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? `127.0.0.1:${port}`}`);
@@ -358,11 +364,13 @@ const server = createServer(async (request, response) => {
                     return sendJson(response, 200, buildCommunityModUninstallExecutionBlocked({ confirmation, executionRequest }));
                 }
 
-                return sendJson(response, 200, await executeCommunityModUninstall({
+                const result = await executeCommunityModUninstall({
                     confirmation,
                     gameProcess: await detectStfcGameProcess({ gameDirectory: gameDir }),
                     enableExecution: true,
-                }));
+                });
+                await refreshCommunityModVariantGate();
+                return sendJson(response, 200, result);
             });
         } catch (error) {
             return sendJson(response, 502, {
@@ -520,11 +528,13 @@ const server = createServer(async (request, response) => {
                     return sendJson(response, 200, buildCommunityModInstallExecutionBlocked({ confirmation, executionRequest }));
                 }
 
-                return sendJson(response, 200, await executeCommunityModInstall({
+                const result = await executeCommunityModInstall({
                     confirmation,
                     gameProcess: await detectStfcGameProcess({ gameDirectory: gameDir }),
                     enableExecution: true,
-                }));
+                });
+                await refreshCommunityModVariantGate();
+                return sendJson(response, 200, result);
             });
         } catch (error) {
             return sendJson(response, 502, {
@@ -548,8 +558,8 @@ const server = createServer(async (request, response) => {
     }
 
     if (requestUrl.pathname === "/api/health") {
+        const { install: communityModInstall, variantGate } = await refreshCommunityModVariantGate();
         const storedEvents = eventStore ? await eventStore.count() : 0;
-        const communityModInstall = await readCommunityModInstallStatus();
         return sendJson(response, 200, {
             ok: true,
             pid: process.pid,
@@ -563,6 +573,8 @@ const server = createServer(async (request, response) => {
             modProfile: communityModSettingsProfile,
             settingsProfile: communityModSettingsProfile,
             capabilities: communityModCapabilities,
+            capabilityBits: variantGate.capabilityBits,
+            variantGate,
             communityModInstall,
             release: releaseInfo,
             eventStoreBackend: eventStore?.backend ?? "none",
@@ -587,6 +599,8 @@ const server = createServer(async (request, response) => {
             modProfile: communityModSettingsProfile,
             settingsProfile: communityModSettingsProfile,
             capabilities: communityModCapabilities,
+            capabilityBits: communityModVariantGate.capabilityBits,
+            variantGate: communityModVariantGate,
             feedPath,
             settingsPath,
             eventStoreBackend: eventStore?.backend ?? "none",
@@ -623,14 +637,16 @@ const server = createServer(async (request, response) => {
     }
 
     if (isBattleLogPublicPath(requestUrl.pathname) && !communityModCapabilities.battleLog) {
+        const reasons = communityModVariantGate.capabilityReasons.battleLog ?? [];
         return sendText(response, 403, buildCapabilityUnavailablePage({
             title: "Battle Log unavailable",
             heading: "Battle Log Unavailable",
-            message: "Battle Log surfaces are not available for the active Community Mod profile.",
+            message: "Battle Log surfaces are currently blocked by the active Community Mod variant gate.",
             details: [
-                `Active profile: ${communityModSettingsProfile}`,
-                "Official Basic disables Battle Log ingestion, event storage, and related viewer pages.",
-                "Switch to Advanced Alpha in Settings to enable Battle Log surfaces.",
+                `Selected profile: ${communityModVariantGate.selectedProfile}`,
+                `Installed DLL: ${communityModVariantGate.installedProfile} (${communityModVariantGate.installedState})`,
+                `Gate status: ${communityModVariantGate.mismatchKind}`,
+                ...reasons.map((reason) => `Reason: ${reason}`),
             ],
             primaryHref: "/",
             primaryLabel: "Open Home",
@@ -672,7 +688,11 @@ process.on("SIGTERM", () => {
 });
 
 async function createConfiguredEventStore() {
-    const backend = (process.env.STFC_SIDECAR_STORE_BACKEND ?? (communityModCapabilities.eventStore ? "sqlite" : "none")).trim().toLowerCase();
+    if (!communityModCapabilities.eventStore) {
+        return null;
+    }
+
+    const backend = (process.env.STFC_SIDECAR_STORE_BACKEND ?? "sqlite").trim().toLowerCase();
     if (backend === "none") {
         return null;
     }
@@ -697,16 +717,6 @@ async function createConfiguredEventStore() {
     }
 
     throw new Error(`Unsupported STFC_SIDECAR_STORE_BACKEND: ${backend}`);
-}
-
-function buildCommunityModCapabilities(profile) {
-    const battleLog = profile !== "netniv-basic";
-    return {
-        settings: true,
-        installStatus: true,
-        battleLog,
-        eventStore: battleLog,
-    };
 }
 
 function isBattleLogApiPath(pathname) {
@@ -741,10 +751,47 @@ function capabilityUnavailablePayload(capability) {
     return {
         ok: false,
         code: "profile_capability_unavailable",
-        error: `${capability} is not available for the active Community Mod profile.`,
+        error: `${capability} is not available for the active Community Mod variant gate.`,
         capability,
         modProfile: communityModSettingsProfile,
+        variantGate: {
+            selectedProfile: communityModVariantGate.selectedProfile,
+            installedProfile: communityModVariantGate.installedProfile,
+            installedState: communityModVariantGate.installedState,
+            mismatchKind: communityModVariantGate.mismatchKind,
+            reasons: communityModVariantGate.capabilityReasons[capability] ?? [],
+        },
     };
+}
+
+async function refreshCommunityModVariantGate() {
+    communityModInstallStatus = await readCommunityModInstallStatus();
+    communityModVariantGate = buildCommunityModVariantGateContext({
+        install: communityModInstallStatus,
+        selectedProfile: communityModSettingsProfile,
+    });
+    communityModCapabilities = communityModVariantGate.capabilities;
+    await reconcileRuntimeSurfacesWithVariantGate();
+    return { install: communityModInstallStatus, variantGate: communityModVariantGate };
+}
+
+async function reconcileRuntimeSurfacesWithVariantGate() {
+    if (communityModCapabilities.eventStore) {
+        if (!eventStore) {
+            eventStore = await createConfiguredEventStore();
+        }
+    } else if (eventStore) {
+        await eventStore.close().catch((error) => {
+            console.warn(`[sidecar-viewer] unable to close event store: ${error instanceof Error ? error.message : String(error)}`);
+        });
+        eventStore = null;
+    }
+
+    if (communityModCapabilities.battleLog) {
+        ensureFeedWatcher();
+    } else {
+        closeFeedWatcher();
+    }
 }
 
 async function withCommunityModOperationLock(response, operation, handler) {

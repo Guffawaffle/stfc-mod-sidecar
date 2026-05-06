@@ -1,4 +1,9 @@
-export const DEFAULT_MOD_PROFILE = "guff-advanced";
+import {
+    DEFAULT_COMMUNITY_MOD_PROFILE,
+    normalizeCommunityModProfile,
+} from "../../viewer/community-mod-profiles.mjs";
+
+export const DEFAULT_MOD_PROFILE = DEFAULT_COMMUNITY_MOD_PROFILE;
 
 export const DEFAULT_DESKTOP_SETTINGS = Object.freeze({
     gameDirectory: "",
@@ -18,16 +23,7 @@ export function normalizeDesktopSettings(input = {}, options = {}) {
 }
 
 export function normalizeModProfile(value) {
-    const normalized = String(value ?? "").trim().toLowerCase();
-    if (["netniv-basic", "netniv", "official", "official-basic", "basic"].includes(normalized)) {
-        return "netniv-basic";
-    }
-
-    if (["guff-advanced", "guff", "advanced", "alpha", "advanced-alpha"].includes(normalized)) {
-        return "guff-advanced";
-    }
-
-    return DEFAULT_MOD_PROFILE;
+    return normalizeCommunityModProfile(value, { fallback: DEFAULT_MOD_PROFILE });
 }
 
 export function initialDeveloperModeFromSources(options = {}) {

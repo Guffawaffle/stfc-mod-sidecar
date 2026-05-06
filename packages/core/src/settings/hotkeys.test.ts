@@ -40,7 +40,7 @@ select_timer = 725
 
 [ui]
 disable_move_keys = true
-`);
+`, { profile: "guff-advanced" });
 
     expect(snapshot.hardSettings.find((setting) => setting.id === "control.hotkeys_enabled")?.value).toBe(false);
     expect(snapshot.hardSettings.find((setting) => setting.id === "control.allow_key_fallthrough")?.value).toBe(true);
@@ -74,7 +74,7 @@ show_research = "I"
         "control.allow_key_fallthrough": true,
         "control.select_timer": 750,
       },
-    });
+    }, { profile: "guff-advanced" });
 
     expect(patch.shortcuts).toContainEqual({ section: "shortcuts", key: "zoom_preset1", value: "NONE" });
     expect(patch.shortcuts).toContainEqual({ section: "shortcuts", key: "action_view", value: "V|MOUSE2" });
@@ -104,7 +104,7 @@ zoom_preset1 = "F1"
         zoom_preset1: [],
         action_view: ["V", "MOUSE2"],
       },
-    });
+    }, { profile: "guff-advanced" });
 
     expect(updated).toContain("# keep this comment");
     expect(updated).toContain("# existing zoom comment");
@@ -144,9 +144,9 @@ escape_exit_timer = 300
     }, { profile: "netniv-basic" })).toThrow(/Unknown shortcut action/);
   });
 
-  it("normalizes profile aliases while defaulting to the current advanced behavior", () => {
+  it("normalizes profile aliases while defaulting to Official Basic", () => {
     expect(normalizeCommunityModSettingsProfile("official")).toBe("netniv-basic");
     expect(normalizeCommunityModSettingsProfile("alpha")).toBe("guff-advanced");
-    expect(normalizeCommunityModSettingsProfile(undefined)).toBe("guff-advanced");
+    expect(normalizeCommunityModSettingsProfile(undefined)).toBe("netniv-basic");
   });
 });
