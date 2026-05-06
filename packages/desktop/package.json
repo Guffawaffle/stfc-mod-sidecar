@@ -1,6 +1,6 @@
 {
   "name": "@stfc-mod-sidecar/desktop",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "private": true,
   "description": "Windows desktop companion shell for STFC Community Mod install, update, uninstall, and diagnostics.",
   "author": "Joseph Gustavson",
