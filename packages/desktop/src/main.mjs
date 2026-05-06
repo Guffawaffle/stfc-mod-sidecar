@@ -154,6 +154,8 @@ async function startSidecarServer(url) {
             STFC_SIDECAR_SHUTDOWN_TOKEN: sidecarShutdownToken,
             STFC_SIDECAR_SYNC_TOKEN: sidecarSyncToken,
             STFC_SIDECAR_MOD_TOKEN: sidecarModToken,
+            STFC_SIDECAR_ENABLE_MOD_INSTALL_EXECUTION: "1",
+            STFC_SIDECAR_ENABLE_MOD_UNINSTALL_EXECUTION: "1",
         },
     });
 

@@ -91,6 +91,7 @@ const elements = {
     modUninstallRecoveryDetail: document.querySelector("#about-mod-uninstall-recovery-detail"),
     modUninstallDeleteSettingsAndLogs: document.querySelector("#about-mod-uninstall-delete-settings-logs"),
     refreshModStatus: document.querySelector("#refresh-mod-status"),
+    runModInstall: document.querySelector("#run-mod-install"),
     runModUninstall: document.querySelector("#run-mod-uninstall"),
     checkModRelease: document.querySelector("#check-mod-release"),
     verifyModArtifact: document.querySelector("#verify-mod-artifact"),
@@ -121,6 +122,7 @@ elements.runCompanionUninstall?.addEventListener("click", () => void runCompanio
 elements.openWindowsUninstallSettings?.addEventListener("click", () => void openWindowsUninstallSettings());
 elements.showCompanionInstallFolder?.addEventListener("click", () => void showCompanionInstallFolder());
 elements.refreshModStatus?.addEventListener("click", () => void refreshModStatus());
+elements.runModInstall?.addEventListener("click", () => void runModInstall());
 elements.runModUninstall?.addEventListener("click", () => void runModUninstall());
 elements.checkModRelease?.addEventListener("click", () => void checkModRelease());
 elements.verifyModArtifact?.addEventListener("click", () => void verifyModArtifact());
@@ -419,8 +421,15 @@ function renderCommunityModStatus() {
         || state.modUninstallConfirming
         || state.modUninstallExecuting;
     setModReleaseLink(state.modReleaseCatalog?.release?.htmlUrl);
+    elements.runModInstall.textContent = installButtonLabel();
+    elements.runModInstall.disabled = !canRunModOperations()
+        || state.modReleaseChecking
+        || state.modArtifactVerifying
+        || state.modInstallConfirming
+        || state.modInstallExecuting;
     elements.runModUninstall.textContent = uninstallButtonLabel();
-    elements.runModUninstall.disabled = state.modUninstallChecking
+    elements.runModUninstall.disabled = !canRunModOperations()
+        || state.modUninstallChecking
         || state.modUninstallConfirming
         || state.modUninstallExecuting
         || !isCommunityModInstalled(install);
@@ -718,7 +727,99 @@ async function executeModInstall() {
         return;
     }
 
+    await confirmAndExecuteModInstall();
+}
+
+async function runModInstall() {
+    if (!canRunModOperations()) {
+        state.modInstallPlan = {
+            ok: false,
+            status: "desktop_required",
+            error: "Open the desktop Companion to install Community Mod.",
+        };
+        renderCommunityModStatus();
+        return;
+    }
+
+    if (!await ensureGameDirectorySelected()) {
+        return;
+    }
+
     if (!await ensureGithubNetworkConsent()) {
+        return;
+    }
+
+    state.modReleaseChecking = true;
+    state.modArtifactVerifying = true;
+    state.modInstallConfirming = true;
+    state.modReleaseCatalog = null;
+    state.modInstallPlan = null;
+    state.modArtifactVerification = null;
+    state.modArtifactStaging = null;
+    state.modInstallConfirmation = null;
+    state.modInstallExecution = null;
+    renderCommunityModStatus();
+
+    try {
+        state.modInstallConfirmation = await fetchModInstallConfirmation();
+        state.modInstallPlan = state.modInstallConfirmation.installPlan ?? state.modInstallPlan;
+        state.modReleaseCatalog = state.modInstallConfirmation.installPlan?.catalog ?? state.modReleaseCatalog;
+        state.modArtifactStaging = state.modInstallConfirmation.artifactStaging ?? null;
+        const verification = state.modArtifactStaging?.artifactVerification;
+        if (verification) {
+            state.modArtifactVerification = verification;
+        }
+    } catch (error) {
+        state.modInstallConfirmation = {
+            ok: false,
+            status: "error",
+            error: error instanceof Error ? error.message : String(error),
+        };
+        return;
+    } finally {
+        state.modReleaseChecking = false;
+        state.modArtifactVerifying = false;
+        state.modInstallConfirming = false;
+        renderCommunityModStatus();
+    }
+
+    await confirmAndExecuteModInstall();
+}
+
+async function ensureGameDirectorySelected() {
+    if (state.bootstrap?.gameDirectory) {
+        return true;
+    }
+
+    if (!window.stfcDesktop?.selectGameDirectory) {
+        state.modInstallPlan = {
+            ok: false,
+            status: "game_directory_required",
+            error: "Select the STFC game directory in the desktop Companion before installing Community Mod.",
+        };
+        renderCommunityModStatus();
+        return false;
+    }
+
+    state.modInstallPlan = {
+        ok: false,
+        status: "game_directory_required",
+        error: "Select the STFC game directory to continue.",
+    };
+    renderCommunityModStatus();
+
+    const bootstrap = await window.stfcDesktop.selectGameDirectory();
+    state.bootstrap = bootstrap;
+    state.companionUninstallStatus = bootstrap?.companionAppUninstall ?? state.companionUninstallStatus;
+    renderMode();
+    renderRelease();
+    renderCompanionInstall();
+    renderCommunityModStatus();
+    return Boolean(bootstrap?.gameDirectory);
+}
+
+async function confirmAndExecuteModInstall() {
+    if (!isInstallExecutionReady(state.modInstallConfirmation)) {
         return;
     }
 
@@ -726,7 +827,7 @@ async function executeModInstall() {
         title: "Execute Community Mod install",
         message: state.modInstallConfirmation.summary ?? "Install the prepared version.dll now.",
         checks: confirmationCheckLabels(state.modInstallConfirmation.confirmation?.checks),
-        confirmLabel: "Execute install",
+        confirmLabel: installConfirmLabel(state.modInstallConfirmation),
         danger: true,
     });
     if (!confirmed) {
@@ -981,8 +1082,47 @@ function uninstallButtonLabel() {
     return "Uninstall";
 }
 
+function installButtonLabel() {
+    if (state.modInstallExecuting) {
+        return "Installing...";
+    }
+
+    if (state.modReleaseChecking || state.modArtifactVerifying || state.modInstallConfirming) {
+        return "Preparing...";
+    }
+
+    if (!state.bootstrap?.gameDirectory) {
+        return "Select STFC Folder";
+    }
+
+    const install = state.bootstrap?.communityModInstall;
+    if (isCommunityModInstalled(install)) {
+        return "Update Community Mod";
+    }
+
+    return "Install Community Mod";
+}
+
+function installConfirmLabel(confirmation) {
+    switch (confirmation?.action) {
+        case "update":
+            return "Update";
+        case "reinstall":
+            return "Reinstall";
+        case "replace_unknown":
+        case "replace_profile":
+            return "Replace";
+        default:
+            return "Install";
+    }
+}
+
 function isCommunityModInstalled(install) {
     return install?.state === "installed" && install.classification !== "none";
+}
+
+function canRunModOperations() {
+    return Boolean(state.bootstrap?.desktop && state.bootstrap?.modOperationToken);
 }
 
 function modFetchOptions(options = {}) {

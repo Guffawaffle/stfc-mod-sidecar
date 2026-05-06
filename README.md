@@ -1,92 +1,71 @@
-# STFC Mod Sidecar
+# STFC Community Mod Companion
 
-STFC Mod Sidecar is a local diagnostic console and integration bridge for the STFC Community Mod. The mod should observe game/mod state and emit structured events. The sidecar should ingest those events, parse battle logs, keep a local session timeline, expose diagnostics, and prepare future integration surfaces.
+STFC Community Mod Companion is a Windows desktop helper for the Star Trek Fleet Command Community Mod. It installs, updates, uninstalls, and inspects the Community Mod `version.dll` in your selected STFC game folder, then gives you diagnostic views for mod events and settings.
 
-This project is intentionally separate from the community mod repo because it has a different lifecycle and may eventually use desktop tooling such as Electron, Tauri, Overwolf, or a plain local service. The mod should not grow UI/runtime dependencies just to support diagnostics.
+This is an alpha build. It is intended for people who are comfortable testing early mod tooling and reporting problems. It does not automate gameplay, click buttons, send inputs to STFC, claim rewards, navigate ships, or provide hidden combat advantages.
 
-## What This Is
+## Download
 
-- Read-only diagnostics for structured mod events.
-- A boring JSONL event protocol for v0.
-- A simple, defensive battle-log parser.
-- A place to model hook health, session timeline, and diagnostic bundle exports.
-- A future bridge for user-initiated integrations such as Majel, spocks.club, stfc.space, or an optional overlay host.
+1. Open the repository's Releases page.
+2. Download the newest Windows installer named like `STFC Community Mod Companion-Setup-0.1.0-alpha.2-x64.exe`.
+3. Run the installer.
+4. Launch `STFC Community Mod Companion` from Windows.
 
-## What This Is Not
+The portable `.exe` is useful for testing, but the setup installer is the recommended path for alliance-mate testing because Windows can manage uninstall from Apps & Features.
 
-- No auto-clicking.
-- No keystroke or mouse input injection into STFC.
-- No combat, navigation, claiming, or account automation.
-- No hidden advantage logic.
-- No sidecar commands that control gameplay.
+## First Run
 
-## Architecture Boundary
-
-The C++ community mod remains the production mod until a managed BepInEx port proves replacement parity in writing. The sidecar stays mod-agnostic and communicates through local files and documented APIs, not implementation internals. See [docs/12-production-mod-boundary.md](docs/12-production-mod-boundary.md).
-
-The current C++ mod feed contract is documented in [docs/13-cpp-mod-feed-contract.md](docs/13-cpp-mod-feed-contract.md).
-
-The V1 hotkey settings page decisions are documented in [docs/14-hotkey-settings-page.md](docs/14-hotkey-settings-page.md).
-
-## V0 Goals
-
-- Ingest JSONL events emitted by the community mod.
-- Define event types for debug, hook health, battle, session, and integration activity.
-- Parse plain-text battle-log lines while preserving raw input.
-- Mark unknown or unparsed battle-log lines explicitly.
-- Build an exportable diagnostic bundle shape.
-- Keep desktop UI and overlay choices replaceable.
-
-## Architecture Sketch
+1. Close Star Trek Fleet Command.
+2. Open the Companion.
+3. Go to `Settings`.
+4. Click `Select STFC Game Directory`.
+5. Select the folder that contains `prime.exe`, usually:
 
 ```text
-Community Mod
-  observes game/mod state
-  emits structured JSONL events
-  does not own UI or external integrations
-
-Sidecar Core
-  ingests events
-  parses battle logs
-  stores session timeline
-  exports diagnostics
-  exposes a local API later
-
-Desktop UI / Overwolf UI
-  renders logs, battle view, hook health, and timeline
-  consumes sidecar core events
-  remains replaceable
+C:\Games\Star Trek Fleet Command\default\game
 ```
 
-## Planned Phases
+6. Pick a Community Mod profile:
+   - `Official Basic`: release artifacts from `netniV/stfc-mod`.
+   - `Advanced Alpha`: release artifacts from `Guffawaffle/stfc-mod`.
 
-1. V0 core: event types, JSONL helpers, parser, tests, docs.
-2. File ingestion: live-ish tailing of JSONL and battle-log files.
-3. Local storage: session timeline and diagnostic bundle export.
-4. Local API: localhost HTTP, WebSocket, or named pipe after JSONL proves useful.
-5. UI shell: desktop diagnostics viewer.
-6. Optional overlay host: evaluate Overwolf as a renderer only.
+## Install Community Mod
 
-## Current Milestone Status
+1. Close Star Trek Fleet Command.
+2. Open `About` in the Companion.
+3. Click `Install Community Mod`.
+4. Approve the GitHub release check.
+5. Review the confirmation dialog and click `Install`, `Update`, or `Replace`.
 
-The Basic companion install/update milestone is complete enough to move forward.
-It added profile-aware Basic mode, Community Mod provenance detection, guarded
-Windows `version.dll` install/update execution, About-page execution status, and
-recovery guidance. See [docs/20-basic-companion-milestone-closeout.md](docs/20-basic-companion-milestone-closeout.md).
+The Companion downloads only from the selected GitHub release profile, verifies the release artifact hash, stages `version.dll` in the Companion cache, checks that STFC is closed, then copies the DLL into the selected game directory. If it replaces an existing DLL, it creates a backup first.
 
-The next planned milestone is full uninstall behavior for the Community Mod and
-the installed Companion app. Signed-release readiness still requires interactive
-installer smoke and the remaining release/security work.
+## Uninstall Community Mod
 
-## Project Layout
+1. Close Star Trek Fleet Command.
+2. Open `About` in the Companion.
+3. Click `Uninstall`.
+4. Review the confirmation dialog.
 
-```text
-docs/                  planning and protocol notes
-examples/              placeholder JSONL and battle-log samples
-packages/core/         TypeScript event model, parser, diagnostics helpers
-packages/desktop/      placeholder for a future UI shell
-packages/viewer/       local browser viewer for JSONL feed inspection
-```
+By default, uninstall removes or restores the Community Mod DLL and leaves `community_patch_settings.toml` plus logs alone. Check `Also delete settings and logs` when you want a fuller cleanup of mod settings and extra mod artifacts.
+
+The Companion app itself can be removed from Windows Apps & Features. The About page shows whether you are running an installed copy, a portable copy, or a source/dev copy.
+
+## Safety Model
+
+- The Companion only writes inside the STFC game directory you selected.
+- Install and uninstall require the local desktop app token and an explicit confirmation payload.
+- GitHub network calls require an in-app consent prompt.
+- The app blocks install/uninstall when the target STFC process is running from the selected game folder.
+- Symlinked `version.dll` paths and unsafe path boundaries are blocked.
+- Unknown/manual `version.dll` installs require explicit replacement or removal confirmation.
+
+## Current Alpha Limits
+
+- Windows only for Community Mod install/update/uninstall execution.
+- macOS packaging is not part of this alpha release.
+- The UI is functional alpha software, not a polished consumer app yet.
+- The Companion can install the Community Mod, but it does not configure every mod setting for you.
+- Diagnostics and battle-log views are still evolving.
 
 ## Development
 
@@ -96,115 +75,45 @@ Install dependencies:
 npm install
 ```
 
-Run tests:
+Run the standard local check:
 
 ```bash
-npm test
+npm run ax -- check
 ```
 
-Build TypeScript:
+Run the full CI gate:
 
 ```bash
-npm run build
+npm run ax -- ci
 ```
 
-Run both:
-
-```bash
-npm run check
-```
-
-## Log Viewer
-
-Start the managed local viewer against the live STFC feed:
-
-```bash
-npm run viewer
-```
-
-Then open `http://127.0.0.1:43127`.
-
-The root route is now the viewer home page. The current battle-log tool lives at `http://127.0.0.1:43127/battle-log/`.
-
-Server control commands:
-
-```bash
-npm run server:status
-npm run server:stop
-npm run server:kill
-npm run server:restart
-npm run server:logs
-```
-
-Run the same UI against the sample feed:
-
-```bash
-npm run viewer:sample
-```
-
-Override the feed path or port on start or restart:
-
-```bash
-npm run viewer -- --feed-path "C:\Games\Star Trek Fleet Command\default\game\community_patch_battle_feed.jsonl" --port 43128 --limit 250
-npm run server:restart -- --port 43128 --limit 250
-```
-
-Run the viewer in the foreground for direct debugging:
-
-```bash
-npm run viewer:run
-```
-
-Detailed operating notes live in `docs/07-log-viewer.md`.
-
-Battle-log parser and analyzer requirements live in `docs/11-battle-log-parser-analyzer-requirements.md`.
-
-## Desktop Companion Packaging
-
-The optional desktop companion lives in `packages/desktop/`. It wraps the same
-local viewer UI in Electron, starts the sidecar server as a bundled local child
-process, and opens the LCARS-inspired companion shell in a desktop window.
-
-After installing dependencies, run the desktop shell in development:
+Run the desktop shell in development:
 
 ```bash
 npm run desktop:dev
 ```
 
-Create an unpacked app directory for inspection:
-
-```bash
-npm run desktop:pack
-```
-
-Create release artifacts:
-
-```bash
-npm run desktop:dist
-```
-
-Create Windows artifacts only:
+Create Windows artifacts locally:
 
 ```bash
 npm run desktop:dist:win
 ```
 
-Electron must stay on a release line with Node 22 or newer because the sidecar
-event store uses Node's `node:sqlite` module. The desktop package currently
-targets Electron 41, which carries Node 24.
+Official Windows signing uses Azure Artifact Signing through the release workflow. The signed release QA matrix is documented in [docs/18-signed-release-qa-matrix.md](docs/18-signed-release-qa-matrix.md).
 
-Local desktop artifacts are unsigned by default. Official Windows signing uses
-Azure Artifact Signing through the release workflow and is documented in
-[docs/16-windows-code-signing.md](docs/16-windows-code-signing.md).
-The signed release QA matrix is documented in
-[docs/18-signed-release-qa-matrix.md](docs/18-signed-release-qa-matrix.md).
+## Project Layout
 
-The desktop app can remember a selected STFC game directory and pass it to the
-bundled sidecar server. User bootstrap/path behavior is documented in
-[docs/17-user-bootstrap-and-paths.md](docs/17-user-bootstrap-and-paths.md).
+```text
+docs/                  planning, protocol, and release notes
+examples/              placeholder JSONL and battle-log samples
+packages/core/         event model, parser, diagnostics helpers, storage
+packages/desktop/      Electron desktop companion shell
+packages/viewer/       local Companion UI and API server
+scripts/               validation, smoke, and release helper scripts
+```
 
-## Battle-Log Samples
+## Boundary
 
-The files in `examples/` are placeholders for parser development. Real STFC battle-log samples should be added later under a reviewable sample area, with account names, IDs, coordinates, alliance tags, and timestamps redacted when needed. Keep private/raw samples out of Git by using `samples/private/`.
+The C++ Community Mod remains the production mod. The Companion is a local helper around install/update/uninstall, settings, diagnostics, and event viewing. It does not control gameplay and should not grow gameplay automation features.
 
-The parser should only become more specific when real log shapes justify it.
+Architecture notes live in [docs/12-production-mod-boundary.md](docs/12-production-mod-boundary.md), and the current C++ mod feed contract is documented in [docs/13-cpp-mod-feed-contract.md](docs/13-cpp-mod-feed-contract.md).

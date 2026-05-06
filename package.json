@@ -1,8 +1,8 @@
 {
   "name": "stfc-mod-sidecar",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "private": true,
-  "description": "Read-only diagnostic sidecar and integration bridge for STFC Community Mod events.",
+  "description": "Windows desktop companion for installing, updating, uninstalling, and inspecting the STFC Community Mod.",
   "type": "module",
   "workspaces": [
     "packages/*"

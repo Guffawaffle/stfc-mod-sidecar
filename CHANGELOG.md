@@ -2,8 +2,16 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.2 - 2026-05-05
+
 ### Features
 
+- Added a primary `Install Community Mod` About-page action that selects the
+  game directory when needed, checks GitHub release metadata, verifies and
+  stages the DLL, and then prompts for the final install/update confirmation.
+- Enabled guarded Community Mod install/uninstall execution for the
+  desktop-managed local server while keeping token and confirmation checks in
+  place.
 - Added Companion app uninstall status and desktop handoff actions: installed NSIS
   copies can launch their uninstaller, packaged copies can open Windows Apps, and
   portable/source runs no longer show a misleading app-uninstall action.
@@ -12,6 +20,8 @@
 
 - Extended the release QA matrix with Companion app uninstall handoff and
   Community Mod/app uninstall separation checks.
+- Reworked the README for public alpha onboarding with download, first-run,
+  install, uninstall, and alpha expectation guidance.
 
 ## 0.1.0-alpha.1 - 2026-05-05
 
