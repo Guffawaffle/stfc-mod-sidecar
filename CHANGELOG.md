@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Features
+
+- Added Companion app uninstall status and desktop handoff actions: installed NSIS
+  copies can launch their uninstaller, packaged copies can open Windows Apps, and
+  portable/source runs no longer show a misleading app-uninstall action.
+
+### Docs
+
+- Extended the release QA matrix with Companion app uninstall handoff and
+  Community Mod/app uninstall separation checks.
+
 ## 0.1.0-alpha.1 - 2026-05-05
 
 ### Architecture

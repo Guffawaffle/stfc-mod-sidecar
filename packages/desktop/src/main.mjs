@@ -6,6 +6,11 @@ import { fileURLToPath } from "node:url";
 
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 
+import {
+    WINDOWS_APPS_FEATURES_URI,
+    buildCompanionAppUninstallStatus,
+    isDirectChildPath,
+} from "./companion-uninstall.mjs";
 import { initialDeveloperModeFromSources, normalizeDesktopSettings, normalizeModProfile } from "./desktop-settings.mjs";
 import { SECURITY_MOTTO, STFC_GAME_EXECUTABLE, validateStfcGameDirectory } from "./game-directory.mjs";
 import { buildReleaseInfo } from "../../viewer/release-info.mjs";
@@ -277,6 +282,10 @@ function writeLog(level, message) {
 
 function registerDesktopIpc() {
     ipcMain.handle("sidecar-bootstrap:get", () => bootstrapSnapshot());
+    ipcMain.handle("sidecar-companion-uninstall:get-status", () => companionAppUninstallStatus());
+    ipcMain.handle("sidecar-companion-uninstall:open-windows-settings", () => openWindowsUninstallSettings());
+    ipcMain.handle("sidecar-companion-uninstall:show-install-folder", () => showCompanionInstallFolder());
+    ipcMain.handle("sidecar-companion-uninstall:run", () => runCompanionUninstaller());
     ipcMain.handle("sidecar-bootstrap:set-developer-mode", async (_event, enabled) => {
         const developerMode = Boolean(enabled);
         if (desktopSettings.developerMode === developerMode) {
@@ -408,10 +417,97 @@ async function bootstrapSnapshot(options = {}) {
         communityModInstall: health?.communityModInstall ?? null,
         release: desktopReleaseInfo(health?.release),
         modOperationToken: sidecarModToken,
+        companionAppUninstall: companionAppUninstallStatus(),
         error: options.error ?? bootstrapWarning,
         requiredExecutable: STFC_GAME_EXECUTABLE,
         securityMotto: SECURITY_MOTTO,
     };
+}
+
+function companionAppUninstallStatus() {
+    return buildCompanionAppUninstallStatus({
+        platform: process.platform,
+        packaged: app.isPackaged,
+        productName: app.getName(),
+        executablePath: process.execPath,
+        env: process.env,
+        userDataPath: app.getPath("userData"),
+        pathExists: fs.existsSync,
+    });
+}
+
+async function openWindowsUninstallSettings() {
+    if (process.platform !== "win32") {
+        return { ok: false, error: "Windows Apps & Features is available only on Windows." };
+    }
+
+    await shell.openExternal(WINDOWS_APPS_FEATURES_URI);
+    return { ok: true, opened: WINDOWS_APPS_FEATURES_URI };
+}
+
+async function showCompanionInstallFolder() {
+    const status = companionAppUninstallStatus();
+    if (!status.installDirectory) {
+        return { ok: false, error: "No Companion install folder is available for this run." };
+    }
+
+    const error = await shell.openPath(status.installDirectory);
+    return error ? { ok: false, error } : { ok: true, path: status.installDirectory };
+}
+
+async function runCompanionUninstaller() {
+    const status = companionAppUninstallStatus();
+    if (!status.canRunUninstaller || !status.uninstallerPath) {
+        return {
+            ok: false,
+            status: status.mode,
+            error: "This Companion run does not expose an installed app uninstaller.",
+            companionAppUninstall: status,
+        };
+    }
+
+    if (!isDirectChildPath(status.installDirectory, status.uninstallerPath)) {
+        return {
+            ok: false,
+            status: "unsafe_uninstaller_path",
+            error: "Refusing to launch an uninstaller outside the Companion install folder.",
+            companionAppUninstall: status,
+        };
+    }
+
+    try {
+        const stats = fs.statSync(status.uninstallerPath);
+        if (!stats.isFile()) {
+            return {
+                ok: false,
+                status: "uninstaller_not_file",
+                error: "The detected Companion uninstaller is not a file.",
+                companionAppUninstall: status,
+            };
+        }
+
+        const child = spawn(status.uninstallerPath, [], {
+            cwd: status.installDirectory,
+            detached: true,
+            stdio: "ignore",
+        });
+        child.unref();
+        writeLog("log", `[sidecar-desktop] launched companion uninstaller path=${sanitizeLogValue(status.uninstallerPath)}`);
+        setTimeout(() => app.quit(), 250);
+        return {
+            ok: true,
+            status: "launched_uninstaller",
+            uninstallerPath: status.uninstallerPath,
+            userDataPolicy: status.userDataPolicy,
+        };
+    } catch (error) {
+        return {
+            ok: false,
+            status: "uninstaller_launch_failed",
+            error: error instanceof Error ? error.message : String(error),
+            companionAppUninstall: status,
+        };
+    }
 }
 
 function resolveSelectedGamePaths(gameDirectory) {

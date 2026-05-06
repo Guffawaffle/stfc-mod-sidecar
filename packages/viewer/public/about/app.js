@@ -37,6 +37,9 @@ const state = {
     modUninstallConfirmation: null,
     modUninstallExecution: null,
     modUninstallDeleteSettingsAndLogs: false,
+    companionUninstallStatus: null,
+    companionActionMessage: "",
+    companionActionBusy: false,
     githubNetworkConsent: false,
     modReleaseChecking: false,
     modArtifactVerifying: false,
@@ -58,6 +61,11 @@ const elements = {
     releaseUpdateState: document.querySelector("#about-release-update-state"),
     checkReleaseUpdate: document.querySelector("#check-release-update"),
     releaseUpdateLink: document.querySelector("#about-release-update-link"),
+    companionInstallState: document.querySelector("#about-companion-install-state"),
+    companionInstallDetail: document.querySelector("#about-companion-install-detail"),
+    runCompanionUninstall: document.querySelector("#run-companion-uninstall"),
+    openWindowsUninstallSettings: document.querySelector("#open-windows-uninstall-settings"),
+    showCompanionInstallFolder: document.querySelector("#show-companion-install-folder"),
     modInstallTitle: document.querySelector("#about-mod-install-title"),
     modInstallState: document.querySelector("#about-mod-install-state"),
     modInstallDetail: document.querySelector("#about-mod-install-detail"),
@@ -109,6 +117,9 @@ elements.previewDiagnostics?.addEventListener("click", () => void previewDiagnos
 elements.copyDiagnostics?.addEventListener("click", () => void copyDiagnostics());
 elements.downloadDiagnostics?.addEventListener("click", () => void downloadDiagnostics());
 elements.checkReleaseUpdate?.addEventListener("click", () => void checkReleaseUpdate());
+elements.runCompanionUninstall?.addEventListener("click", () => void runCompanionUninstall());
+elements.openWindowsUninstallSettings?.addEventListener("click", () => void openWindowsUninstallSettings());
+elements.showCompanionInstallFolder?.addEventListener("click", () => void showCompanionInstallFolder());
 elements.refreshModStatus?.addEventListener("click", () => void refreshModStatus());
 elements.runModUninstall?.addEventListener("click", () => void runModUninstall());
 elements.checkModRelease?.addEventListener("click", () => void checkModRelease());
@@ -137,8 +148,10 @@ async function loadMode() {
         };
     }
 
+    state.companionUninstallStatus = state.bootstrap?.companionAppUninstall ?? state.companionUninstallStatus;
     renderMode();
     renderRelease();
+    renderCompanionInstall();
     renderCommunityModStatus();
 }
 
@@ -227,6 +240,144 @@ function renderRelease() {
     elements.releaseChannel.textContent = release?.channelLabel ? `${release.channelLabel} channel` : "Channel unknown";
     elements.signaturePolicy.textContent = release?.signatureLabel ?? "Signature expectation unknown";
     elements.updateMode.textContent = release?.updateLabel ?? "Update mode unknown";
+}
+
+function renderCompanionInstall() {
+    const status = state.companionUninstallStatus ?? state.bootstrap?.companionAppUninstall;
+    const desktopBridge = window.stfcDesktop ?? null;
+    const desktopAvailable = Boolean(desktopBridge);
+    elements.companionInstallState.textContent = companionInstallLabel(status, desktopAvailable);
+    elements.companionInstallDetail.textContent = state.companionActionMessage || companionInstallSummary(status, desktopAvailable);
+
+    const canRunUninstaller = desktopAvailable && status?.canRunUninstaller === true;
+    const canOpenWindowsApps = desktopAvailable
+        && status?.canOpenWindowsApps === true
+        && ["installed", "packaged_unknown"].includes(status?.mode);
+    const canShowInstallFolder = desktopAvailable
+        && status?.canShowInstallFolder === true
+        && status?.mode !== "source";
+
+    elements.runCompanionUninstall.hidden = !canRunUninstaller;
+    elements.runCompanionUninstall.disabled = state.companionActionBusy || !canRunUninstaller;
+    elements.openWindowsUninstallSettings.hidden = !canOpenWindowsApps;
+    elements.openWindowsUninstallSettings.disabled = state.companionActionBusy || !canOpenWindowsApps;
+    elements.showCompanionInstallFolder.hidden = !canShowInstallFolder;
+    elements.showCompanionInstallFolder.disabled = state.companionActionBusy || !canShowInstallFolder;
+}
+
+function companionInstallLabel(status, desktopAvailable) {
+    if (!desktopAvailable) {
+        return "Browser viewer";
+    }
+
+    return status?.label ?? "Companion app status unavailable";
+}
+
+function companionInstallSummary(status, desktopAvailable) {
+    if (!desktopAvailable) {
+        return "Open the desktop Companion for app installer and uninstaller actions.";
+    }
+
+    if (!status) {
+        return "Companion app install status is unavailable.";
+    }
+
+    const userData = status.userDataPolicy === "preserve" ? " Companion settings and logs are preserved by default." : "";
+    return `${status.summary ?? "Companion app install status is unavailable."}${userData}`;
+}
+
+async function refreshCompanionInstallStatus() {
+    if (!window.stfcDesktop?.getCompanionUninstallStatus) {
+        return state.companionUninstallStatus;
+    }
+
+    state.companionUninstallStatus = await window.stfcDesktop.getCompanionUninstallStatus();
+    renderCompanionInstall();
+    return state.companionUninstallStatus;
+}
+
+async function runCompanionUninstall() {
+    const status = await refreshCompanionInstallStatus();
+    if (!status?.canRunUninstaller || !window.stfcDesktop?.runCompanionUninstaller) {
+        state.companionActionMessage = "This Companion run does not expose an installed app uninstaller.";
+        renderCompanionInstall();
+        return;
+    }
+
+    const confirmed = await showActionDialog({
+        title: "Uninstall Companion",
+        message: "Open the installed Companion uninstaller now.",
+        checks: [
+            "Community Mod files stay untouched",
+            "Companion settings and logs are preserved",
+            "The Companion app will close",
+        ],
+        confirmLabel: "Uninstall Companion",
+        danger: true,
+    });
+    if (!confirmed) {
+        return;
+    }
+
+    state.companionActionBusy = true;
+    state.companionActionMessage = "Launching Companion uninstaller...";
+    renderCompanionInstall();
+
+    try {
+        const result = await window.stfcDesktop.runCompanionUninstaller();
+        state.companionActionMessage = result?.ok
+            ? "Companion uninstaller launched. The app will close."
+            : result?.error ?? "Companion uninstaller could not be launched.";
+    } catch (error) {
+        state.companionActionMessage = error instanceof Error ? error.message : String(error);
+    } finally {
+        state.companionActionBusy = false;
+        renderCompanionInstall();
+    }
+}
+
+async function openWindowsUninstallSettings() {
+    if (!window.stfcDesktop?.openWindowsUninstallSettings) {
+        return;
+    }
+
+    state.companionActionBusy = true;
+    state.companionActionMessage = "Opening Windows Apps...";
+    renderCompanionInstall();
+
+    try {
+        const result = await window.stfcDesktop.openWindowsUninstallSettings();
+        state.companionActionMessage = result?.ok
+            ? "Windows Apps opened."
+            : result?.error ?? "Windows Apps could not be opened.";
+    } catch (error) {
+        state.companionActionMessage = error instanceof Error ? error.message : String(error);
+    } finally {
+        state.companionActionBusy = false;
+        renderCompanionInstall();
+    }
+}
+
+async function showCompanionInstallFolder() {
+    if (!window.stfcDesktop?.showCompanionInstallFolder) {
+        return;
+    }
+
+    state.companionActionBusy = true;
+    state.companionActionMessage = "Opening Companion folder...";
+    renderCompanionInstall();
+
+    try {
+        const result = await window.stfcDesktop.showCompanionInstallFolder();
+        state.companionActionMessage = result?.ok
+            ? "Companion folder opened."
+            : result?.error ?? "Companion folder could not be opened.";
+    } catch (error) {
+        state.companionActionMessage = error instanceof Error ? error.message : String(error);
+    } finally {
+        state.companionActionBusy = false;
+        renderCompanionInstall();
+    }
 }
 
 async function refreshModStatus() {
