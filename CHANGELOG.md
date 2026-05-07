@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0-beta.1 - 2026-05-06
+
 ### Changed
 
 - Began first-class Community Mod variant gates: profile definitions are now
@@ -16,7 +18,11 @@
 ### Fixed
 
 - Public Battle Log URLs now render a Companion unavailable page in Basic mode
-  instead of exposing the raw profile-capability JSON response.
+  instead of exposing the raw profile-capability JSON response, with readable
+  gate reasons and no duplicate global variant warning.
+- Hardened runtime variant-gate transitions so event-store requests use a
+  stable store reference, stale store reads fall back safely, and Battle Log
+  feed indexes are cleared when the capability is disabled.
 
 ## 0.1.0-alpha.3 - 2026-05-05
 

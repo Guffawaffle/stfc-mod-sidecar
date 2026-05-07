@@ -2,12 +2,12 @@
 
 STFC Community Mod Companion is a Windows desktop helper for the Star Trek Fleet Command Community Mod. It installs, updates, uninstalls, and inspects the Community Mod `version.dll` in your selected STFC game folder, then gives you diagnostic views for mod events and settings.
 
-This is an alpha build. It is intended for people who are comfortable testing early mod tooling and reporting problems. It does not automate gameplay, click buttons, send inputs to STFC, claim rewards, navigate ships, or provide hidden combat advantages.
+This is a beta build. It is intended for people who are comfortable testing early mod tooling and reporting problems. It does not automate gameplay, click buttons, send inputs to STFC, claim rewards, navigate ships, or provide hidden combat advantages.
 
 ## Download
 
-1. Open the repository's Releases page and choose `v0.1.0-alpha.3`.
-2. Download the Windows installer named `STFC.Community.Mod.Companion-Setup-0.1.0-alpha.3-x64.exe`.
+1. Open the repository's Releases page and choose `v0.1.0-beta.1`.
+2. Download the Windows installer named `STFC.Community.Mod.Companion-Setup-0.1.0-beta.1-x64.exe`.
 3. Run the installer.
 4. Launch `STFC Community Mod Companion` from Windows.
 
@@ -59,11 +59,11 @@ The Companion app itself can be removed from Windows Apps & Features. The About 
 - Symlinked `version.dll` paths and unsafe path boundaries are blocked.
 - Unknown/manual `version.dll` installs require explicit replacement or removal confirmation.
 
-## Current Alpha Limits
+## Current Beta Limits
 
 - Windows only for Community Mod install/update/uninstall execution.
-- macOS packaging is not part of this alpha release.
-- The UI is functional alpha software, not a polished consumer app yet.
+- macOS packaging is not part of this beta release.
+- The UI is functional beta software, not a polished consumer app yet.
 - The Companion can install the Community Mod, but it does not configure every mod setting for you.
 - Diagnostics and battle-log views are still evolving.
 
