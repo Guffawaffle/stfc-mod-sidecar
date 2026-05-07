@@ -89,6 +89,11 @@ function applyViewerState(state) {
 }
 
 function renderVariantGateWarning(variantGate) {
+    if (document.querySelector("[data-variant-gate-warning-suppressed]")) {
+        document.querySelector("[data-variant-gate-warning]")?.remove();
+        return;
+    }
+
     const ignoredKey = readSessionValue(VARIANT_GATE_WARNING_SESSION_KEY);
     const warningKey = variantGateWarningKey(variantGate);
     let warning = document.querySelector("[data-variant-gate-warning]");

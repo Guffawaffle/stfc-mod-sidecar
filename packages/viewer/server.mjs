@@ -126,6 +126,7 @@ let communityModVariantGate = buildCommunityModVariantGateContext({
 });
 let communityModCapabilities = communityModVariantGate.capabilities;
 let eventStore = await createConfiguredEventStore();
+let eventStoreRevision = 0;
 
 const server = createServer(async (request, response) => {
     const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? `127.0.0.1:${port}`}`);
@@ -559,7 +560,7 @@ const server = createServer(async (request, response) => {
 
     if (requestUrl.pathname === "/api/health") {
         const { install: communityModInstall, variantGate } = await refreshCommunityModVariantGate();
-        const storedEvents = eventStore ? await eventStore.count() : 0;
+        const storedEvents = await countStoredEvents();
         return sendJson(response, 200, {
             ok: true,
             pid: process.pid,
@@ -642,12 +643,7 @@ const server = createServer(async (request, response) => {
             title: "Battle Log unavailable",
             heading: "Battle Log Unavailable",
             message: "Battle Log surfaces are currently blocked by the active Community Mod variant gate.",
-            details: [
-                `Selected profile: ${communityModVariantGate.selectedProfile}`,
-                `Installed DLL: ${communityModVariantGate.installedProfile} (${communityModVariantGate.installedState})`,
-                `Gate status: ${communityModVariantGate.mismatchKind}`,
-                ...reasons.map((reason) => `Reason: ${reason}`),
-            ],
+            details: variantGateCapabilityDetails("battleLog", reasons),
             primaryHref: "/",
             primaryLabel: "Open Home",
             secondaryHref: "/settings/",
@@ -764,6 +760,62 @@ function capabilityUnavailablePayload(capability) {
     };
 }
 
+function variantGateCapabilityDetails(capability, reasons = []) {
+    return [
+        `Selected profile: ${communityModProfileLabel(communityModVariantGate.selectedProfile)}`,
+        `Installed DLL: ${communityModProfileLabel(communityModVariantGate.installedProfile)} (${variantGateLabel(communityModVariantGate.installedState)})`,
+        `Gate status: ${variantGateLabel(communityModVariantGate.mismatchKind)}`,
+        ...reasons.map((reason) => variantGateReasonLabel(capability, reason)),
+    ];
+}
+
+function communityModProfileLabel(profile) {
+    if (profile === "netniv-basic") {
+        return "Official Basic";
+    }
+
+    if (profile === "guff-advanced") {
+        return "Advanced Alpha";
+    }
+
+    if (profile === "none") {
+        return "No DLL";
+    }
+
+    return "Unknown";
+}
+
+function variantGateReasonLabel(capability, reason) {
+    if (capability === "battleLog") {
+        switch (reason) {
+            case "selected_profile_netniv-basic_does_not_support_battleLog":
+                return "Official Basic selection does not include Battle Log.";
+            case "selected_profile_guff-advanced_does_not_support_battleLog":
+                return "Selected profile does not include Battle Log.";
+            case "installed_profile_netniv-basic_does_not_support_battleLog":
+                return "Installed Official Basic DLL does not include Battle Log.";
+            case "installed_dll_unknown":
+                return "Installed DLL is unknown.";
+            case "installed_dll_missing":
+                return "No Community Mod DLL is installed.";
+            default:
+                break;
+        }
+    }
+
+    return `Gate reason: ${variantGateLabel(reason)}`;
+}
+
+function variantGateLabel(value) {
+    return String(value ?? "unknown")
+        .replace(/([a-z])([A-Z])/g, "$1 $2")
+        .replaceAll("_", " ")
+        .replaceAll("-", " ")
+        .replace(/\b\w/g, (letter) => letter.toUpperCase())
+        .replaceAll("Dll", "DLL")
+        .replaceAll("Netniv", "netniV");
+}
+
 async function refreshCommunityModVariantGate() {
     communityModInstallStatus = await readCommunityModInstallStatus();
     communityModVariantGate = buildCommunityModVariantGateContext({
@@ -778,20 +830,35 @@ async function refreshCommunityModVariantGate() {
 async function reconcileRuntimeSurfacesWithVariantGate() {
     if (communityModCapabilities.eventStore) {
         if (!eventStore) {
-            eventStore = await createConfiguredEventStore();
+            const nextStore = await createConfiguredEventStore();
+            if (nextStore) {
+                eventStore = nextStore;
+                eventStoreRevision += 1;
+            }
         }
     } else if (eventStore) {
-        await eventStore.close().catch((error) => {
+        const closingStore = eventStore;
+        eventStore = null;
+        eventStoreRevision += 1;
+        await closingStore.close().catch((error) => {
             console.warn(`[sidecar-viewer] unable to close event store: ${error instanceof Error ? error.message : String(error)}`);
         });
-        eventStore = null;
     }
 
     if (communityModCapabilities.battleLog) {
         ensureFeedWatcher();
     } else {
         closeFeedWatcher();
+        feedIndex = createEmptyFeedIndex(feedPath);
     }
+}
+
+function sendEventStoreUnavailable(response) {
+    return sendJson(response, 503, {
+        ok: false,
+        error: "Event store is unavailable for the active Community Mod variant gate.",
+        retryAfterSeconds: 5,
+    });
 }
 
 async function withCommunityModOperationLock(response, operation, handler) {
@@ -892,7 +959,7 @@ async function readHotkeySettingsSnapshot() {
 async function readDiagnosticsBundle() {
     const generatedAt = new Date().toISOString();
     const [storedEvents, feed, settings] = await Promise.all([
-        eventStore ? eventStore.count() : Promise.resolve(0),
+        countStoredEvents(),
         communityModCapabilities.battleLog
             ? readEventsSnapshot(25, { includeDetails: false }).catch((error) => ({
                 ok: false,
@@ -934,6 +1001,21 @@ async function readDiagnosticsBundle() {
         feed,
         settings,
     });
+}
+
+async function countStoredEvents() {
+    const store = eventStore;
+    const storeRevision = eventStoreRevision;
+    if (!store) {
+        return 0;
+    }
+
+    try {
+        const count = await store.count();
+        return store === eventStore && storeRevision === eventStoreRevision ? count : 0;
+    } catch {
+        return 0;
+    }
 }
 
 async function handleHotkeySettingsUpdate(request, response) {
@@ -1110,8 +1192,10 @@ function createEmptyFeedIndex(selectedFeedPath = "") {
 }
 
 async function handleEventIngest(request, response) {
-    if (!eventStore) {
-        return sendJson(response, 503, { ok: false, error: "Event store is disabled for this process." });
+    const store = eventStore;
+    const storeRevision = eventStoreRevision;
+    if (!store) {
+        return sendEventStoreUnavailable(response);
     }
 
     if (!isAuthorizedSyncRequest(request)) {
@@ -1121,11 +1205,15 @@ async function handleEventIngest(request, response) {
     try {
         const payload = await readJsonBody(request);
         const events = normalizeIncomingEvents(payload);
-        const result = await eventStore.append(events);
+        if (store !== eventStore || storeRevision !== eventStoreRevision) {
+            return sendEventStoreUnavailable(response);
+        }
+
+        const result = await store.append(events);
         broadcastEventUpdate("ingest", { appended: result.appended ?? events.length });
         return sendJson(response, 202, {
             ok: true,
-            backend: eventStore.backend,
+            backend: store.backend,
             ...result,
         });
     } catch (error) {
@@ -1252,10 +1340,16 @@ function scheduleFeedWatcherUpdate() {
 }
 
 async function readEventsSnapshot(limit, options = {}) {
-    if (eventStore) {
-        const snapshot = await readStoredSnapshot(limit, options);
-        if (snapshot) {
-            return snapshot;
+    const store = eventStore;
+    const storeRevision = eventStoreRevision;
+    if (store) {
+        try {
+            const snapshot = await readStoredSnapshot(store, storeRevision, limit, options);
+            if (snapshot) {
+                return snapshot;
+            }
+        } catch (error) {
+            console.warn(`[sidecar-viewer] stored event snapshot unavailable: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 
@@ -1263,18 +1357,24 @@ async function readEventsSnapshot(limit, options = {}) {
 }
 
 async function readEventDetail(lineNumber) {
-    if (eventStore) {
-        const detail = await readStoredEvent(lineNumber);
-        if (detail) {
-            return detail;
+    const store = eventStore;
+    const storeRevision = eventStoreRevision;
+    if (store) {
+        try {
+            const detail = await readStoredEvent(store, storeRevision, lineNumber);
+            if (detail) {
+                return detail;
+            }
+        } catch (error) {
+            console.warn(`[sidecar-viewer] stored event detail unavailable: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 
     return readFeedLine(feedPath, lineNumber);
 }
 
-async function readStoredSnapshot(limit, options = {}) {
-    if (!eventStore) {
+async function readStoredSnapshot(store, storeRevision, limit, options = {}) {
+    if (!store) {
         return null;
     }
 
@@ -1282,9 +1382,13 @@ async function readStoredSnapshot(limit, options = {}) {
     const resolvedLimit = Math.min(Math.max(limit, 10), 500);
     const includeDetails = options.includeDetails !== false;
     const [totalLines, storedEvents] = await Promise.all([
-        eventStore.count(),
-        eventStore.listRecent(resolvedLimit),
+        store.count(),
+        store.listRecent(resolvedLimit),
     ]);
+
+    if (store !== eventStore || storeRevision !== eventStoreRevision) {
+        return null;
+    }
 
     if (storedEvents.length === 0) {
         return null;
@@ -1297,7 +1401,7 @@ async function readStoredSnapshot(limit, options = {}) {
     return {
         ok: true,
         source: "store",
-        storageBackend: eventStore.backend,
+        storageBackend: store.backend,
         exists: true,
         detail: includeDetails ? "full" : "summary",
         generatedAt,
@@ -1308,25 +1412,34 @@ async function readStoredSnapshot(limit, options = {}) {
     };
 }
 
-async function readStoredEvent(lineNumber) {
-    if (!eventStore) {
+async function readStoredEvent(store, storeRevision, lineNumber) {
+    if (!store) {
         return null;
     }
 
     const generatedAt = new Date().toISOString();
-    const storedEvent = await eventStore.getBySequenceId(lineNumber);
+    const storedEvent = await store.getBySequenceId(lineNumber);
+    if (store !== eventStore || storeRevision !== eventStoreRevision) {
+        return null;
+    }
+
     if (!storedEvent) {
+        return null;
+    }
+
+    const totalLines = await store.count();
+    if (store !== eventStore || storeRevision !== eventStoreRevision) {
         return null;
     }
 
     return {
         ok: true,
         source: "store",
-        storageBackend: eventStore.backend,
+        storageBackend: store.backend,
         exists: true,
         detail: "full",
         generatedAt,
-        totalLines: await eventStore.count(),
+        totalLines,
         event: normalizeLine(storedEvent.rawJson, storedEvent.sequenceId),
     };
 }

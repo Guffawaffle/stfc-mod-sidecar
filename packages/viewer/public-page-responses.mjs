@@ -1,17 +1,17 @@
 export function buildCapabilityUnavailablePage(options = {}) {
-    const title = stringOr(options.title, "Feature unavailable");
-    const eyebrow = stringOr(options.eyebrow, "Profile boundary");
-    const heading = stringOr(options.heading, "Feature unavailable");
-    const message = stringOr(options.message, "This feature is not available for the active profile.");
-    const details = Array.isArray(options.details)
-        ? options.details.map((detail) => stringOr(detail, "")).filter(Boolean)
-        : [];
-    const primaryHref = stringOr(options.primaryHref, "/");
-    const primaryLabel = stringOr(options.primaryLabel, "Go home");
-    const secondaryHref = stringOr(options.secondaryHref, "/settings/");
-    const secondaryLabel = stringOr(options.secondaryLabel, "Open Settings");
+  const title = stringOr(options.title, "Feature unavailable");
+  const eyebrow = stringOr(options.eyebrow, "Profile boundary");
+  const heading = stringOr(options.heading, "Feature unavailable");
+  const message = stringOr(options.message, "This feature is not available for the active profile.");
+  const details = Array.isArray(options.details)
+    ? options.details.map((detail) => stringOr(detail, "")).filter(Boolean)
+    : [];
+  const primaryHref = stringOr(options.primaryHref, "/");
+  const primaryLabel = stringOr(options.primaryLabel, "Go home");
+  const secondaryHref = stringOr(options.secondaryHref, "/settings/");
+  const secondaryLabel = stringOr(options.secondaryLabel, "Open Settings");
 
-    return `<!doctype html>
+  return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -20,7 +20,7 @@ export function buildCapabilityUnavailablePage(options = {}) {
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <main class="shell site-shell">
+    <main class="shell site-shell" data-variant-gate-warning-suppressed>
       <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav></nav>
 
       <section class="module-grid" aria-label="unavailable feature">
@@ -42,24 +42,24 @@ export function buildCapabilityUnavailablePage(options = {}) {
 }
 
 function stringOr(value, fallback) {
-    const text = String(value ?? "").trim();
-    return text || fallback;
+  const text = String(value ?? "").trim();
+  return text || fallback;
 }
 
 function escapeHtml(value) {
-    return String(value ?? "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function escapeAttribute(value) {
-    const text = stringOr(value, "#");
-    if (!text.startsWith("/") && !text.startsWith("#")) {
-        return "#";
-    }
+  const text = stringOr(value, "#");
+  if (!text.startsWith("/") && !text.startsWith("#")) {
+    return "#";
+  }
 
-    return escapeHtml(text);
+  return escapeHtml(text);
 }

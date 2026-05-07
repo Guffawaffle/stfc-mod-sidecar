@@ -14,6 +14,7 @@ describe("public capability unavailable page", () => {
         expect(html).toContain("<!doctype html>");
         expect(html).toContain("Battle Log Unavailable");
         expect(html).toContain("Active profile: netniv-basic");
+        expect(html).toContain("data-variant-gate-warning-suppressed");
         expect(html).toContain("/shared/shell.js");
     });
 
