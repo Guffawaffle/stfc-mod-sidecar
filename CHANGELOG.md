@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.1.0-rc.1 - 2026-05-08
+
+### Changed
+
+- Added clearer install-path guidance for new users, existing installs, Guff RC upgrades, and advanced realtime Battle Log setups.
+- Updated active UI wording to show `Guff Advanced` while preserving the existing internal manifest/distribution identifier.
+- Prefer the newest compatible Guffawaffle rc release when the Guff Advanced profile selects Community Mod artifacts.
+
 ## 0.1.0-beta.1 - 2026-05-06
 
 ### Changed
