@@ -10,7 +10,7 @@ the Community Mod and the installed Companion app.
 
 ## Completed Scope
 
-- Official Basic and Advanced Alpha profile selection exists in desktop
+- Official Basic and Guff Advanced profile selection exists in desktop
   settings.
 - Basic profile gates event-heavy UI and APIs away from the standard netniV
   compatibility path.

@@ -70,7 +70,7 @@ describe("Community Mod install plan", () => {
         });
     });
 
-    test("plans an advanced alpha install from a supported Guffawaffle release", () => {
+    test("plans a Guff Advanced install from a supported Guffawaffle release", () => {
         const plan = buildCommunityModInstallPlan({
             profile: "guff-advanced",
             install: install({ state: "none", classification: "none" }),

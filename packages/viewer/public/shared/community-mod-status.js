@@ -25,7 +25,7 @@ export function communityModInstallLabel(install) {
         }
 
         if (install.classification === "guff-advanced") {
-            return "Advanced Alpha installed";
+            return "Guff Advanced installed";
         }
 
         return "Unknown version.dll installed";
@@ -604,12 +604,12 @@ export function communityModUninstallExecutionRecoverySummary(execution) {
 }
 
 export function modProfileLabel(profile) {
-    return normalizeModProfile(profile) === "netniv-basic" ? "Official Basic" : "Advanced Alpha";
+    return normalizeModProfile(profile) === "netniv-basic" ? "Official Basic" : "Guff Advanced";
 }
 
 export function normalizeModProfile(profile) {
     const normalized = String(profile ?? "").toLowerCase();
-    return ["guff-advanced", "guff", "advanced", "alpha", "advanced-alpha"].includes(normalized)
+    return ["guff-advanced", "guff", "advanced", "alpha", "advanced-alpha", "rc", "release-candidate"].includes(normalized)
         ? "guff-advanced"
         : "netniv-basic";
 }

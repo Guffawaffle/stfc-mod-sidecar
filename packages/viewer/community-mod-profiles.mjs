@@ -22,9 +22,9 @@ export const COMMUNITY_MOD_PROFILE_DEFINITIONS = Object.freeze({
     }),
     [COMMUNITY_MOD_PROFILE_GUFF_ADVANCED]: Object.freeze({
         profile: COMMUNITY_MOD_PROFILE_GUFF_ADVANCED,
-        label: "Advanced Alpha",
+        label: "Guff Advanced",
         distribution: "advanced-alpha",
-        aliases: Object.freeze(["guff-advanced", "guff", "advanced", "alpha", "advanced-alpha"]),
+        aliases: Object.freeze(["guff-advanced", "guff", "advanced", "alpha", "advanced-alpha", "rc", "release-candidate"]),
         release: Object.freeze({
             repository: "Guffawaffle/stfc-mod",
             channel: "alpha",

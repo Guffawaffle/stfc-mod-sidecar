@@ -18,6 +18,7 @@ describe("community mod profiles", () => {
     test("normalizes aliases without treating unknown installed distributions as known", () => {
         expect(normalizeCommunityModProfile("official")).toBe("netniv-basic");
         expect(normalizeCommunityModProfile("alpha")).toBe("guff-advanced");
+        expect(normalizeCommunityModProfile("rc")).toBe("guff-advanced");
         expect(normalizeCommunityModProfile("unknown")).toBe("netniv-basic");
         expect(communityModProfileFromDistribution("advanced-alpha")).toBe("guff-advanced");
         expect(communityModProfileFromDistribution("unknown")).toBeNull();
@@ -26,6 +27,7 @@ describe("community mod profiles", () => {
     test("keeps release metadata and capability declarations together", () => {
         expect(COMMUNITY_MOD_RELEASE_PROFILES["netniv-basic"].repository).toBe("netniV/stfc-mod");
         expect(COMMUNITY_MOD_RELEASE_PROFILES["guff-advanced"].channel).toBe("alpha");
+        expect(COMMUNITY_MOD_RELEASE_PROFILES["guff-advanced"].distribution).toBe("advanced-alpha");
         expect(buildCommunityModProfileCapabilities("netniv-basic").battleLog).toBe(false);
         expect(buildCommunityModProfileCapabilities("guff-advanced").battleLog).toBe(true);
     });

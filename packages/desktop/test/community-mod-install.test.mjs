@@ -89,7 +89,7 @@ describe("community mod install detection", () => {
 
     test("trusts a sidecar manifest only when the DLL hash still matches", async () => {
         const gameDirectory = await makeTempGameDirectory();
-        const dllContents = Buffer.from("advanced alpha dll");
+        const dllContents = Buffer.from("guff advanced dll");
         await fs.writeFile(path.join(gameDirectory, COMMUNITY_MOD_DLL_FILE), dllContents);
         await writeManifest(gameDirectory, {
             schemaVersion: 1,

@@ -41,7 +41,7 @@ describe("community mod release catalog", () => {
         });
     });
 
-    test("selects the latest Guffawaffle tagged release for advanced alpha installs", () => {
+    test("selects the latest Guffawaffle tagged release for Guff Advanced installs", () => {
         const result = buildCommunityModReleaseCatalog({
             profile: "guff-advanced",
             releases: [
@@ -66,6 +66,41 @@ describe("community mod release catalog", () => {
                 kind: "dll",
                 name: "version.dll",
                 digest: "sha256:latest",
+            },
+        });
+    });
+
+    test("selects a Guffawaffle rc release when it is the newest compatible advanced build", () => {
+        const result = buildCommunityModReleaseCatalog({
+            profile: "guff-advanced",
+            releases: [
+                release("v1.0.0-guffa.8", {
+                    assets: [asset("version.dll", { digest: "sha256:old" })],
+                }),
+                release("v1.1.0-guffa.1", {
+                    prerelease: true,
+                    assets: [asset("version.dll", { digest: "sha256:release" })],
+                }),
+                release("v1.1.0-guffa.rc1", {
+                    prerelease: true,
+                    assets: [
+                        asset("version.dll", { digest: "sha256:rc" }),
+                        asset("stfc-community-mod-v1.1.0-guffa.rc1.zip"),
+                    ],
+                }),
+            ],
+        });
+
+        expect(result).toMatchObject({
+            status: "ready",
+            installSupported: true,
+            profile: "guff-advanced",
+            repository: "Guffawaffle/stfc-mod",
+            release: { tagName: "v1.1.0-guffa.rc1", prerelease: true },
+            windowsAsset: {
+                kind: "dll",
+                name: "version.dll",
+                digest: "sha256:rc",
             },
         });
     });

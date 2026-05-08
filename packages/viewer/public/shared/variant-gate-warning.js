@@ -81,7 +81,7 @@ function profileLabel(profile) {
     }
 
     if (profile === "guff-advanced") {
-        return "Advanced Alpha";
+        return "Guff Advanced";
     }
 
     if (profile === "none") {

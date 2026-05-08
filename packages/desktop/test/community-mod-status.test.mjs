@@ -97,7 +97,7 @@ describe("Community Mod status formatting", () => {
         expect(modProfileLabel("netniv-basic")).toBe("Official Basic");
     });
 
-    test("keeps Advanced Alpha release metadata distinct from install support", () => {
+    test("keeps Guff Advanced release metadata distinct from install support", () => {
         const catalog = {
             ok: true,
             profile: "guff-advanced",
@@ -109,7 +109,7 @@ describe("Community Mod status formatting", () => {
             windowsAsset: { name: "version.dll" },
         };
 
-        expect(communityModReleaseLabel(catalog)).toBe("Advanced Alpha metadata ready");
+        expect(communityModReleaseLabel(catalog)).toBe("Guff Advanced metadata ready");
         expect(communityModReleaseSummary(catalog)).toContain("Install disabled until release marker exists.");
     });
 

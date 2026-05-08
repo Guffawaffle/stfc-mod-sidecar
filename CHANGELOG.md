@@ -67,7 +67,7 @@
 - Polished the LCARS shell header alignment and removed an unsupported Safari
   scrollbar compatibility warning from the shared viewer CSS.
 - Added initial Community Mod settings schema profiles so official netniV Basic mode can hide fork-only settings before broader settings editing expands.
-- Added a desktop Settings profile selector for switching between official Basic and Advanced Alpha schemas.
+- Added a desktop Settings profile selector for switching between official Basic and Guff Advanced schemas.
 - Added Community Mod DLL install detection to classify missing, official Basic, advanced, and unknown installs by manifest/hash evidence.
 - Added Basic profile capability gates so Battle Log navigation, APIs, feed watching, and event storage stay off for official Basic mode.
 - Added a Community Mod release catalog endpoint for profile-specific mod artifact selection without downloading or installing yet.
@@ -85,7 +85,7 @@
 - Added Community Mod install recovery guidance plus a temp-directory install execution smoke for guarded install/replace receipts.
 - Added full-uninstall groundwork with extended sidecar install manifest metadata plus Community Mod uninstall plan, confirmation, execution, optional settings/log cleanup, and About-page controls. Unknown/manual uninstall removes `version.dll` directly instead of retaining a DLL backup.
 - Added a dev-copy Community Mod reinstall smoke that drives the local viewer API, verifies uninstall creates no DLL backup, preserves settings/log artifacts, and reinstalls official Basic.
-- Added Advanced Alpha install support for Guffawaffle tagged releases plus a dev-copy reinstall smoke option for the latest Guffawaffle release.
+- Added Guff Advanced install support for Guffawaffle tagged releases plus a dev-copy reinstall smoke option for the latest Guffawaffle release.
 - Added local capability-token protection for Community Mod install/uninstall/release/artifact endpoints, explicit GitHub network-consent headers for release/artifact calls, and per-game-directory operation locking for install/uninstall writes.
 - Hardened Community Mod artifact handling to fail closed when trusted SHA-256 release metadata is missing and to recheck cached artifact hashes before staging.
 - Hardened Community Mod install/uninstall execution with realpath/lstat path checks, symlink blocking, split install/uninstall execution environment gates, and an accessible About-page confirmation dialog for destructive actions.

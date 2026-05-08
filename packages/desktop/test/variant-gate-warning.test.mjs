@@ -26,7 +26,7 @@ describe("variant gate warning", () => {
 
         expect(view.title).toMatch(/selected profile/i);
         expect(view.summary).toContain("Official Basic");
-        expect(view.summary).toContain("Advanced Alpha");
+        expect(view.summary).toContain("Guff Advanced");
         expect(view.fixHref).toBe("/settings/");
     });
 });
