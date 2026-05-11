@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>STFC Sidecar Viewer | Flight Recorder</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell site-shell flight-recorder-shell">
+      <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="flight-recorder"></nav>
+
+      <header class="hero flight-recorder-hero">
+        <div>
+          <p class="eyebrow">Session Timeline</p>
+          <h1>Flight Recorder</h1>
+          <p class="hero-copy">A local, read-only timeline for fleet/session events, notification decisions, and human marks.</p>
+        </div>
+        <section class="hero-controls" aria-label="flight recorder controls">
+          <label class="control">
+            <span>Kind</span>
+            <select id="kind-filter">
+              <option value="all">All events</option>
+            </select>
+          </label>
+          <label class="control">
+            <span>Severity</span>
+            <select id="severity-filter">
+              <option value="all">All severities</option>
+              <option value="info">Info</option>
+              <option value="success">Success</option>
+              <option value="warning">Warning</option>
+              <option value="critical">Critical</option>
+            </select>
+          </label>
+          <label class="control">
+            <span>Search</span>
+            <input id="timeline-search" type="search" placeholder="Fleet, system, note" autocomplete="off" />
+          </label>
+          <button id="refresh-timeline" type="button">Refresh</button>
+        </section>
+      </header>
+
+      <section class="status-strip" aria-live="polite">
+        <article>
+          <span class="status-label">Source</span>
+          <strong id="timeline-source">Starting...</strong>
+        </article>
+        <article>
+          <span class="status-label">Events</span>
+          <strong id="timeline-count">0</strong>
+        </article>
+        <article>
+          <span class="status-label">Marks</span>
+          <strong id="mark-count">0</strong>
+        </article>
+        <article>
+          <span class="status-label">Updated</span>
+          <strong id="timeline-updated">Never</strong>
+        </article>
+      </section>
+
+      <section class="flight-recorder-layout">
+        <aside class="flight-recorder-tools" aria-label="manual timeline mark">
+          <div class="panel-heading">
+            <h2>Mark Now</h2>
+            <p>Add a local note to the current session timeline.</p>
+          </div>
+          <label class="control">
+            <span>Kind</span>
+            <select id="mark-kind">
+              <option value="manual">Manual</option>
+              <option value="lag-spike">Lag Spike</option>
+              <option value="checked-base">Checked Base</option>
+              <option value="combat-note">Combat Note</option>
+              <option value="route-note">Route Note</option>
+            </select>
+          </label>
+          <label class="control">
+            <span>Note</span>
+            <textarea id="mark-note" rows="5" placeholder="What happened?"></textarea>
+          </label>
+          <div class="flight-recorder-actions">
+            <button id="add-mark" type="button">Add Mark</button>
+            <button id="export-session" class="button-secondary" type="button">Export JSON</button>
+            <button id="clear-marks" class="button-secondary" type="button">Clear Marks</button>
+          </div>
+        </aside>
+
+        <section class="flight-recorder-timeline" aria-label="session timeline">
+          <div class="panel-heading">
+            <h2>Timeline</h2>
+            <p id="timeline-status">Loading events...</p>
+          </div>
+          <div id="timeline-list" class="timeline-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="/flight-recorder/app.js"></script>
+    <script type="module" src="/shared/shell.js"></script>
+  </body>
+</html>

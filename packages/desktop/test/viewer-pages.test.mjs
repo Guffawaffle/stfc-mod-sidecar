@@ -8,6 +8,7 @@ describe("viewer page visibility", () => {
 
         expect(pages).not.toContain("battle-log");
         expect(pages).not.toContain("battle-log-workbench");
+        expect(pages).toContain("flight-recorder");
         expect(pages).toContain("settings");
     });
 
@@ -19,6 +20,7 @@ describe("viewer page visibility", () => {
 
         expect(pages).not.toContain("battle-log");
         expect(pages).not.toContain("battle-log-workbench");
+        expect(pages).toContain("flight-recorder");
         expect(pages).toContain("settings");
     });
 

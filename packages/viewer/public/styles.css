@@ -182,6 +182,21 @@ input[type="number"] {
   background: rgba(255, 255, 255, 0.7);
 }
 
+input[type="search"],
+textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.75);
+}
+
+textarea {
+  min-height: 124px;
+  resize: vertical;
+}
+
 select {
   min-width: 280px;
   max-width: min(560px, 100%);
@@ -316,6 +331,102 @@ button {
 
 .action-dialog__actions {
   justify-content: end;
+}
+
+.flight-recorder-shell {
+  max-width: 1680px;
+}
+
+.flight-recorder-hero {
+  align-items: start;
+}
+
+.flight-recorder-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.flight-recorder-tools,
+.flight-recorder-timeline {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.flight-recorder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.timeline-list {
+  display: grid;
+  gap: 10px;
+}
+
+.timeline-event {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-left: 6px solid rgba(109, 90, 83, 0.42);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.timeline-event[data-severity="success"] {
+  border-left-color: #397f50;
+}
+
+.timeline-event[data-severity="warning"] {
+  border-left-color: #b47a24;
+}
+
+.timeline-event[data-severity="critical"] {
+  border-left-color: #a82424;
+}
+
+.timeline-event > time {
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.timeline-event__body {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.timeline-event__top {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: start;
+}
+
+.timeline-event__top strong {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+}
+
+.timeline-event h3,
+.timeline-event p {
+  margin: 0;
+}
+
+.timeline-event p {
+  color: var(--muted);
 }
 
 .module-list {

@@ -18,6 +18,11 @@ export const viewerPages = [
         requiresCapability: "battleLog",
     },
     {
+        id: "flight-recorder",
+        label: "Flight Recorder",
+        href: "/flight-recorder/",
+    },
+    {
         id: "settings",
         label: "Settings",
         href: "/settings/",
