@@ -6,6 +6,8 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { appendBoundedLogLineSync, trimLogFileSync } from "../packages/desktop/src/bounded-log-file.mjs";
+
 const DEFAULT_FEED_PATH = "C:\\Games\\Star Trek Fleet Command\\default\\game\\community_patch_battle_feed.jsonl";
 const DEFAULT_PORT = 43127;
 const DEFAULT_LIMIT = 150;
@@ -76,7 +78,7 @@ async function startServer(commandArgs) {
 
     const shutdownToken = randomUUID();
     const syncToken = process.env.STFC_SIDECAR_SYNC_TOKEN?.trim() || randomUUID();
-    await writeFile(logPath, `\n[${new Date().toISOString()}] [sidecar-control] starting viewer server\n`, { flag: "a" });
+    appendBoundedLogLineSync(logPath, `\n[${new Date().toISOString()}] [sidecar-control] starting viewer server\n`);
 
     const logFd = openSync(logPath, "a");
     const child = spawn(process.execPath, [serverScriptPath, ...serverConfig.launchArgs], {
@@ -123,6 +125,7 @@ async function startServer(commandArgs) {
             await waitForExit(state.pid, 2000).catch(() => undefined);
         }
         await clearState();
+        trimLogFileSync(logPath);
         throw new Error(`${error instanceof Error ? error.message : String(error)}. Inspect ${logPath}`);
     }
 }
@@ -141,6 +144,7 @@ async function stopServer() {
 
     await waitForExit(state.pid, STOP_TIMEOUT_MS);
     await clearState();
+    trimLogFileSync(logPath);
     console.log(`[sidecar-control] viewer stopped (pid ${state.pid})`);
 }
 
@@ -154,6 +158,7 @@ async function killServer() {
     await forceKillProcess(state.pid);
     await waitForExit(state.pid, 4000);
     await clearState();
+    trimLogFileSync(logPath);
     console.log(`[sidecar-control] viewer killed (pid ${state.pid})`);
 }
 

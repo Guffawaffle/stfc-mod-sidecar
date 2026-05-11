@@ -11,6 +11,7 @@ import {
     buildCompanionAppUninstallStatus,
     isDirectChildPath,
 } from "./companion-uninstall.mjs";
+import { appendBoundedLogLineSync } from "./bounded-log-file.mjs";
 import { DEFAULT_MOD_PROFILE, initialDeveloperModeFromSources, normalizeDesktopSettings, normalizeModProfile } from "./desktop-settings.mjs";
 import { SECURITY_MOTTO, STFC_GAME_EXECUTABLE, validateStfcGameDirectory } from "./game-directory.mjs";
 import { buildReleaseInfo } from "../../viewer/release-info.mjs";
@@ -276,7 +277,7 @@ function writeLog(level, message) {
     }
 
     try {
-        fs.appendFileSync(logPath, line, "utf8");
+        appendBoundedLogLineSync(logPath, line);
     } catch {
         // Logging must never prevent the companion app from starting.
     }
