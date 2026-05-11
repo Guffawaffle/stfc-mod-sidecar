@@ -11,8 +11,10 @@ import {
 const state = {
   snapshot: null,
   notificationSnapshot: null,
+  diagnosticSnapshot: null,
   draftBindings: new Map(),
   draftHardSettings: new Map(),
+  draftDiagnostics: new Map(),
   draftNotificationMaster: {},
   draftNotificationEvents: new Map(),
   captureActionId: null,
@@ -58,6 +60,7 @@ const elements = {
   notificationMaster: document.querySelector("#notification-master"),
   notificationPreviewState: document.querySelector("#notification-preview-state"),
   notificationRows: document.querySelector("#notification-rows"),
+  diagnosticSettings: document.querySelector("#diagnostic-settings"),
   hotkeySearch: document.querySelector("#hotkey-search"),
   hotkeyGroup: document.querySelector("#hotkey-group"),
   conflictsOnly: document.querySelector("#conflicts-only"),
@@ -85,6 +88,7 @@ elements.hotkeySearch.addEventListener("input", renderHotkeys);
 elements.hotkeyGroup.addEventListener("change", renderHotkeys);
 elements.conflictsOnly.addEventListener("change", renderHotkeys);
 elements.hardSettings.addEventListener("change", onHardSettingChange);
+elements.diagnosticSettings?.addEventListener("change", onDiagnosticSettingChange);
 elements.notificationSettings.addEventListener("change", onNotificationChange);
 elements.notificationSettings.addEventListener("click", (event) => void onNotificationClick(event));
 elements.hotkeyGroups.addEventListener("click", onHotkeyClick);
@@ -105,11 +109,14 @@ async function loadSettings() {
   ]);
   const snapshot = await hotkeyResponse.json();
   const notificationSnapshot = await notificationResponse.json();
+  const diagnosticSnapshot = await loadDiagnosticSettingsSnapshot();
 
   state.snapshot = snapshot;
   state.notificationSnapshot = notificationSnapshot;
+  state.diagnosticSnapshot = diagnosticSnapshot;
   state.draftBindings = new Map(snapshot.actions.map((action) => [action.id, [...action.bindings]]));
   state.draftHardSettings = new Map(snapshot.hardSettings.map((setting) => [setting.id, setting.value]));
+  state.draftDiagnostics = new Map((diagnosticSnapshot?.settings ?? []).map((setting) => [setting.id, setting.value]));
   state.draftNotificationMaster = { ...notificationSnapshot.master };
   state.draftNotificationEvents = new Map(notificationSnapshot.events.map((item) => [item.id, {
     system: item.system,
@@ -125,6 +132,16 @@ async function loadSettings() {
   renderAll();
 }
 
+async function loadDiagnosticSettingsSnapshot() {
+  const response = await fetch("/api/settings/diagnostics", { cache: "no-store" });
+  if (response.status === 403 || response.status === 404) {
+    return null;
+  }
+
+  const payload = await response.json();
+  return response.ok ? payload : null;
+}
+
 async function saveSettings() {
   if (!state.snapshot || !state.dirty || state.saving) {
     return;
@@ -136,11 +153,16 @@ async function saveSettings() {
   const token = elements.settingsToken.value.trim();
   const requiresToken = snapshotRequiresSaveToken(state.snapshot);
   const hotkeyPayload = buildHotkeyPatchPayload();
+  const diagnosticPayload = buildDiagnosticPatchPayload();
   const notificationPayload = buildNotificationPatchPayload();
 
   try {
     if (patchHasKeys(hotkeyPayload.shortcuts) || patchHasKeys(hotkeyPayload.hardSettings)) {
       await sendSettingsUpdate("/api/settings/hotkeys", hotkeyPayload, token, requiresToken);
+    }
+
+    if (patchHasKeys(diagnosticPayload.diagnostics)) {
+      await sendSettingsUpdate("/api/settings/diagnostics", diagnosticPayload, token, requiresToken);
     }
 
     if (notificationPatchHasChanges(notificationPayload)) {
@@ -179,6 +201,7 @@ function renderAll() {
   renderBootstrap();
   renderGroupFilter();
   renderHardSettings();
+  renderDiagnostics();
   renderNotifications();
   renderHotkeys();
   renderSettingsTabs();
@@ -198,6 +221,9 @@ function onSettingsTabClick(event) {
 
 function renderSettingsTabs() {
   const availableTabs = new Set(["hard-settings", "keybindings"]);
+  if ((state.diagnosticSnapshot?.settings.length ?? 0) > 0 && state.bootstrap?.developerMode !== false) {
+    availableTabs.add("diagnostics");
+  }
   if ((state.notificationSnapshot?.events.length ?? 0) > 0) {
     availableTabs.add("notifications");
   }
@@ -231,6 +257,7 @@ function renderSummary() {
   const warnings = conflicts.filter((conflict) => conflict.severity === "warning").length
     + snapshot.actions.reduce((count, action) => count + action.issues.filter((issue) => issue.severity !== "info").length, 0)
     + snapshot.hardSettings.reduce((count, setting) => count + setting.issues.filter((issue) => issue.severity !== "info").length, 0)
+    + (state.diagnosticSnapshot?.settings ?? []).reduce((count, setting) => count + setting.issues.filter((issue) => issue.severity !== "info").length, 0)
     + (state.notificationSnapshot?.events ?? []).reduce((count, item) => count + item.issues.filter((issue) => issue.severity !== "info").length, 0);
 
   elements.gameDirectory.textContent = state.bootstrap?.gameDirectory || gameDirectoryFromSettingsPath(snapshot.settingsPath) || "Unknown";
@@ -425,6 +452,52 @@ function renderHardSettings() {
       </article>
     `;
   }).join("");
+}
+
+function renderDiagnostics() {
+  const snapshot = state.diagnosticSnapshot;
+  if (!elements.diagnosticSettings) {
+    return;
+  }
+
+  if (!snapshot || snapshot.settings.length === 0) {
+    elements.diagnosticSettings.innerHTML = `<div class="empty-state">Developer diagnostics are not available for this profile.</div>`;
+    return;
+  }
+
+  elements.diagnosticSettings.innerHTML = snapshot.settings.map((setting) => {
+    const value = state.draftDiagnostics.get(setting.id);
+    const marker = value === setting.value ? "" : `<span class="settings-chip settings-chip--changed">Changed</span>`;
+    const issues = setting.issues
+      .map((issue) => `<span class="settings-chip settings-chip--${escapeHtml(issue.severity)}">${escapeHtml(issue.message)}</span>`)
+      .join("");
+    const control = renderDiagnosticControl(setting, value);
+
+    return `
+      <article class="hard-setting-row">
+        <div>
+          ${control}
+          <p>${escapeHtml(setting.description)}</p>
+          ${issues ? `<div class="setting-issues">${issues}</div>` : ""}
+        </div>
+        ${marker}
+      </article>
+    `;
+  }).join("");
+}
+
+function renderDiagnosticControl(setting, value) {
+  if (setting.type === "boolean") {
+    return `<label class="settings-toggle"><input type="checkbox" data-diagnostic-setting="${escapeHtml(setting.id)}"${value ? " checked" : ""} /><span>${escapeHtml(setting.label)}</span></label>`;
+  }
+
+  if (setting.type === "select") {
+    return `<label class="control"><span>${escapeHtml(setting.label)}</span><select data-diagnostic-setting="${escapeHtml(setting.id)}">
+      ${(setting.options ?? []).map((option) => `<option value="${escapeHtml(option.value)}"${option.value === value ? " selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+    </select></label>`;
+  }
+
+  return `<label class="control"><span>${escapeHtml(setting.label)}</span><input type="number" min="${setting.min ?? 0}" max="${setting.max ?? 60000}" step="${setting.step ?? 1}" value="${escapeHtml(value)}" data-diagnostic-setting="${escapeHtml(setting.id)}" /></label>`;
 }
 
 function renderNotifications() {
@@ -686,6 +759,26 @@ function onHardSettingChange(event) {
   state.draftHardSettings.set(setting.id, value);
   markDirty();
   renderHardSettings();
+  renderSummary();
+  renderTroubleshootingCoach();
+  renderSaveState();
+}
+
+function onDiagnosticSettingChange(event) {
+  const input = event.target.closest("[data-diagnostic-setting]");
+  if (!input || !state.diagnosticSnapshot) {
+    return;
+  }
+
+  const setting = state.diagnosticSnapshot.settings.find((item) => item.id === input.dataset.diagnosticSetting);
+  if (!setting) {
+    return;
+  }
+
+  const value = setting.type === "boolean" ? input.checked : setting.type === "integer" ? Number(input.value) : input.value;
+  state.draftDiagnostics.set(setting.id, value);
+  markDirty();
+  renderDiagnostics();
   renderSummary();
   renderTroubleshootingCoach();
   renderSaveState();
@@ -1026,6 +1119,23 @@ function buildHotkeyPatchPayload() {
   return { shortcuts, hardSettings };
 }
 
+function buildDiagnosticPatchPayload() {
+  const diagnostics = {};
+  const snapshot = state.diagnosticSnapshot;
+  if (!snapshot) {
+    return { diagnostics };
+  }
+
+  for (const setting of snapshot.settings) {
+    const value = state.draftDiagnostics.get(setting.id);
+    if (value !== setting.value) {
+      diagnostics[setting.id] = value;
+    }
+  }
+
+  return { diagnostics };
+}
+
 function buildNotificationPatchPayload() {
   const snapshot = state.notificationSnapshot;
   const master = {};
@@ -1092,9 +1202,11 @@ function countChanges() {
   }
 
   const hotkeys = buildHotkeyPatchPayload();
+  const diagnostics = buildDiagnosticPatchPayload();
   const notifications = buildNotificationPatchPayload();
   return Object.keys(hotkeys.shortcuts).length
     + Object.keys(hotkeys.hardSettings).length
+    + Object.keys(diagnostics.diagnostics).length
     + Object.keys(notifications.master).length
     + Object.keys(notifications.events).length;
 }

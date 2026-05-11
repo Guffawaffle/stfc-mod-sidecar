@@ -5,3 +5,4 @@ export * from "./battle-log/parser.js";
 export * from "./diagnostics/diagnostic-bundle.js";
 export * from "./settings/hotkeys.js";
 export * from "./settings/notifications.js";
+export * from "./settings/diagnostics.js";

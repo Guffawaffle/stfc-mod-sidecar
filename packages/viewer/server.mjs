@@ -98,8 +98,10 @@ let shutdownRequested = false;
 let exitTimer;
 
 let createSqlSidecarEventStore;
+let applyCommunityModDiagnosticSettingsPatch;
 let applyCommunityModHotkeySettingsPatch;
 let applyCommunityModNotificationSettingsPatch;
+let buildCommunityModDiagnosticSettingsSnapshot;
 let buildCommunityModHotkeySettingsSnapshot;
 let buildCommunityModNotificationSettingsSnapshot;
 let normalizeCommunityModSettingsProfile;
@@ -107,8 +109,10 @@ let isSidecarEvent;
 let parseEventJsonLine;
 try {
     ({
+        applyCommunityModDiagnosticSettingsPatch,
         applyCommunityModHotkeySettingsPatch,
         applyCommunityModNotificationSettingsPatch,
+        buildCommunityModDiagnosticSettingsSnapshot,
         buildCommunityModHotkeySettingsSnapshot,
         buildCommunityModNotificationSettingsSnapshot,
         createSqlSidecarEventStore,
@@ -204,6 +208,22 @@ const server = createServer(async (request, response) => {
 
         if (request.method === "PUT" || request.method === "PATCH" || request.method === "POST") {
             return handleNotificationSettingsUpdate(request, response);
+        }
+
+        return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+    }
+
+    if (requestUrl.pathname === "/api/settings/diagnostics") {
+        if (!developerMode) {
+            return sendJson(response, 403, developerModeRequiredPayload());
+        }
+
+        if (request.method === "GET") {
+            return sendJson(response, 200, await readDiagnosticSettingsSnapshot());
+        }
+
+        if (request.method === "PUT" || request.method === "PATCH" || request.method === "POST") {
+            return handleDiagnosticSettingsUpdate(request, response);
         }
 
         return sendJson(response, 405, { ok: false, error: "Method not allowed" });
@@ -991,6 +1011,26 @@ async function readNotificationSettingsSnapshot() {
     };
 }
 
+async function readDiagnosticSettingsSnapshot() {
+    const generatedAt = new Date().toISOString();
+    const exists = existsSync(settingsPath);
+    const contents = exists ? await readFile(settingsPath, "utf8") : "";
+    const snapshot = buildCommunityModDiagnosticSettingsSnapshot(contents, { profile: communityModSettingsProfile });
+
+    return {
+        ...snapshot,
+        generatedAt,
+        settingsPath,
+        exists,
+        saveRequiresToken: settingsSaveMode === SETTINGS_SAVE_MODE_REMOTE_PROTECTED,
+        settingsSaveMode,
+        saveSupported: true,
+        applyMode: "next_launch",
+        modProfile: communityModSettingsProfile,
+        developerMode,
+    };
+}
+
 async function readDiagnosticsBundle() {
     const generatedAt = new Date().toISOString();
     const [storedEvents, feed, settings] = await Promise.all([
@@ -1099,6 +1139,38 @@ async function handleNotificationSettingsUpdate(request, response) {
         await writeFile(settingsPath, nextContents, "utf8");
         console.log(`[sidecar-viewer] updated notification settings ${settingsPath}`);
         return sendJson(response, 200, await readNotificationSettingsSnapshot());
+    } catch (error) {
+        return sendJson(response, 400, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+}
+
+async function handleDiagnosticSettingsUpdate(request, response) {
+    if (!developerMode) {
+        return sendJson(response, 403, developerModeRequiredPayload());
+    }
+
+    if (!isAuthorizedSettingsRequest(request)) {
+        return sendJson(response, 401, { ok: false, error: "Unauthorized settings request" });
+    }
+
+    try {
+        const payload = await readJsonBody(request);
+        const previousContents = existsSync(settingsPath) ? await readFile(settingsPath, "utf8") : "";
+        const nextContents = applyCommunityModDiagnosticSettingsPatch(previousContents, payload, {
+            profile: communityModSettingsProfile,
+        });
+        await mkdir(path.dirname(settingsPath), { recursive: true });
+
+        if (existsSync(settingsPath)) {
+            await copyFile(settingsPath, `${settingsPath}.bak.sidecar`);
+        }
+
+        await writeFile(settingsPath, nextContents, "utf8");
+        console.log(`[sidecar-viewer] updated diagnostic settings ${settingsPath}`);
+        return sendJson(response, 200, await readDiagnosticSettingsSnapshot());
     } catch (error) {
         return sendJson(response, 400, {
             ok: false,

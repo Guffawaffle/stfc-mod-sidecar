@@ -101,6 +101,7 @@
         <div class="settings-tablist" role="tablist" aria-label="Settings sections">
           <button id="settings-tab-hard-settings" class="settings-tab" type="button" role="tab" aria-selected="true" aria-controls="settings-panel-hard-settings" data-settings-tab="hard-settings">Hard Settings</button>
           <button id="settings-tab-keybindings" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-panel-keybindings" data-settings-tab="keybindings">Keybindings</button>
+          <button id="settings-tab-diagnostics" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-panel-diagnostics" data-settings-tab="diagnostics">Diagnostics</button>
           <button id="settings-tab-notifications" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="notification-settings" data-settings-tab="notifications">Notifications</button>
         </div>
 
@@ -147,6 +148,14 @@
             <div id="notification-master" class="notification-master"></div>
             <div id="notification-preview-state" class="page-copy" aria-live="polite">Ready</div>
             <div id="notification-rows" class="notification-groups"></div>
+        </section>
+
+        <section id="settings-panel-diagnostics" class="settings-panel settings-tab-panel" role="tabpanel" aria-labelledby="settings-tab-diagnostics" data-settings-panel="diagnostics" hidden>
+          <div class="panel-heading">
+            <h2>Diagnostics</h2>
+            <p>Developer-only realtime trace controls for runtime investigation.</p>
+          </div>
+          <div id="diagnostic-settings" class="hard-settings-list"></div>
         </section>
       </section>
 
