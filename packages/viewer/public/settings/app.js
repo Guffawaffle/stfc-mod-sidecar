@@ -1280,7 +1280,8 @@ function markDirty() {
 
 function renderSaveState() {
   const requiresToken = snapshotRequiresSaveToken(state.snapshot);
-  const canSave = state.snapshot && state.dirty && !state.saving && (!requiresToken || elements.settingsToken.value.trim().length > 0);
+  const saveSupported = state.snapshot?.saveSupported !== false;
+  const canSave = state.snapshot && saveSupported && state.dirty && !state.saving && (!requiresToken || elements.settingsToken.value.trim().length > 0);
   if (elements.settingsTokenControl) {
     elements.settingsTokenControl.hidden = !requiresToken;
   }
@@ -1288,7 +1289,7 @@ function renderSaveState() {
     elements.settingsToken.value = "";
   }
   elements.saveSettings.disabled = !canSave;
-  elements.saveSettings.textContent = state.saving ? "Saving..." : "Save for next launch";
+  elements.saveSettings.textContent = state.saving ? "Saving..." : saveSupported ? "Save for next launch" : "Select game directory";
 }
 
 function snapshotRequiresSaveToken(snapshot) {

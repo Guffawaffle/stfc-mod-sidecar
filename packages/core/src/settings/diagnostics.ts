@@ -83,7 +83,6 @@ const DIAGNOSTIC_SETTING_CATALOG: readonly DiagnosticSettingCatalogItem[] = [
     defaultValue: "off",
     description: "Off has no runtime timer collection. Summary captures coarse hook costs; detailed and verbose enable nested probes for focused investigation.",
     options: runtimeTraceOptions,
-    profiles: ["guff-advanced"],
   },
   {
     id: "debug.runtime_trace_track_overhead",
@@ -93,7 +92,6 @@ const DIAGNOSTIC_SETTING_CATALOG: readonly DiagnosticSettingCatalogItem[] = [
     type: "boolean",
     defaultValue: true,
     description: "Records instrumentation overhead as a separate trace probe so profiler cost can be separated from mod and game function timing.",
-    profiles: ["guff-advanced"],
   },
   {
     id: "debug.runtime_trace_report_interval_ms",
@@ -106,7 +104,6 @@ const DIAGNOSTIC_SETTING_CATALOG: readonly DiagnosticSettingCatalogItem[] = [
     min: 1000,
     max: 60000,
     step: 500,
-    profiles: ["guff-advanced"],
   },
   {
     id: "sync.sidecar_jsonl_replay_seconds",
@@ -119,7 +116,6 @@ const DIAGNOSTIC_SETTING_CATALOG: readonly DiagnosticSettingCatalogItem[] = [
     min: 0,
     max: 86400,
     step: 30,
-    profiles: ["guff-advanced"],
   },
   {
     id: "sync.sidecar_jsonl_recent_logs",
@@ -132,7 +128,6 @@ const DIAGNOSTIC_SETTING_CATALOG: readonly DiagnosticSettingCatalogItem[] = [
     min: 0,
     max: 10000,
     step: 50,
-    profiles: ["guff-advanced"],
   },
 ];
 

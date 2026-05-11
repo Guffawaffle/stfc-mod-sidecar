@@ -22,8 +22,8 @@ sidecar_jsonl_recent_logs = 1000
     expect(snapshot.settings.find((setting) => setting.id === "debug.runtime_trace")?.value).toBe("detailed");
     expect(snapshot.settings.find((setting) => setting.id === "debug.runtime_trace_track_overhead")?.value).toBe(false);
     expect(snapshot.settings.find((setting) => setting.id === "debug.runtime_trace_report_interval_ms")?.value).toBe(2500);
-  expect(snapshot.settings.find((setting) => setting.id === "sync.sidecar_jsonl_replay_seconds")?.value).toBe(60);
-  expect(snapshot.settings.find((setting) => setting.id === "sync.sidecar_jsonl_recent_logs")?.value).toBe(1000);
+    expect(snapshot.settings.find((setting) => setting.id === "sync.sidecar_jsonl_replay_seconds")?.value).toBe(60);
+    expect(snapshot.settings.find((setting) => setting.id === "sync.sidecar_jsonl_recent_logs")?.value).toBe(1000);
   });
 
   it("maps the legacy mod impact monitor flag to summary", () => {
@@ -37,9 +37,10 @@ mod_impact_monitor = true
     expect(trace?.source).toBe("legacy");
   });
 
-  it("filters diagnostics out of the official basic profile", () => {
+  it("shows diagnostics for the official basic profile in developer mode", () => {
     const snapshot = buildCommunityModDiagnosticSettingsSnapshot("", { profile: "netniv-basic" });
-    expect(snapshot.settings).toEqual([]);
+    expect(snapshot.settings.map((setting) => setting.id)).toContain("debug.runtime_trace");
+    expect(snapshot.settings.map((setting) => setting.id)).toContain("sync.sidecar_jsonl_replay_seconds");
   });
 
   it("validates diagnostic patches", () => {

@@ -8,6 +8,7 @@ describe("desktop settings", () => {
             gameDirectory: "",
             developerMode: false,
             modProfile: "netniv-basic",
+            profileGameDirectories: {},
         });
     });
 
@@ -16,7 +17,38 @@ describe("desktop settings", () => {
             gameDirectory: "C:\\Games\\STFC",
             developerMode: true,
             modProfile: "netniv-basic",
+            profileGameDirectories: {
+                "netniv-basic": "C:\\Games\\STFC",
+            },
         });
+    });
+
+    test("uses the active profile directory from profile-scoped settings", () => {
+        expect(normalizeDesktopSettings({
+            modProfile: "guff-advanced",
+            gameDirectory: "C:\\Games\\Official",
+            profileGameDirectories: {
+                "netniv-basic": "C:\\Games\\Official",
+                "guff-advanced": "D:\\Games\\Guff",
+            },
+        })).toEqual({
+            gameDirectory: "D:\\Games\\Guff",
+            developerMode: false,
+            modProfile: "guff-advanced",
+            profileGameDirectories: {
+                "netniv-basic": "C:\\Games\\Official",
+                "guff-advanced": "D:\\Games\\Guff",
+            },
+        });
+    });
+
+    test("does not reuse another profile's directory when switching profiles", () => {
+        expect(normalizeDesktopSettings({
+            modProfile: "guff-advanced",
+            profileGameDirectories: {
+                "netniv-basic": "C:\\Games\\Official",
+            },
+        }).gameDirectory).toBe("");
     });
 
     test("uses the installer/bootstrap initial mode only when no setting is stored", () => {

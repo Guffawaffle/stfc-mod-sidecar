@@ -9,16 +9,25 @@ export const DEFAULT_DESKTOP_SETTINGS = Object.freeze({
     gameDirectory: "",
     developerMode: false,
     modProfile: DEFAULT_MOD_PROFILE,
+    profileGameDirectories: Object.freeze({}),
 });
 
 export function normalizeDesktopSettings(input = {}, options = {}) {
     const parsed = isRecord(input) ? input : {};
+    const modProfile = normalizeModProfile(parsed.modProfile);
+    const legacyGameDirectory = typeof parsed.gameDirectory === "string" ? parsed.gameDirectory : "";
+    const profileGameDirectories = normalizeProfileGameDirectories(parsed.profileGameDirectories);
+    if (legacyGameDirectory && Object.keys(profileGameDirectories).length === 0) {
+        profileGameDirectories[modProfile] = legacyGameDirectory;
+    }
+
     return {
-        gameDirectory: typeof parsed.gameDirectory === "string" ? parsed.gameDirectory : "",
+        gameDirectory: profileGameDirectories[modProfile] ?? "",
         developerMode: typeof parsed.developerMode === "boolean"
             ? parsed.developerMode
             : parseDeveloperModeValue(options.initialDeveloperMode),
-        modProfile: normalizeModProfile(parsed.modProfile),
+        modProfile,
+        profileGameDirectories,
     };
 }
 
@@ -42,6 +51,19 @@ export function parseDeveloperModeValue(value) {
 
     const normalized = String(value ?? "").trim().toLowerCase();
     return ["1", "true", "yes", "on", "developer", "dev", "enabled"].includes(normalized);
+}
+
+function normalizeProfileGameDirectories(value) {
+    const rawProfiles = isRecord(value) ? value : {};
+    const profileGameDirectories = {};
+    for (const [rawProfile, rawDirectory] of Object.entries(rawProfiles)) {
+        const profile = normalizeModProfile(rawProfile);
+        if (typeof rawDirectory === "string" && rawDirectory.trim()) {
+            profileGameDirectories[profile] = rawDirectory;
+        }
+    }
+
+    return profileGameDirectories;
 }
 
 function isRecord(value) {

@@ -52,9 +52,10 @@ Record each result as `pass`, `fail`, `not run`, or `blocked`, with a short note
 | Installer | Check Developer Tools. | First launch starts with Developer Tools enabled. |
 | Installer | Launch after install. | App opens About/Home without a blank window or server startup error. |
 | Portable | Run portable `.exe` from a writable folder. | App starts without installer state and uses the same in-app mode model. |
-| Bootstrap | Start with no saved game directory. | Settings shows bootstrap state and can select an STFC game directory. |
-| Bootstrap | Select a valid directory containing `prime.exe`. | Directory is persisted, feed/settings paths derive from that directory, and the server restarts cleanly. |
-| Bootstrap | Select a directory without `prime.exe`. | Directory is rejected and not persisted. |
+| Bootstrap | Start with no saved game directory. | Settings shows bootstrap state, feed/settings paths are empty, saves are disabled, and a valid STFC game directory can be selected. |
+| Bootstrap | Select a valid directory containing `prime.exe`, `GameAssembly.dll`, `UnityPlayer.dll`, and `prime_Data`. | Directory is persisted for the active profile, feed/settings paths derive from that directory, and the server restarts cleanly. |
+| Bootstrap | Switch to a profile with no saved directory. | The app does not reuse the previous profile's directory; feed/settings paths are empty until a directory is selected for the active profile. |
+| Bootstrap | Select a directory without the required STFC Unity/IL2CPP anchors. | Directory is rejected and not persisted. |
 | Bootstrap | Select a relative, network, namespace, or malformed path if the picker/test harness can provide one. | Path is rejected before any derived file access. |
 | Mode | Start fresh in Standard Companion. | Workbench nav and `/battle-log/workbench/` are unavailable; `/api/dev/*` returns a denial. |
 | Mode | Enable Developer Tools from About. | Mode persists, server restarts, Workbench nav appears, and `/api/dev/status` succeeds. |

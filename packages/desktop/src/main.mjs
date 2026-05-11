@@ -353,6 +353,10 @@ function registerDesktopIpc() {
         desktopSettings = {
             ...desktopSettings,
             gameDirectory: validation.gameDirectory,
+            profileGameDirectories: {
+                ...desktopSettings.profileGameDirectories,
+                [desktopSettings.modProfile]: validation.gameDirectory,
+            },
         };
         bootstrapWarning = "";
         saveDesktopSettings(desktopSettings);
@@ -360,11 +364,12 @@ function registerDesktopIpc() {
         return bootstrapSnapshot();
     });
     ipcMain.handle("sidecar-bootstrap:open-game-directory", async () => {
-        if (!desktopSettings.gameDirectory) {
+        const gameDirectory = activeProfileGameDirectory();
+        if (!gameDirectory) {
             return { ok: false, error: "No game directory is selected." };
         }
 
-        const validation = await validateStfcGameDirectory(desktopSettings.gameDirectory);
+        const validation = await validateStfcGameDirectory(gameDirectory);
         if (!validation.ok) {
             return { ok: false, error: validation.error };
         }
@@ -400,12 +405,14 @@ function currentWindowPath(fallback) {
 
 async function bootstrapSnapshot(options = {}) {
     const health = sidecarUrl ? await fetchHealth(sidecarUrl, 800) : null;
-    const selectedPaths = resolveSelectedGamePaths(desktopSettings.gameDirectory || health?.gameDir || "");
+    const selectedGameDirectory = activeProfileGameDirectory() || health?.gameDir || "";
+    const selectedPaths = resolveSelectedGamePaths(selectedGameDirectory);
     return {
         ok: options.ok ?? true,
         desktop: true,
-        gameDirectory: desktopSettings.gameDirectory || health?.gameDir || "",
-        gameDirectorySelected: Boolean(desktopSettings.gameDirectory),
+        gameDirectory: selectedGameDirectory,
+        gameDirectorySelected: Boolean(activeProfileGameDirectory()),
+        profileGameDirectories: desktopSettings.profileGameDirectories ?? {},
         feedPath: health?.feedPath ?? selectedPaths.feedPath,
         settingsPath: health?.settingsPath ?? selectedPaths.settingsPath,
         serverUrl: sidecarUrl,
@@ -571,16 +578,22 @@ function saveDesktopSettings(settings) {
 }
 
 async function validatedDesktopGameDirectoryForStartup() {
-    if (!desktopSettings.gameDirectory) {
+    const gameDirectory = activeProfileGameDirectory();
+    if (!gameDirectory) {
+        desktopSettings = normalizeDesktopSettings(desktopSettings);
         return "";
     }
 
-    const validation = await validateStfcGameDirectory(desktopSettings.gameDirectory);
+    const validation = await validateStfcGameDirectory(gameDirectory);
     if (validation.ok) {
-        if (desktopSettings.gameDirectory !== validation.gameDirectory) {
+        if (gameDirectory !== validation.gameDirectory || desktopSettings.gameDirectory !== validation.gameDirectory) {
             desktopSettings = {
                 ...desktopSettings,
                 gameDirectory: validation.gameDirectory,
+                profileGameDirectories: {
+                    ...desktopSettings.profileGameDirectories,
+                    [desktopSettings.modProfile]: validation.gameDirectory,
+                },
             };
             saveDesktopSettings(desktopSettings);
         }
@@ -589,13 +602,20 @@ async function validatedDesktopGameDirectoryForStartup() {
     }
 
     bootstrapWarning = validation.error;
-    writeLog("warn", `[sidecar-desktop] ignoring saved game directory reason=${validation.code} path=${sanitizeLogValue(desktopSettings.gameDirectory)}`);
+    writeLog("warn", `[sidecar-desktop] ignoring saved game directory reason=${validation.code} profile=${desktopSettings.modProfile} path=${sanitizeLogValue(gameDirectory)}`);
+    const profileGameDirectories = { ...(desktopSettings.profileGameDirectories ?? {}) };
+    delete profileGameDirectories[desktopSettings.modProfile];
     desktopSettings = {
         ...desktopSettings,
         gameDirectory: "",
+        profileGameDirectories,
     };
     saveDesktopSettings(desktopSettings);
     return "";
+}
+
+function activeProfileGameDirectory() {
+    return desktopSettings.profileGameDirectories?.[desktopSettings.modProfile] ?? desktopSettings.gameDirectory ?? "";
 }
 
 function sanitizeLogValue(value) {

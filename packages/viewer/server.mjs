@@ -975,7 +975,8 @@ async function buildCurrentCommunityModUninstallConfirmation(options = {}) {
 
 async function readHotkeySettingsSnapshot() {
     const generatedAt = new Date().toISOString();
-    const exists = existsSync(settingsPath);
+    const saveSupported = Boolean(settingsPath);
+    const exists = saveSupported && existsSync(settingsPath);
     const contents = exists ? await readFile(settingsPath, "utf8") : "";
     const snapshot = buildCommunityModHotkeySettingsSnapshot(contents, { profile: communityModSettingsProfile });
 
@@ -986,7 +987,8 @@ async function readHotkeySettingsSnapshot() {
         exists,
         saveRequiresToken: settingsSaveMode === SETTINGS_SAVE_MODE_REMOTE_PROTECTED,
         settingsSaveMode,
-        saveSupported: true,
+        saveSupported,
+        error: saveSupported ? undefined : "Select an STFC game directory before editing settings.",
         applyMode: "next_launch",
         modProfile: communityModSettingsProfile,
     };
@@ -994,7 +996,8 @@ async function readHotkeySettingsSnapshot() {
 
 async function readNotificationSettingsSnapshot() {
     const generatedAt = new Date().toISOString();
-    const exists = existsSync(settingsPath);
+    const saveSupported = Boolean(settingsPath);
+    const exists = saveSupported && existsSync(settingsPath);
     const contents = exists ? await readFile(settingsPath, "utf8") : "";
     const snapshot = buildCommunityModNotificationSettingsSnapshot(contents, { profile: communityModSettingsProfile });
 
@@ -1005,7 +1008,8 @@ async function readNotificationSettingsSnapshot() {
         exists,
         saveRequiresToken: settingsSaveMode === SETTINGS_SAVE_MODE_REMOTE_PROTECTED,
         settingsSaveMode,
-        saveSupported: true,
+        saveSupported,
+        error: saveSupported ? undefined : "Select an STFC game directory before editing settings.",
         applyMode: "next_launch",
         modProfile: communityModSettingsProfile,
     };
@@ -1013,7 +1017,8 @@ async function readNotificationSettingsSnapshot() {
 
 async function readDiagnosticSettingsSnapshot() {
     const generatedAt = new Date().toISOString();
-    const exists = existsSync(settingsPath);
+    const saveSupported = Boolean(settingsPath);
+    const exists = saveSupported && existsSync(settingsPath);
     const contents = exists ? await readFile(settingsPath, "utf8") : "";
     const snapshot = buildCommunityModDiagnosticSettingsSnapshot(contents, { profile: communityModSettingsProfile });
 
@@ -1024,7 +1029,8 @@ async function readDiagnosticSettingsSnapshot() {
         exists,
         saveRequiresToken: settingsSaveMode === SETTINGS_SAVE_MODE_REMOTE_PROTECTED,
         settingsSaveMode,
-        saveSupported: true,
+        saveSupported,
+        error: saveSupported ? undefined : "Select an STFC game directory before editing settings.",
         applyMode: "next_launch",
         modProfile: communityModSettingsProfile,
         developerMode,
@@ -1094,6 +1100,10 @@ async function countStoredEvents() {
 }
 
 async function handleHotkeySettingsUpdate(request, response) {
+    if (!settingsPath) {
+        return sendJson(response, 400, { ok: false, error: "Select an STFC game directory before editing settings." });
+    }
+
     if (!isAuthorizedSettingsRequest(request)) {
         return sendJson(response, 401, { ok: false, error: "Unauthorized settings request" });
     }
@@ -1120,6 +1130,10 @@ async function handleHotkeySettingsUpdate(request, response) {
 }
 
 async function handleNotificationSettingsUpdate(request, response) {
+    if (!settingsPath) {
+        return sendJson(response, 400, { ok: false, error: "Select an STFC game directory before editing settings." });
+    }
+
     if (!isAuthorizedSettingsRequest(request)) {
         return sendJson(response, 401, { ok: false, error: "Unauthorized settings request" });
     }
@@ -1154,6 +1168,10 @@ async function handleDiagnosticSettingsUpdate(request, response) {
 
     if (!isAuthorizedSettingsRequest(request)) {
         return sendJson(response, 401, { ok: false, error: "Unauthorized settings request" });
+    }
+
+    if (!settingsPath) {
+        return sendJson(response, 400, { ok: false, error: "Select an STFC game directory before editing settings." });
     }
 
     try {
@@ -1244,7 +1262,8 @@ function parseArgs(args) {
     }
 
     const resolvedGameDir = resolveGameDir(selectedGameDir);
-    const resolvedFeedPath = resolveFeedPath(selectedFeedPath || path.join(resolvedGameDir, DEFAULT_FEED_FILE));
+    const defaultFeedPath = resolvedGameDir ? path.join(resolvedGameDir, DEFAULT_FEED_FILE) : "";
+    const resolvedFeedPath = resolveFeedPath(selectedFeedPath || defaultFeedPath);
     return {
         gameDir: resolvedGameDir,
         feedPath: resolvedFeedPath,
@@ -1265,16 +1284,29 @@ function readPackageVersion() {
 }
 
 function resolveGameDir(gameDir) {
-    const platformPath = normalizeWindowsPathForWsl(gameDir || DEFAULT_GAME_DIR);
+    const fallbackGameDir = process.env.STFC_SIDECAR_DESKTOP === "1" ? "" : DEFAULT_GAME_DIR;
+    const platformPath = normalizeWindowsPathForWsl(gameDir || fallbackGameDir);
+    if (!platformPath) {
+        return "";
+    }
+
     return path.resolve(platformPath);
 }
 
 function resolveFeedPath(feedPath) {
+    if (!feedPath) {
+        return "";
+    }
+
     const platformPath = normalizeWindowsPathForWsl(feedPath);
     return path.resolve(platformPath);
 }
 
 function resolveSettingsPath(selectedSettingsPath, selectedFeedPath) {
+    if (!selectedSettingsPath && !selectedFeedPath) {
+        return "";
+    }
+
     const settingsPathValue = selectedSettingsPath || path.join(path.dirname(selectedFeedPath), DEFAULT_SETTINGS_FILE);
     const platformPath = normalizeWindowsPathForWsl(settingsPathValue);
     return path.resolve(platformPath);
