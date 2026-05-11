@@ -108,6 +108,32 @@ const DIAGNOSTIC_SETTING_CATALOG: readonly DiagnosticSettingCatalogItem[] = [
     step: 500,
     profiles: ["guff-advanced"],
   },
+  {
+    id: "sync.sidecar_jsonl_replay_seconds",
+    section: "sync",
+    key: "sidecar_jsonl_replay_seconds",
+    label: "JSONL replay window",
+    type: "integer",
+    defaultValue: 30,
+    description: "Seconds retained in the cyclic sidecar JSONL feed. Set to 0 with the group cap also 0 for unlimited append-only capture.",
+    min: 0,
+    max: 86400,
+    step: 30,
+    profiles: ["guff-advanced"],
+  },
+  {
+    id: "sync.sidecar_jsonl_recent_logs",
+    section: "sync",
+    key: "sidecar_jsonl_recent_logs",
+    label: "JSONL group cap",
+    type: "integer",
+    defaultValue: 300,
+    description: "Maximum retained battle-log groups in the cyclic sidecar JSONL feed. Set to 0 with replay window 0 for unlimited append-only capture.",
+    min: 0,
+    max: 10000,
+    step: 50,
+    profiles: ["guff-advanced"],
+  },
 ];
 
 const runtimeTraceLevelSet = new Set<string>(RUNTIME_TRACE_LEVELS);
