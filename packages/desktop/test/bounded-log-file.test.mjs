@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { appendBoundedLogLineSync, trimLogFileSync } from "../src/bounded-log-file.mjs";
+import { appendBoundedLogLineSync, installBoundedConsoleLogSync, trimLogFileSync } from "../../viewer/bounded-log-file.mjs";
 
 describe("bounded local log files", () => {
     test("appends without truncation while the file stays under the cap", async () => {
@@ -45,5 +45,32 @@ describe("bounded local log files", () => {
 
     test("ignores missing files when trimming", () => {
         expect(trimLogFileSync(path.join(tmpdir(), "stfc-sidecar-log-bounds-missing.log"), { maxBytes: 64, keepBytes: 32 })).toBe(false);
+    });
+
+    test("can bound console output inside a managed server process", async () => {
+        const directory = await mkdtemp(path.join(tmpdir(), "stfc-sidecar-log-bounds-"));
+        const logFile = path.join(directory, "viewer-server.log");
+        const originalLog = console.log;
+        const captured = [];
+
+        console.log = (...values) => captured.push(values.join(" "));
+        const restoreBoundedConsole = installBoundedConsoleLogSync(logFile, { maxBytes: 160, keepBytes: 72 });
+
+        try {
+            console.log("first-first-first-first");
+            console.log("second-second-second");
+            console.log("third-third-third");
+            console.log("fourth-fourth-fourth");
+
+            const contents = await readFile(logFile, "utf8");
+            expect(contents).toContain("[sidecar-log] truncated older troubleshooting output");
+            expect(contents).toContain("fourth-fourth-fourth\n");
+            expect(contents).not.toContain("first-first-first-first\n");
+            expect(captured).toContain("fourth-fourth-fourth");
+        } finally {
+            restoreBoundedConsole();
+            console.log = originalLog;
+            await rm(directory, { recursive: true, force: true });
+        }
     });
 });

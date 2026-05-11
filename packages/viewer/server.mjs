@@ -50,6 +50,7 @@ import {
     buildCommunityModUninstallExecutionRequest,
     executeCommunityModUninstall,
 } from "./community-mod-uninstall-execution.mjs";
+import { installBoundedConsoleLogSync } from "./bounded-log-file.mjs";
 
 const DEFAULT_GAME_DIR = "C:\\Games\\Star Trek Fleet Command\\default\\game";
 const DEFAULT_FEED_FILE = "community_patch_battle_feed.jsonl";
@@ -71,6 +72,8 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..");
 const publicDir = path.join(__dirname, "public");
 const DEFAULT_ARTIFACT_CACHE_DIR = path.join(repoRoot, ".sidecar", "mod-artifacts");
+
+installBoundedConsoleLogSync(process.env.STFC_SIDECAR_PROCESS_LOG_PATH?.trim() ?? "");
 
 const { gameDir, feedPath, settingsPath, port, defaultLimit, developerMode } = parseArgs(process.argv.slice(2));
 const companionMode = companionModeFromDeveloperMode(developerMode);

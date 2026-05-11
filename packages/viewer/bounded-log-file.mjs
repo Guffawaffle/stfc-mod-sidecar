@@ -12,6 +12,45 @@ export function appendBoundedLogLineSync(logFilePath, line, options = {}) {
     return trimLogFileSync(logFilePath, options);
 }
 
+export function installBoundedConsoleLogSync(logFilePath, options = {}) {
+    if (!logFilePath) {
+        return () => undefined;
+    }
+
+    const originalConsole = {
+        log: console.log,
+        warn: console.warn,
+        error: console.error,
+    };
+
+    const write = (level, values) => {
+        try {
+            appendBoundedLogLineSync(logFilePath, `${new Date().toISOString()} ${level} ${formatConsoleValues(values)}\n`, options);
+        } catch {
+            // Troubleshooting logging must never affect server behavior.
+        }
+    };
+
+    console.log = (...values) => {
+        write("log", values);
+        originalConsole.log(...values);
+    };
+    console.warn = (...values) => {
+        write("warn", values);
+        originalConsole.warn(...values);
+    };
+    console.error = (...values) => {
+        write("error", values);
+        originalConsole.error(...values);
+    };
+
+    return () => {
+        console.log = originalConsole.log;
+        console.warn = originalConsole.warn;
+        console.error = originalConsole.error;
+    };
+}
+
 export function trimLogFileSync(logFilePath, options = {}) {
     if (!logFilePath) {
         return false;
@@ -69,4 +108,24 @@ function buildTruncationNotice(maxBytes) {
     }
 
     return Buffer.from(notice, "utf8").subarray(0, maxBytes).toString("utf8");
+}
+
+function formatConsoleValues(values) {
+    return values.map(formatConsoleValue).join(" ");
+}
+
+function formatConsoleValue(value) {
+    if (typeof value === "string") {
+        return value;
+    }
+
+    if (value instanceof Error) {
+        return value.stack ?? value.message;
+    }
+
+    try {
+        return JSON.stringify(value) ?? String(value);
+    } catch {
+        return String(value);
+    }
 }

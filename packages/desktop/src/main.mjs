@@ -11,9 +11,9 @@ import {
     buildCompanionAppUninstallStatus,
     isDirectChildPath,
 } from "./companion-uninstall.mjs";
-import { appendBoundedLogLineSync } from "./bounded-log-file.mjs";
 import { DEFAULT_MOD_PROFILE, initialDeveloperModeFromSources, normalizeDesktopSettings, normalizeModProfile } from "./desktop-settings.mjs";
 import { SECURITY_MOTTO, STFC_GAME_EXECUTABLE, validateStfcGameDirectory } from "./game-directory.mjs";
+import { appendBoundedLogLineSync } from "../../viewer/bounded-log-file.mjs";
 import { buildReleaseInfo } from "../../viewer/release-info.mjs";
 
 const DEFAULT_PORT = 43127;

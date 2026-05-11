@@ -34,7 +34,7 @@ From there, open the Battle Log page, or navigate directly to:
 
 `http://127.0.0.1:43127/battle-log/`
 
-The managed start command builds the sidecar core package first, launches the viewer in the background, records its pid in `.sidecar/viewer-server.json`, and writes process logs to `.sidecar/viewer-server.log`. Treat that file as a local troubleshooting log, not as durable telemetry.
+The managed start command builds the sidecar core package first, launches the viewer in the background, records its pid in `.sidecar/viewer-server.json`, and writes bounded process logs to `.sidecar/viewer-server.log`. Treat that file as a local troubleshooting log, not as durable telemetry.
 
 ## Server Control Commands
 
