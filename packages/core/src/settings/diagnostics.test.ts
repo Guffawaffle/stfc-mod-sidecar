@@ -15,6 +15,7 @@ runtime_trace_track_overhead = false
 runtime_trace_report_interval_ms = 2500
 
 [sync]
+sidecar_jsonl = true
 sidecar_jsonl_replay_seconds = 60
 sidecar_jsonl_recent_logs = 1000
 `, { profile: "guff-advanced" });
@@ -22,6 +23,7 @@ sidecar_jsonl_recent_logs = 1000
     expect(snapshot.settings.find((setting) => setting.id === "debug.runtime_trace")?.value).toBe("detailed");
     expect(snapshot.settings.find((setting) => setting.id === "debug.runtime_trace_track_overhead")?.value).toBe(false);
     expect(snapshot.settings.find((setting) => setting.id === "debug.runtime_trace_report_interval_ms")?.value).toBe(2500);
+    expect(snapshot.settings.find((setting) => setting.id === "sync.sidecar_jsonl")?.value).toBe(true);
     expect(snapshot.settings.find((setting) => setting.id === "sync.sidecar_jsonl_replay_seconds")?.value).toBe(60);
     expect(snapshot.settings.find((setting) => setting.id === "sync.sidecar_jsonl_recent_logs")?.value).toBe(1000);
   });
@@ -40,6 +42,7 @@ mod_impact_monitor = true
   it("shows diagnostics for the official basic profile in developer mode", () => {
     const snapshot = buildCommunityModDiagnosticSettingsSnapshot("", { profile: "netniv-basic" });
     expect(snapshot.settings.map((setting) => setting.id)).toContain("debug.runtime_trace");
+    expect(snapshot.settings.map((setting) => setting.id)).toContain("sync.sidecar_jsonl");
     expect(snapshot.settings.map((setting) => setting.id)).toContain("sync.sidecar_jsonl_replay_seconds");
   });
 
@@ -49,6 +52,7 @@ mod_impact_monitor = true
         "debug.runtime_trace": "verbose",
         "debug.runtime_trace_track_overhead": true,
         "debug.runtime_trace_report_interval_ms": 1500,
+        "sync.sidecar_jsonl": true,
         "sync.sidecar_jsonl_replay_seconds": 0,
         "sync.sidecar_jsonl_recent_logs": 0,
       },
@@ -57,6 +61,7 @@ mod_impact_monitor = true
     expect(patch.diagnostics).toContainEqual({ section: "debug", key: "runtime_trace", value: "verbose" });
     expect(patch.diagnostics).toContainEqual({ section: "debug", key: "runtime_trace_track_overhead", value: true });
     expect(patch.diagnostics).toContainEqual({ section: "debug", key: "runtime_trace_report_interval_ms", value: 1500 });
+    expect(patch.diagnostics).toContainEqual({ section: "sync", key: "sidecar_jsonl", value: true });
     expect(patch.diagnostics).toContainEqual({ section: "sync", key: "sidecar_jsonl_replay_seconds", value: 0 });
     expect(patch.diagnostics).toContainEqual({ section: "sync", key: "sidecar_jsonl_recent_logs", value: 0 });
   });
@@ -83,6 +88,7 @@ runtime_trace = "off"
         "debug.runtime_trace": "summary",
         "debug.runtime_trace_track_overhead": true,
         "debug.runtime_trace_report_interval_ms": 5000,
+        "sync.sidecar_jsonl": true,
         "sync.sidecar_jsonl_replay_seconds": 30,
       },
     }, { profile: "guff-advanced" });
@@ -93,6 +99,7 @@ runtime_trace = "off"
     expect(updated).toContain("runtime_trace_track_overhead = true");
     expect(updated).toContain("runtime_trace_report_interval_ms = 5000");
     expect(updated).toContain("[sync]");
+    expect(updated).toContain("sidecar_jsonl = true");
     expect(updated).toContain("sidecar_jsonl_replay_seconds = 30");
   });
 });

@@ -14,10 +14,10 @@ community mod -> localhost HTTP export -> sidecar ingest -> SQL store
 
 The sidecar should not reach into the game process. The mod should not depend on the sidecar being present.
 
-The first sidecar prototype used JSONL as the easiest inspection boundary. That path is still worth keeping for low-friction installs and offline debugging. The broader runtime direction is stricter:
+The first sidecar prototype used JSONL as the easiest inspection boundary. That path is still worth keeping as an explicit opt-in fallback for low-friction installs and offline debugging. The broader runtime direction is stricter:
 
 - the mod exports canonical sidecar events
-- JSONL remains available as a basic local export path
+- JSONL remains available as an explicit local fallback path, not the preferred durable export
 - the sidecar owns durable SQL storage when HTTP ingest is enabled
 - storage lives behind a SQL adapter so SQLite and PostgreSQL can share one ingest contract
 
@@ -29,6 +29,8 @@ The mod should be able to emit canonical sidecar events in two ways:
 - localhost HTTP for sidecar-owned SQL persistence
 
 Both transports should stay local-only and narrow. Localhost HTTP works well for the advanced path because the mod already has an HTTP sync transport and the sidecar can authenticate the ingest route with a shared token header.
+
+Preferred export is ingress-first: sidecar, spocks.club, or another canonical consumer over HTTP. Local JSONL capture is useful for fallback/debug workflows, but it has performance and storage costs and should stay bounded by default.
 
 The existing sync-target model should carry the realtime feed from the beginning. A target-scoped `battlelogs_realtime` option keeps this aligned with other export categories, whether the destination is the local sidecar ingester, `spocks.club`, `stfc.phd`, or another consumer of the canonical battle feed.
 
@@ -74,14 +76,14 @@ The exporter should be best-effort. Failure to deliver sidecar diagnostics must 
 
 Ranked by v0 suitability:
 
-1. JSONL file: simplest, zero-service, lowest-friction install path.
+1. JSONL file: simplest explicit fallback, zero-service, lowest-friction install path.
 2. Localhost HTTP: preferred when the sidecar should own durable SQL storage.
 3. Windows named pipe: local and narrow, but Windows-specific and more lifecycle-sensitive.
 4. Localhost WebSocket: best for live UI later, but more moving parts than v0 needs.
 
 V0 should support both:
 
-- JSONL for basic installs
+- JSONL for explicit local fallback capture
 - local HTTP plus SQL storage for richer sidecar workflows
 
 Local proof-of-concept convention:

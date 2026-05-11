@@ -153,8 +153,9 @@
         <section id="settings-panel-diagnostics" class="settings-panel settings-tab-panel" role="tabpanel" aria-labelledby="settings-tab-diagnostics" data-settings-panel="diagnostics" hidden>
           <div class="panel-heading">
             <h2>Diagnostics</h2>
-            <p>Developer-only realtime trace controls for runtime investigation.</p>
+            <p>Developer-only realtime trace and local capture controls for runtime investigation.</p>
           </div>
+          <p class="page-copy">Every local diagnostics or capture setting can affect performance and disk churn. Prefer sidecar or ingress export for durable review. Local replay is cyclic by default; unlimited append-only capture requires explicit settings.</p>
           <div id="diagnostic-settings" class="hard-settings-list"></div>
         </section>
       </section>
