@@ -10,14 +10,18 @@ import {
 
 const state = {
   snapshot: null,
+  notificationSnapshot: null,
   draftBindings: new Map(),
   draftHardSettings: new Map(),
+  draftNotificationMaster: {},
+  draftNotificationEvents: new Map(),
   captureActionId: null,
   captureBinding: "",
   captureReplace: false,
   dirty: false,
   saving: false,
   bootstrap: null,
+  activeSettingsTab: "hard-settings",
 };
 
 const elements = {
@@ -47,7 +51,13 @@ const elements = {
   settingsPromptPreview: document.querySelector("#settings-prompt-preview"),
   previewSettingsPrompt: document.querySelector("#preview-settings-prompt"),
   copySettingsPrompt: document.querySelector("#copy-settings-prompt"),
+  settingsTabButtons: [...document.querySelectorAll("[data-settings-tab]")],
+  settingsTabPanels: [...document.querySelectorAll("[data-settings-panel]")],
   hardSettings: document.querySelector("#hard-settings"),
+  notificationSettings: document.querySelector("#notification-settings"),
+  notificationMaster: document.querySelector("#notification-master"),
+  notificationPreviewState: document.querySelector("#notification-preview-state"),
+  notificationRows: document.querySelector("#notification-rows"),
   hotkeySearch: document.querySelector("#hotkey-search"),
   hotkeyGroup: document.querySelector("#hotkey-group"),
   conflictsOnly: document.querySelector("#conflicts-only"),
@@ -69,11 +79,14 @@ elements.reloadSettings.addEventListener("click", () => void loadSettings());
 elements.saveSettings.addEventListener("click", () => void saveSettings());
 elements.previewSettingsPrompt.addEventListener("click", previewSettingsPrompt);
 elements.copySettingsPrompt.addEventListener("click", () => void copySettingsPrompt());
+elements.settingsTabButtons.forEach((button) => button.addEventListener("click", onSettingsTabClick));
 elements.settingsToken.addEventListener("input", renderSaveState);
 elements.hotkeySearch.addEventListener("input", renderHotkeys);
 elements.hotkeyGroup.addEventListener("change", renderHotkeys);
 elements.conflictsOnly.addEventListener("change", renderHotkeys);
 elements.hardSettings.addEventListener("change", onHardSettingChange);
+elements.notificationSettings.addEventListener("change", onNotificationChange);
+elements.notificationSettings.addEventListener("click", (event) => void onNotificationClick(event));
 elements.hotkeyGroups.addEventListener("click", onHotkeyClick);
 elements.captureOk.addEventListener("click", confirmCapture);
 elements.captureCancel.addEventListener("click", cancelCapture);
@@ -86,12 +99,23 @@ await loadBootstrap();
 
 async function loadSettings() {
   setStatus("Loading...");
-  const response = await fetch("/api/settings/hotkeys", { cache: "no-store" });
-  const snapshot = await response.json();
+  const [hotkeyResponse, notificationResponse] = await Promise.all([
+    fetch("/api/settings/hotkeys", { cache: "no-store" }),
+    fetch("/api/settings/notifications", { cache: "no-store" }),
+  ]);
+  const snapshot = await hotkeyResponse.json();
+  const notificationSnapshot = await notificationResponse.json();
 
   state.snapshot = snapshot;
+  state.notificationSnapshot = notificationSnapshot;
   state.draftBindings = new Map(snapshot.actions.map((action) => [action.id, [...action.bindings]]));
   state.draftHardSettings = new Map(snapshot.hardSettings.map((setting) => [setting.id, setting.value]));
+  state.draftNotificationMaster = { ...notificationSnapshot.master };
+  state.draftNotificationEvents = new Map(notificationSnapshot.events.map((item) => [item.id, {
+    system: item.system,
+    audio: item.audio,
+    sound: item.sound,
+  }]));
   state.captureActionId = null;
   state.captureBinding = "";
   state.captureReplace = false;
@@ -111,30 +135,43 @@ async function saveSettings() {
 
   const token = elements.settingsToken.value.trim();
   const requiresToken = snapshotRequiresSaveToken(state.snapshot);
-  const response = await fetch("/api/settings/hotkeys", {
+  const hotkeyPayload = buildHotkeyPatchPayload();
+  const notificationPayload = buildNotificationPatchPayload();
+
+  try {
+    if (patchHasKeys(hotkeyPayload.shortcuts) || patchHasKeys(hotkeyPayload.hardSettings)) {
+      await sendSettingsUpdate("/api/settings/hotkeys", hotkeyPayload, token, requiresToken);
+    }
+
+    if (notificationPatchHasChanges(notificationPayload)) {
+      await sendSettingsUpdate("/api/settings/notifications", notificationPayload, token, requiresToken);
+    }
+  } catch (error) {
+    state.saving = false;
+    setStatus(error instanceof Error ? error.message : String(error));
+    renderSaveState();
+    return;
+  }
+
+  state.saving = false;
+  await loadSettings();
+  setStatus("Saved for next launch");
+}
+
+async function sendSettingsUpdate(url, payload, token, requiresToken) {
+  const response = await fetch(url, {
     method: "PUT",
     headers: {
       "authorization": requiresToken && token ? `Bearer ${token}` : "",
       "content-type": "application/json",
     },
-    body: JSON.stringify(buildPatchPayload()),
+    body: JSON.stringify(payload),
   });
-  const payload = await response.json();
-
-  if (!response.ok || !payload.ok) {
-    state.saving = false;
-    setStatus(payload.error ?? "Unable to save settings.");
-    renderSaveState();
-    return;
+  const body = await response.json();
+  if (!response.ok || !body.ok) {
+    throw new Error(body.error ?? "Unable to save settings.");
   }
-
-  state.snapshot = payload;
-  state.draftBindings = new Map(payload.actions.map((action) => [action.id, [...action.bindings]]));
-  state.draftHardSettings = new Map(payload.hardSettings.map((setting) => [setting.id, setting.value]));
-  state.dirty = false;
-  state.saving = false;
-  renderAll();
-  setStatus("Saved for next launch");
+  return body;
 }
 
 function renderAll() {
@@ -142,9 +179,46 @@ function renderAll() {
   renderBootstrap();
   renderGroupFilter();
   renderHardSettings();
+  renderNotifications();
   renderHotkeys();
+  renderSettingsTabs();
   renderTroubleshootingCoach();
   renderSaveState();
+}
+
+function onSettingsTabClick(event) {
+  const button = event.currentTarget;
+  if (!(button instanceof HTMLElement) || !button.dataset.settingsTab) {
+    return;
+  }
+
+  state.activeSettingsTab = button.dataset.settingsTab;
+  renderSettingsTabs();
+}
+
+function renderSettingsTabs() {
+  const availableTabs = new Set(["hard-settings", "keybindings"]);
+  if ((state.notificationSnapshot?.events.length ?? 0) > 0) {
+    availableTabs.add("notifications");
+  }
+
+  if (!availableTabs.has(state.activeSettingsTab)) {
+    state.activeSettingsTab = "hard-settings";
+  }
+
+  for (const button of elements.settingsTabButtons) {
+    const tab = button.dataset.settingsTab;
+    const available = availableTabs.has(tab);
+    const selected = tab === state.activeSettingsTab;
+    button.hidden = !available;
+    button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
+  }
+
+  for (const panel of elements.settingsTabPanels) {
+    const tab = panel.dataset.settingsPanel;
+    panel.hidden = tab !== state.activeSettingsTab || !availableTabs.has(tab);
+  }
 }
 
 function renderSummary() {
@@ -156,7 +230,8 @@ function renderSummary() {
   const conflicts = buildDraftConflicts();
   const warnings = conflicts.filter((conflict) => conflict.severity === "warning").length
     + snapshot.actions.reduce((count, action) => count + action.issues.filter((issue) => issue.severity !== "info").length, 0)
-    + snapshot.hardSettings.reduce((count, setting) => count + setting.issues.filter((issue) => issue.severity !== "info").length, 0);
+    + snapshot.hardSettings.reduce((count, setting) => count + setting.issues.filter((issue) => issue.severity !== "info").length, 0)
+    + (state.notificationSnapshot?.events ?? []).reduce((count, item) => count + item.issues.filter((issue) => issue.severity !== "info").length, 0);
 
   elements.gameDirectory.textContent = state.bootstrap?.gameDirectory || gameDirectoryFromSettingsPath(snapshot.settingsPath) || "Unknown";
   elements.settingsPath.textContent = snapshot.settingsPath ?? "Unknown";
@@ -321,6 +396,10 @@ function renderBootstrap() {
 }
 
 function renderGroupFilter() {
+  if (!state.snapshot) {
+    return;
+  }
+
   const selected = elements.hotkeyGroup.value || "all";
   const groups = ["all", ...new Set(state.snapshot.actions.map((action) => action.group))];
   elements.hotkeyGroup.innerHTML = groups
@@ -346,6 +425,97 @@ function renderHardSettings() {
       </article>
     `;
   }).join("");
+}
+
+function renderNotifications() {
+  const snapshot = state.notificationSnapshot;
+  if (!snapshot) {
+    return;
+  }
+
+  if (snapshot.events.length === 0) {
+    elements.notificationSettings.hidden = true;
+    return;
+  }
+
+  elements.notificationSettings.hidden = false;
+  const master = state.draftNotificationMaster;
+  elements.notificationSettings.dataset.systemEnabled = String(Boolean(master.systemEnabled));
+  elements.notificationSettings.dataset.audioEnabled = String(Boolean(master.audioEnabled));
+  elements.notificationPreviewState.hidden = !master.audioEnabled;
+  elements.notificationMaster.innerHTML = `
+    <label class="settings-toggle">
+      <input type="checkbox" data-notification-master="systemEnabled"${master.systemEnabled ? " checked" : ""} />
+      <span>Desktop notifications</span>
+    </label>
+    <label class="settings-toggle">
+      <input type="checkbox" data-notification-master="audioEnabled"${master.audioEnabled ? " checked" : ""} />
+      <span>Audio cues</span>
+    </label>
+    ${master.audioEnabled ? `<label class="control notification-master__sound">
+      <span>Default sound</span>
+      <select data-notification-master="defaultSound">
+        ${snapshot.soundCatalog.map((sound) => `<option value="${escapeHtml(sound.id)}"${sound.id === master.defaultSound ? " selected" : ""}>${escapeHtml(sound.label)}</option>`).join("")}
+      </select>
+    </label>` : ""}
+    ${notificationMasterChangeCount() > 0 ? `<span class="settings-chip settings-chip--changed">Changed</span>` : ""}
+  `;
+
+  if (!master.systemEnabled && !master.audioEnabled) {
+    elements.notificationRows.innerHTML = `<div class="empty-state notification-empty">Notification channels are off.</div>`;
+    return;
+  }
+
+  const groups = groupNotificationEvents(snapshot.events);
+  elements.notificationRows.innerHTML = [...groups.entries()].map(([groupName, rows]) => `
+    <section class="notification-group">
+      <div class="notification-group__heading">
+        <h3>${escapeHtml(groupName)}</h3>
+        <span>${rows.length} event${rows.length === 1 ? "" : "s"}</span>
+      </div>
+      <div class="notification-list">
+        ${rows.map((row) => renderNotificationRow(row, master)).join("")}
+      </div>
+    </section>
+  `).join("");
+}
+
+function renderNotificationRow(item, master) {
+  const draft = state.draftNotificationEvents.get(item.id) ?? item;
+  const delivery = notificationDeliveryValue(draft, master);
+  const audioActive = Boolean(master.audioEnabled && draft.audio);
+  const changed = draft.system !== item.system || draft.audio !== item.audio || draft.sound !== item.sound;
+  const issues = item.issues
+    .map((issue) => `<span class="settings-chip settings-chip--${escapeHtml(issue.severity)}">${escapeHtml(issue.message)}</span>`)
+    .join("");
+  const source = item.source === "event" ? "Configured" : item.source === "legacy" ? "Legacy" : "Default";
+
+  return `
+    <article class="notification-row" data-audio-active="${audioActive ? "true" : "false"}">
+      <div class="notification-row__title">
+        <h4>${escapeHtml(item.label)}</h4>
+        <p>${escapeHtml(item.id)}</p>
+      </div>
+      <label class="control notification-row__delivery">
+        <span>Delivery</span>
+        <select data-notification-event="${escapeHtml(item.id)}" data-notification-field="delivery">
+          ${notificationDeliveryOptions(master).map((option) => `<option value="${escapeHtml(option.id)}"${option.id === delivery ? " selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+        </select>
+      </label>
+      ${audioActive ? `<label class="control notification-row__sound">
+        <span>Sound</span>
+        <select data-notification-event="${escapeHtml(item.id)}" data-notification-field="sound">
+          ${state.notificationSnapshot.soundCatalog.map((sound) => `<option value="${escapeHtml(sound.id)}"${sound.id === draft.sound ? " selected" : ""}>${escapeHtml(sound.label)}</option>`).join("")}
+        </select>
+      </label>` : ""}
+      <div class="notification-row__actions">
+        ${audioActive ? `<button type="button" data-notification-test="${escapeHtml(item.id)}">Play</button>` : ""}
+        <span class="settings-chip settings-chip--info">${escapeHtml(source)}</span>
+        ${changed ? `<span class="settings-chip settings-chip--changed">Changed</span>` : ""}
+        ${issues}
+      </div>
+    </article>
+  `;
 }
 
 function renderHotkeys() {
@@ -519,6 +689,61 @@ function onHardSettingChange(event) {
   renderSummary();
   renderTroubleshootingCoach();
   renderSaveState();
+}
+
+function onNotificationChange(event) {
+  const masterInput = event.target.closest("[data-notification-master]");
+  if (masterInput) {
+    const key = masterInput.dataset.notificationMaster;
+    state.draftNotificationMaster[key] = masterInput.type === "checkbox" ? masterInput.checked : masterInput.value;
+    markDirty();
+    renderNotifications();
+    renderSummary();
+    renderTroubleshootingCoach();
+    renderSaveState();
+    return;
+  }
+
+  const input = event.target.closest("[data-notification-event]");
+  if (!input) {
+    return;
+  }
+
+  const draft = { ...(state.draftNotificationEvents.get(input.dataset.notificationEvent) ?? {}) };
+  if (input.dataset.notificationField === "delivery") {
+    const delivery = notificationDeliveryFlags(input.value);
+    draft.system = delivery.system;
+    draft.audio = delivery.audio;
+  } else {
+    draft[input.dataset.notificationField] = input.type === "checkbox" ? input.checked : input.value;
+  }
+  state.draftNotificationEvents.set(input.dataset.notificationEvent, draft);
+  markDirty();
+  renderNotifications();
+  renderSummary();
+  renderTroubleshootingCoach();
+  renderSaveState();
+}
+
+async function onNotificationClick(event) {
+  const button = event.target.closest("button[data-notification-test]");
+  if (!button) {
+    return;
+  }
+
+  const draft = state.draftNotificationEvents.get(button.dataset.notificationTest);
+  if (!state.draftNotificationMaster.audioEnabled || !draft?.audio) {
+    elements.notificationPreviewState.textContent = "Audio cue disabled";
+    return;
+  }
+
+  const sound = draft?.sound ?? "default";
+  try {
+    await playNotificationSound(sound);
+    elements.notificationPreviewState.textContent = sound === "none" ? "No sound selected" : `Played ${sound}`;
+  } catch (error) {
+    elements.notificationPreviewState.textContent = error instanceof Error ? error.message : String(error);
+  }
 }
 
 function onHotkeyClick(event) {
@@ -780,7 +1005,7 @@ function keyTokenFromEvent(event) {
   return named[key] ?? key.toUpperCase();
 }
 
-function buildPatchPayload() {
+function buildHotkeyPatchPayload() {
   const shortcuts = {};
   const hardSettings = {};
 
@@ -799,6 +1024,30 @@ function buildPatchPayload() {
   }
 
   return { shortcuts, hardSettings };
+}
+
+function buildNotificationPatchPayload() {
+  const snapshot = state.notificationSnapshot;
+  const master = {};
+  const events = {};
+  if (!snapshot) {
+    return { master, events };
+  }
+
+  for (const key of ["systemEnabled", "audioEnabled", "defaultSound"]) {
+    if (state.draftNotificationMaster[key] !== snapshot.master[key]) {
+      master[key] = state.draftNotificationMaster[key];
+    }
+  }
+
+  for (const item of snapshot.events) {
+    const draft = state.draftNotificationEvents.get(item.id) ?? item;
+    if (draft.system !== item.system || draft.audio !== item.audio || draft.sound !== item.sound) {
+      events[item.id] = { system: Boolean(draft.system), audio: Boolean(draft.audio), sound: draft.sound };
+    }
+  }
+
+  return { master, events };
 }
 
 function buildDraftConflicts() {
@@ -842,7 +1091,67 @@ function countChanges() {
     return 0;
   }
 
-  return Object.keys(buildPatchPayload().shortcuts).length + Object.keys(buildPatchPayload().hardSettings).length;
+  const hotkeys = buildHotkeyPatchPayload();
+  const notifications = buildNotificationPatchPayload();
+  return Object.keys(hotkeys.shortcuts).length
+    + Object.keys(hotkeys.hardSettings).length
+    + Object.keys(notifications.master).length
+    + Object.keys(notifications.events).length;
+}
+
+function patchHasKeys(value) {
+  return Object.keys(value).length > 0;
+}
+
+function notificationPatchHasChanges(value) {
+  return patchHasKeys(value.master) || patchHasKeys(value.events);
+}
+
+function notificationMasterChangeCount() {
+  const snapshot = state.notificationSnapshot;
+  if (!snapshot) {
+    return 0;
+  }
+
+  return ["systemEnabled", "audioEnabled", "defaultSound"]
+    .filter((key) => state.draftNotificationMaster[key] !== snapshot.master[key])
+    .length;
+}
+
+function notificationDeliveryOptions(master) {
+  const options = [{ id: "none", label: "None" }];
+  if (master.systemEnabled) {
+    options.push({ id: "desktop", label: "Desktop" });
+  }
+  if (master.audioEnabled) {
+    options.push({ id: "audio", label: "Audio" });
+  }
+  if (master.systemEnabled && master.audioEnabled) {
+    options.push({ id: "both", label: "Both" });
+  }
+  return options;
+}
+
+function notificationDeliveryValue(draft, master) {
+  const system = Boolean(master.systemEnabled && draft.system);
+  const audio = Boolean(master.audioEnabled && draft.audio);
+  if (system && audio) {
+    return "both";
+  }
+  if (system) {
+    return "desktop";
+  }
+  if (audio) {
+    return "audio";
+  }
+  return "none";
+}
+
+function notificationDeliveryFlags(value) {
+  return {
+    system: value === "desktop" || value === "both",
+    audio: value === "audio" || value === "both",
+  };
 }
 
 function formatBindings(bindings) {
@@ -921,4 +1230,52 @@ function groupActions(actions) {
     grouped.set(action.group, items);
   }
   return grouped;
+}
+
+function groupNotificationEvents(events) {
+  const grouped = new Map();
+  for (const item of events) {
+    const rows = grouped.get(item.group) ?? [];
+    rows.push(item);
+    grouped.set(item.group, rows);
+  }
+  return grouped;
+}
+
+let notificationAudioContext;
+
+async function playNotificationSound(soundId) {
+  const sound = state.notificationSnapshot?.soundCatalog.find((item) => item.id === soundId);
+  if (!sound || sound.pattern.length === 0) {
+    return;
+  }
+
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextCtor) {
+    throw new Error("Audio preview is not supported in this browser.");
+  }
+
+  notificationAudioContext ??= new AudioContextCtor();
+  const context = notificationAudioContext;
+  await context.resume();
+
+  let when = context.currentTime + 0.01;
+  for (const segment of sound.pattern) {
+    const duration = Math.max(0, Number(segment.durationMs) / 1000);
+    if (segment.frequency > 0 && duration > 0) {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(segment.frequency, when);
+      gain.gain.setValueAtTime(0, when);
+      gain.gain.linearRampToValueAtTime(0.22, when + Math.min(0.01, duration / 3));
+      gain.gain.setValueAtTime(0.22, Math.max(when, when + duration - 0.025));
+      gain.gain.linearRampToValueAtTime(0, when + duration);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(when);
+      oscillator.stop(when + duration);
+    }
+    when += duration;
+  }
 }

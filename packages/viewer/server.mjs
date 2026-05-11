@@ -99,14 +99,18 @@ let exitTimer;
 
 let createSqlSidecarEventStore;
 let applyCommunityModHotkeySettingsPatch;
+let applyCommunityModNotificationSettingsPatch;
 let buildCommunityModHotkeySettingsSnapshot;
+let buildCommunityModNotificationSettingsSnapshot;
 let normalizeCommunityModSettingsProfile;
 let isSidecarEvent;
 let parseEventJsonLine;
 try {
     ({
         applyCommunityModHotkeySettingsPatch,
+        applyCommunityModNotificationSettingsPatch,
         buildCommunityModHotkeySettingsSnapshot,
+        buildCommunityModNotificationSettingsSnapshot,
         createSqlSidecarEventStore,
         isSidecarEvent,
         normalizeCommunityModSettingsProfile,
@@ -188,6 +192,18 @@ const server = createServer(async (request, response) => {
 
         if (request.method === "PUT" || request.method === "PATCH" || request.method === "POST") {
             return handleHotkeySettingsUpdate(request, response);
+        }
+
+        return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+    }
+
+    if (requestUrl.pathname === "/api/settings/notifications") {
+        if (request.method === "GET") {
+            return sendJson(response, 200, await readNotificationSettingsSnapshot());
+        }
+
+        if (request.method === "PUT" || request.method === "PATCH" || request.method === "POST") {
+            return handleNotificationSettingsUpdate(request, response);
         }
 
         return sendJson(response, 405, { ok: false, error: "Method not allowed" });
@@ -956,6 +972,25 @@ async function readHotkeySettingsSnapshot() {
     };
 }
 
+async function readNotificationSettingsSnapshot() {
+    const generatedAt = new Date().toISOString();
+    const exists = existsSync(settingsPath);
+    const contents = exists ? await readFile(settingsPath, "utf8") : "";
+    const snapshot = buildCommunityModNotificationSettingsSnapshot(contents, { profile: communityModSettingsProfile });
+
+    return {
+        ...snapshot,
+        generatedAt,
+        settingsPath,
+        exists,
+        saveRequiresToken: settingsSaveMode === SETTINGS_SAVE_MODE_REMOTE_PROTECTED,
+        settingsSaveMode,
+        saveSupported: true,
+        applyMode: "next_launch",
+        modProfile: communityModSettingsProfile,
+    };
+}
+
 async function readDiagnosticsBundle() {
     const generatedAt = new Date().toISOString();
     const [storedEvents, feed, settings] = await Promise.all([
@@ -1036,6 +1071,34 @@ async function handleHotkeySettingsUpdate(request, response) {
         await writeFile(settingsPath, nextContents, "utf8");
         console.log(`[sidecar-viewer] updated hotkey settings ${settingsPath}`);
         return sendJson(response, 200, await readHotkeySettingsSnapshot());
+    } catch (error) {
+        return sendJson(response, 400, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+}
+
+async function handleNotificationSettingsUpdate(request, response) {
+    if (!isAuthorizedSettingsRequest(request)) {
+        return sendJson(response, 401, { ok: false, error: "Unauthorized settings request" });
+    }
+
+    try {
+        const payload = await readJsonBody(request);
+        const previousContents = existsSync(settingsPath) ? await readFile(settingsPath, "utf8") : "";
+        const nextContents = applyCommunityModNotificationSettingsPatch(previousContents, payload, {
+            profile: communityModSettingsProfile,
+        });
+        await mkdir(path.dirname(settingsPath), { recursive: true });
+
+        if (existsSync(settingsPath)) {
+            await copyFile(settingsPath, `${settingsPath}.bak.sidecar`);
+        }
+
+        await writeFile(settingsPath, nextContents, "utf8");
+        console.log(`[sidecar-viewer] updated notification settings ${settingsPath}`);
+        return sendJson(response, 200, await readNotificationSettingsSnapshot());
     } catch (error) {
         return sendJson(response, 400, {
             ok: false,

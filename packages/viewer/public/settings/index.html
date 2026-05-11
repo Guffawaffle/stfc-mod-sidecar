@@ -97,16 +97,22 @@
         </div>
       </section>
 
-      <section class="settings-layout">
-        <aside class="settings-panel settings-sidebar">
+      <section class="settings-layout" aria-label="settings sections">
+        <div class="settings-tablist" role="tablist" aria-label="Settings sections">
+          <button id="settings-tab-hard-settings" class="settings-tab" type="button" role="tab" aria-selected="true" aria-controls="settings-panel-hard-settings" data-settings-tab="hard-settings">Hard Settings</button>
+          <button id="settings-tab-keybindings" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-panel-keybindings" data-settings-tab="keybindings">Keybindings</button>
+          <button id="settings-tab-notifications" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="notification-settings" data-settings-tab="notifications">Notifications</button>
+        </div>
+
+        <section id="settings-panel-hard-settings" class="settings-panel settings-tab-panel" role="tabpanel" aria-labelledby="settings-tab-hard-settings" data-settings-panel="hard-settings">
           <div class="panel-heading">
             <h2>Hard Settings</h2>
             <p>Keyboard router toggles and timing values.</p>
           </div>
           <div id="hard-settings" class="hard-settings-list"></div>
-        </aside>
+        </section>
 
-        <section class="settings-main">
+        <section id="settings-panel-keybindings" class="settings-tab-panel" role="tabpanel" aria-labelledby="settings-tab-keybindings" data-settings-panel="keybindings" hidden>
           <section class="settings-panel settings-toolbar" aria-label="hotkey filters">
             <label class="control control--wide">
               <span>Search</span>
@@ -131,6 +137,16 @@
           </section>
 
           <div id="hotkey-groups" class="hotkey-groups"></div>
+        </section>
+
+        <section id="notification-settings" class="settings-panel settings-tab-panel notification-settings" role="tabpanel" aria-labelledby="settings-tab-notifications" data-settings-panel="notifications" hidden>
+            <div class="panel-heading">
+              <h2>Notifications</h2>
+              <p>Desktop delivery, audio cues, and cue preview for the advanced Community Mod profile.</p>
+            </div>
+            <div id="notification-master" class="notification-master"></div>
+            <div id="notification-preview-state" class="page-copy" aria-live="polite">Ready</div>
+            <div id="notification-rows" class="notification-groups"></div>
         </section>
       </section>
 
