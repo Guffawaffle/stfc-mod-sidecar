@@ -6,8 +6,8 @@ This is a release candidate build. It is intended for people who are comfortable
 
 ## Download
 
-1. Open the repository's Releases page and choose `v0.1.0-rc.1`.
-2. Download the Windows installer named `STFC.Community.Mod.Companion-Setup-0.1.0-rc.1-x64.exe`.
+1. Open the repository's Releases page and choose `v0.1.0-rc.2`.
+2. Download the Windows installer named `STFC.Community.Mod.Companion-Setup-0.1.0-rc.2-x64.exe`.
 3. Run the installer.
 4. Launch `STFC Community Mod Companion` from Windows.
 
@@ -27,7 +27,7 @@ C:\Games\Star Trek Fleet Command\default\game
 
 6. Pick a Community Mod profile:
    - `Official Basic`: release artifacts from `netniV/stfc-mod`.
-   - `Guff Advanced`: release artifacts from `Guffawaffle/stfc-mod`, including `v1.1.0-guffa.rc1`.
+   - `Guff Advanced`: release artifacts from `Guffawaffle/stfc-mod`, including `v1.1.0-guffa.rc2`.
 
 ## Which Install Path Should I Use?
 
@@ -61,13 +61,13 @@ The current settings UI is intentionally narrower than the full TOML surface. It
 
 ### Existing User: Replace netniV With Guff Advanced RC
 
-Use this path when you already have the official mod installed but want the Guffawaffle fork's release-quality behavior, including the redesigned input/action path, fork diagnostics, and Windows-verified `v1.1.0-guffa.rc1` release.
+Use this path when you already have the official mod installed but want the Guffawaffle fork's release-quality behavior, including the redesigned input/action path, fork diagnostics, and Windows-verified `v1.1.0-guffa.rc2` release.
 
 1. Close Star Trek Fleet Command.
 2. Launch the Companion.
 3. Open `Settings`, select the STFC game directory, and choose `Guff Advanced`.
 4. Open `About`.
-5. Click `Check Mod Release`; the Guff profile should resolve to `Guffawaffle/stfc-mod` `v1.1.0-guffa.rc1` while that is the newest compatible Guff release.
+5. Click `Check Mod Release`; the Guff profile should resolve to `Guffawaffle/stfc-mod` `v1.1.0-guffa.rc2` while that is the newest compatible Guff release.
 6. Click through `Verify Artifact`, `Prepare Confirmation`, and `Install` or `Replace` when prompted.
 7. Confirm the replacement. The Companion backs up the existing `version.dll` before copying the Guff release.
 8. Start STFC and check `community_patch.log` or the Companion status if something looks wrong.
@@ -119,6 +119,33 @@ emit_feed = true
 6. Open the Companion `Battle Log` page after battles resolve.
 
 `sidecar_jsonl = true` keeps the zero-service JSONL fallback at `community_patch_battle_feed.jsonl`. `battlelogs_realtime = true` sends canonical battle events to the local Companion ingest API while the Companion is running. This advanced path is local-only, token-protected, and still evolving.
+
+### Advanced User: Experimental Fleet Telemetry To Majel
+
+Fleet telemetry reuses the mod's existing async `ships`/`slots` sync workers and posts only to the local Companion. Cloud upload is opt-in from the Companion process and targets Majel's strict `POST /api/sidecar/telemetry` route. This release uses an in-memory upload queue for advanced testing; it is not the durable telemetry outbox design yet.
+
+Set the local sync token and Majel upload values before launching the Companion:
+
+```powershell
+$env:STFC_SIDECAR_SYNC_TOKEN = "choose-a-long-local-token"
+$env:STFC_SIDECAR_CLOUD_TELEMETRY_URL = "https://your-majel-service/api/sidecar/telemetry"
+$env:STFC_SIDECAR_CLOUD_TELEMETRY_TOKEN = "choose-a-long-cloud-telemetry-token"
+npm run desktop:dev
+```
+
+Add a separate sync target in `community_patch_settings.toml`:
+
+```toml
+[sync.targets.sidecar_fleet]
+token = "choose-a-long-local-token"
+url = "http://127.0.0.1:43127/api/fleet/sync"
+battlelogs = false
+battlelogs_realtime = false
+ships = true
+slots = true
+```
+
+The Companion hashes ship identifiers locally, converts sync items to `stfc.telemetry.v1` events, and uploads batches only when both the URL and cloud token are configured. The mod never receives commands or cloud data.
 
 ## Install Community Mod
 

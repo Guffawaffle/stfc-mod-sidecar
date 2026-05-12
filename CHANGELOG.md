@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 0.1.0-rc.2 - 2026-05-12
+
+### Added
+
+- Added notification audio settings for the Guff Advanced Community Mod profile.
+- Added developer trace diagnostics settings and local diagnostics capture warnings.
+- Added replay retention diagnostics and bounded managed viewer/process logs.
+- Added an experimental, token-gated `/api/fleet/sync` bridge that converts existing mod `ships`/`slots` sync payloads into cloud-safe `stfc.telemetry.v1` batches when Majel upload environment variables are configured.
+
+### Changed
+
+- Scoped selected STFC game directories by Companion profile.
+- Updated public install guidance for Companion `v0.1.0-rc.2` and Guff Advanced mod `v1.1.0-guffa.rc2`.
+
 ## 0.1.0-rc.1 - 2026-05-08
 
 ### Changed
