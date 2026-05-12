@@ -23,6 +23,7 @@ import {
 import { buildReleaseInfo } from "./release-info.mjs";
 import { fetchReleaseUpdateCheck } from "./release-update.mjs";
 import { buildDiagnosticsBundle, buildDiagnosticsMarkdown } from "./diagnostics-bundle.mjs";
+import { createCloudTelemetryBridge } from "./cloud-telemetry.mjs";
 import { buildCapabilityUnavailablePage } from "./public-page-responses.mjs";
 import { buildCommunityModVariantGateContext } from "./community-mod-variant-gates.mjs";
 import { detectCommunityModInstall } from "./community-mod-install.mjs";
@@ -89,6 +90,12 @@ const releaseInfo = buildReleaseInfo({
     updateMode: process.env.STFC_SIDECAR_UPDATE_MODE,
     signaturePolicy: process.env.STFC_SIDECAR_SIGNATURE_POLICY,
     packaged: process.env.STFC_SIDECAR_DESKTOP === "1",
+});
+const cloudTelemetryBridge = createCloudTelemetryBridge({
+    env: process.env,
+    gameDir,
+    sidecarVersion: releaseInfo.version,
+    logger: console,
 });
 let feedIndex = createEmptyFeedIndex();
 let feedWatcher = null;
@@ -190,6 +197,14 @@ const server = createServer(async (request, response) => {
         }
 
         return handleEventStream(request, response);
+    }
+
+    if (requestUrl.pathname === "/api/fleet/sync") {
+        if (request.method === "POST") {
+            return handleFleetSyncIngest(request, response);
+        }
+
+        return sendJson(response, 405, { ok: false, error: "Method not allowed" });
     }
 
     if (requestUrl.pathname === "/api/settings/hotkeys") {
@@ -619,6 +634,7 @@ const server = createServer(async (request, response) => {
             release: releaseInfo,
             eventStoreBackend: eventStore?.backend ?? "none",
             storedEvents,
+            cloudTelemetry: cloudTelemetryBridge.status(),
             startedAt: startedAt.toISOString(),
             uptimeMs: Date.now() - startedAt.getTime(),
             shuttingDown: shutdownRequested,
@@ -644,6 +660,7 @@ const server = createServer(async (request, response) => {
             feedPath,
             settingsPath,
             eventStoreBackend: eventStore?.backend ?? "none",
+            cloudTelemetry: cloudTelemetryBridge.status(),
             generatedAt: new Date().toISOString(),
         });
     }
@@ -1386,6 +1403,22 @@ async function handleEventIngest(request, response) {
             backend: store.backend,
             ...result,
         });
+    } catch (error) {
+        return sendJson(response, 400, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+}
+
+async function handleFleetSyncIngest(request, response) {
+    if (!isAuthorizedSyncRequest(request)) {
+        return sendJson(response, 401, { ok: false, error: "Unauthorized sidecar sync request" });
+    }
+
+    try {
+        const payload = await readJsonBody(request);
+        return sendJson(response, 202, cloudTelemetryBridge.ingestSyncPayload(payload));
     } catch (error) {
         return sendJson(response, 400, {
             ok: false,
