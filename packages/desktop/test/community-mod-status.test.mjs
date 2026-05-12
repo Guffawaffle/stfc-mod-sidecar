@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
     communityModInstallLabel,
+    communityModProfileCapabilitySummary,
     communityModInstallSummary,
     communityModInstallTone,
     communityModReleaseLabel,
@@ -28,7 +29,7 @@ import {
 } from "../../viewer/public/shared/community-mod-status.js";
 
 describe("Community Mod status formatting", () => {
-    test("formats official Basic installs with release evidence", () => {
+    test("formats Basic installs with release evidence", () => {
         const install = {
             ok: true,
             state: "installed",
@@ -44,7 +45,7 @@ describe("Community Mod status formatting", () => {
             },
         };
 
-        expect(communityModInstallLabel(install)).toBe("Official Basic installed");
+        expect(communityModInstallLabel(install)).toBe("Basic installed");
         expect(communityModInstallSummary(install)).toContain("netniV/stfc-mod v1.1.0");
         expect(communityModInstallSummary(install)).toContain("SHA-256 45DBE5FA43E2...");
         expect(communityModInstallTone(install)).toBe("info");
@@ -60,6 +61,17 @@ describe("Community Mod status formatting", () => {
 
         expect(communityModInstallLabel(install)).toBe("Unknown version.dll installed");
         expect(communityModInstallTone(install)).toBe("warning");
+    });
+
+    test("explains Waffle Basic hiding runtime views on Waffle Advanced installs", () => {
+        const install = {
+            ok: true,
+            state: "installed",
+            classification: "waffle-advanced",
+        };
+
+        expect(communityModProfileCapabilitySummary(install, "waffle-basic", { battleLog: false })).toContain("choose Waffle Advanced");
+        expect(communityModProfileCapabilitySummary(install, "waffle-advanced", { battleLog: true })).toBe("");
     });
 
     test("formats unsupported install platforms without implying Windows probes", () => {
@@ -94,13 +106,14 @@ describe("Community Mod status formatting", () => {
 
         expect(communityModReleaseLabel(catalog)).toBe("1.1.0 ready");
         expect(communityModReleaseSummary(catalog)).toContain("stfc-community-mod-v1.1.0.zip");
-        expect(modProfileLabel("netniv-basic")).toBe("Official Basic");
+        expect(modProfileLabel("netniv-basic")).toBe("Basic");
+        expect(modProfileLabel("waffle-basic")).toBe("Waffle Basic");
     });
 
-    test("keeps Guff Advanced release metadata distinct from install support", () => {
+    test("keeps Waffle Advanced release metadata distinct from install support", () => {
         const catalog = {
             ok: true,
-            profile: "guff-advanced",
+            profile: "waffle-advanced",
             repository: "Guffawaffle/stfc-mod",
             status: "ready",
             installSupported: false,
@@ -109,7 +122,7 @@ describe("Community Mod status formatting", () => {
             windowsAsset: { name: "version.dll" },
         };
 
-        expect(communityModReleaseLabel(catalog)).toBe("Guff Advanced metadata ready");
+        expect(communityModReleaseLabel(catalog)).toBe("Waffle Advanced metadata ready");
         expect(communityModReleaseSummary(catalog)).toContain("Install disabled until release marker exists.");
     });
 

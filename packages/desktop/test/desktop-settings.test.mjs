@@ -34,10 +34,10 @@ describe("desktop settings", () => {
         })).toEqual({
             gameDirectory: "D:\\Games\\Guff",
             developerMode: false,
-            modProfile: "guff-advanced",
+            modProfile: "waffle-advanced",
             profileGameDirectories: {
                 "netniv-basic": "C:\\Games\\Official",
-                "guff-advanced": "D:\\Games\\Guff",
+                "waffle-advanced": "D:\\Games\\Guff",
             },
         });
     });
@@ -75,7 +75,8 @@ describe("desktop settings", () => {
 
     test("normalizes mod profile aliases", () => {
         expect(normalizeModProfile("official")).toBe("netniv-basic");
-        expect(normalizeModProfile("alpha")).toBe("guff-advanced");
+        expect(normalizeModProfile("waffle")).toBe("waffle-basic");
+        expect(normalizeModProfile("alpha")).toBe("waffle-advanced");
         expect(normalizeModProfile("surprise")).toBe("netniv-basic");
     });
 });

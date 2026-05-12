@@ -7,6 +7,7 @@ import { describe, expect, test } from "vitest";
 
 import {
     COMMUNITY_MOD_DLL_FILE,
+    DEFAULT_COMMUNITY_MOD_RELEASE_FINGERPRINTS,
     communityModInstallManifestPath,
     detectCommunityModInstall,
     findReleaseFingerprint,
@@ -50,7 +51,7 @@ describe("community mod install detection", () => {
         });
     });
 
-    test("matches known official Basic release fingerprints by DLL hash", async () => {
+    test("matches known Basic release fingerprints by DLL hash", async () => {
         const gameDirectory = await makeTempGameDirectory();
         const dllContents = Buffer.from("official netniv dll");
         await fs.writeFile(path.join(gameDirectory, COMMUNITY_MOD_DLL_FILE), dllContents);
@@ -89,7 +90,7 @@ describe("community mod install detection", () => {
 
     test("trusts a sidecar manifest only when the DLL hash still matches", async () => {
         const gameDirectory = await makeTempGameDirectory();
-        const dllContents = Buffer.from("guff advanced dll");
+        const dllContents = Buffer.from("waffle advanced dll");
         await fs.writeFile(path.join(gameDirectory, COMMUNITY_MOD_DLL_FILE), dllContents);
         await writeManifest(gameDirectory, {
             schemaVersion: 1,
@@ -102,11 +103,11 @@ describe("community mod install detection", () => {
         const result = await detectCommunityModInstall(gameDirectory, { releaseFingerprints: [], readVersionInfo: async () => null });
 
         expect(result).toMatchObject({
-            classification: "guff-advanced",
-            profile: "guff-advanced",
+            classification: "waffle-advanced",
+            profile: "waffle-advanced",
             manifest: {
                 exists: true,
-                profile: "guff-advanced",
+                profile: "waffle-advanced",
                 tag: "v-test-alpha",
             },
         });
@@ -141,9 +142,25 @@ describe("community mod install detection", () => {
         expect(result.manifest.profile).toBe("netniv-basic");
     });
 
+    test("matches the Waffle Advanced rc3 release fingerprint by DLL hash", () => {
+        const match = findReleaseFingerprint(
+            "B9F53514BDC8C6E9AF3853EDB458D72745051C06EE450C9B078C2B7846221B83",
+            DEFAULT_COMMUNITY_MOD_RELEASE_FINGERPRINTS,
+        );
+
+        expect(match).toMatchObject({
+            profile: "waffle-advanced",
+            distribution: "advanced-alpha",
+            owner: "Guffawaffle",
+            repo: "stfc-mod",
+            tag: "v1.1.0-guffa.rc3",
+        });
+    });
+
     test("normalizes distribution aliases and release hashes", () => {
         expect(profileFromDistribution("official-basic")).toBe("netniv-basic");
-        expect(profileFromDistribution("advanced-alpha")).toBe("guff-advanced");
+        expect(profileFromDistribution("waffle-basic")).toBe("waffle-basic");
+        expect(profileFromDistribution("advanced-alpha")).toBe("waffle-advanced");
         expect(profileFromDistribution("surprise")).toBeNull();
         expect(findReleaseFingerprint("sha256:ABC", [{ distribution: "official-basic", dllSha256: "abc" }])).toMatchObject({
             profile: "netniv-basic",

@@ -14,98 +14,73 @@
         <div>
           <p class="eyebrow">STFC Mod Sidecar</p>
           <h1>Settings</h1>
-          <p class="hero-copy">Hotkey bindings and keyboard behavior for the production community mod config.</p>
+          <p class="hero-copy">Community Mod configuration for hotkeys, desktop notifications, audio cues, and diagnostics.</p>
         </div>
-        <section class="hero-controls" aria-label="settings actions">
-          <label id="settings-token-control" class="control control--wide" hidden>
-            <span>Settings token</span>
-            <input id="settings-token" type="password" autocomplete="off" placeholder="Required to save" />
-          </label>
-          <button id="reload-settings" type="button">Reload</button>
-          <button id="save-settings" type="button" disabled>Save for next launch</button>
-        </section>
       </header>
-
-      <section class="status-strip settings-status" aria-live="polite">
-        <article>
-          <span class="status-label">Game Directory</span>
-          <strong id="game-directory">Loading...</strong>
-        </article>
-        <article>
-          <span class="status-label">Settings Path</span>
-          <strong id="settings-path">Loading...</strong>
-        </article>
-        <article>
-          <span class="status-label">Config</span>
-          <strong id="settings-state">Loading...</strong>
-        </article>
-        <article>
-          <span class="status-label">Warnings</span>
-          <strong id="settings-warning-count">0</strong>
-        </article>
-        <article>
-          <span class="status-label">Mode</span>
-          <strong id="companion-mode">Loading...</strong>
-        </article>
-        <article>
-          <span class="status-label">Profile</span>
-          <strong id="mod-profile">Loading...</strong>
-        </article>
-        <article>
-          <span class="status-label">Mod Install</span>
-          <strong id="community-mod-install">Loading...</strong>
-        </article>
-        <article>
-          <span class="status-label">Changes</span>
-          <strong id="settings-change-count">0</strong>
-        </article>
-      </section>
-
-      <section id="desktop-bootstrap" class="settings-panel desktop-bootstrap" hidden>
-        <div class="panel-heading">
-          <h2>Game Directory</h2>
-          <p id="desktop-bootstrap-state">Select the STFC game directory containing prime.exe.</p>
-        </div>
-        <div class="path-stack">
-          <div>
-            <span class="status-label">Directory</span>
-            <strong id="desktop-game-directory">Not selected</strong>
-          </div>
-          <div>
-            <span class="status-label">Feed</span>
-            <strong id="desktop-feed-path">Unknown</strong>
-          </div>
-          <div>
-            <span class="status-label">Profile</span>
-            <strong id="desktop-mod-profile">Loading...</strong>
-          </div>
-          <div>
-            <span class="status-label">Community Mod</span>
-            <strong id="desktop-community-mod-install">Loading...</strong>
-          </div>
-        </div>
-        <label class="control control--wide">
-          <span>Community Mod Profile</span>
-          <select id="desktop-mod-profile-select">
-            <option value="netniv-basic">Official Basic</option>
-            <option value="guff-advanced">Guff Advanced</option>
-          </select>
-        </label>
-        <div class="bootstrap-actions">
-          <button id="select-game-directory" type="button">Select STFC Game Directory</button>
-          <button id="open-game-directory" type="button" disabled>Open Directory</button>
-        </div>
-      </section>
 
       <section class="settings-layout" aria-label="settings sections">
         <div class="settings-tablist" role="tablist" aria-label="Settings sections">
-          <button id="settings-tab-hard-settings" class="settings-tab" type="button" role="tab" aria-selected="true" aria-controls="settings-panel-hard-settings" data-settings-tab="hard-settings">Hard Settings</button>
+          <button id="settings-tab-general" class="settings-tab" type="button" role="tab" aria-selected="true" aria-controls="settings-panel-general" data-settings-tab="general">General</button>
+          <button id="settings-tab-hard-settings" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-panel-hard-settings" data-settings-tab="hard-settings">Hard Settings</button>
           <button id="settings-tab-keybindings" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-panel-keybindings" data-settings-tab="keybindings">Keybindings</button>
           <button id="settings-tab-diagnostics" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-panel-diagnostics" data-settings-tab="diagnostics">Diagnostics</button>
           <button id="settings-tab-notifications" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="notification-settings" data-settings-tab="notifications">Notifications</button>
         </div>
 
-        <section id="settings-panel-hard-settings" class="settings-panel settings-tab-panel" role="tabpanel" aria-labelledby="settings-tab-hard-settings" data-settings-panel="hard-settings">
+        <section class="settings-save-strip" data-dirty="false" aria-label="settings save state">
+          <div class="settings-save-strip__copy">
+            <strong id="settings-change-state">No unsaved changes</strong>
+            <span id="settings-status-message" class="page-copy" aria-live="polite">Ready</span>
+          </div>
+          <label id="settings-token-control" class="control control--wide" hidden>
+            <span>Settings token</span>
+            <input id="settings-token" type="password" autocomplete="off" placeholder="Required to save" />
+          </label>
+          <div class="settings-save-strip__actions">
+            <button id="reload-settings" class="button-secondary" type="button">Reload</button>
+            <button id="save-settings" type="button" disabled title="Save for next launch" aria-label="Save for next launch">Save</button>
+          </div>
+        </section>
+
+        <section id="settings-panel-general" class="settings-panel settings-tab-panel" role="tabpanel" aria-labelledby="settings-tab-general" data-settings-panel="general">
+          <div class="panel-heading">
+            <h2>General</h2>
+            <p id="desktop-bootstrap-state">Choose the active profile, mode, and STFC game directory.</p>
+          </div>
+
+          <section id="desktop-bootstrap" class="desktop-bootstrap settings-control-stack" hidden>
+            <div class="settings-form-grid">
+              <label class="control control--wide">
+                <span>Profile</span>
+                <select id="desktop-mod-profile-select">
+                  <option value="netniv-basic">Basic</option>
+                  <option value="waffle-basic">Waffle Basic</option>
+                  <option value="waffle-advanced">Waffle Advanced</option>
+                </select>
+              </label>
+              <div class="settings-mode-control">
+                <span class="status-label">Mode</span>
+                <label class="settings-toggle settings-toggle--wide">
+                  <input id="desktop-developer-mode" type="checkbox" />
+                  <span>Developer Tools</span>
+                </label>
+              </div>
+            </div>
+            <div class="settings-directory-control">
+              <div>
+                <span class="status-label">Game Directory</span>
+                <strong id="desktop-game-directory">Not selected</strong>
+              </div>
+              <div class="bootstrap-actions">
+                <button id="select-game-directory" type="button">Select STFC Game Directory</button>
+                <button id="open-game-directory" type="button" disabled>Open Directory</button>
+              </div>
+            </div>
+          </section>
+          <p id="desktop-bootstrap-unavailable" class="page-copy" hidden>Launch the Companion executable to change directory, profile, or Developer Tools mode.</p>
+        </section>
+
+        <section id="settings-panel-hard-settings" class="settings-panel settings-tab-panel" role="tabpanel" aria-labelledby="settings-tab-hard-settings" data-settings-panel="hard-settings" hidden>
           <div class="panel-heading">
             <h2>Hard Settings</h2>
             <p>Keyboard router toggles and timing values.</p>
@@ -143,7 +118,7 @@
         <section id="notification-settings" class="settings-panel settings-tab-panel notification-settings" role="tabpanel" aria-labelledby="settings-tab-notifications" data-settings-panel="notifications" hidden>
             <div class="panel-heading">
               <h2>Notifications</h2>
-              <p>Desktop delivery, audio cues, and cue preview for the advanced Community Mod profile.</p>
+              <p>Desktop delivery, audio cues, and cue preview for Waffle profiles.</p>
             </div>
             <div id="notification-master" class="notification-master"></div>
             <div id="notification-preview-state" class="page-copy" aria-live="polite">Ready</div>
@@ -158,19 +133,6 @@
           <p class="page-copy">Every local diagnostics or capture setting can affect performance and disk churn. Prefer sidecar or ingress export for durable review. Local replay is cyclic by default; unlimited append-only capture requires explicit settings.</p>
           <div id="diagnostic-settings" class="hard-settings-list"></div>
         </section>
-      </section>
-
-      <section id="settings-coach" class="settings-panel settings-coach">
-        <div class="panel-heading">
-          <h2>Troubleshooting Context</h2>
-          <p id="settings-coach-summary">Loading settings context.</p>
-        </div>
-        <div class="diagnostics-actions">
-          <button id="preview-settings-prompt" type="button">Preview prompt</button>
-          <button id="copy-settings-prompt" type="button">Copy prompt</button>
-          <span id="settings-coach-state" class="page-copy" aria-live="polite">Ready</span>
-        </div>
-        <pre id="settings-prompt-preview" class="diagnostics-preview" hidden></pre>
       </section>
 
       <div id="capture-dialog" class="capture-dialog" hidden>

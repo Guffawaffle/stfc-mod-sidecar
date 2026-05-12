@@ -1,6 +1,6 @@
 {
   "name": "stfc-mod-sidecar",
-  "version": "0.1.0-rc.2",
+  "version": "0.1.0-rc.3",
   "private": true,
   "description": "Windows desktop companion for installing, updating, uninstalling, and inspecting the STFC Community Mod.",
   "type": "module",
@@ -21,7 +21,7 @@
     "server:logs": "node ./scripts/viewer-server-control.mjs logs",
     "smoke:mod-install": "node ./scripts/community-mod-install-smoke.mjs",
     "smoke:mod-dev-reinstall": "node ./scripts/community-mod-dev-reinstall-smoke.mjs",
-    "smoke:mod-dev-reinstall:guff": "node ./scripts/community-mod-dev-reinstall-smoke.mjs --profile guff-advanced",
+    "smoke:mod-dev-reinstall:waffle": "node ./scripts/community-mod-dev-reinstall-smoke.mjs --profile waffle-advanced",
     "desktop:dev": "npm run dev --workspace @stfc-mod-sidecar/desktop",
     "desktop:pack": "npm run pack --workspace @stfc-mod-sidecar/desktop",
     "desktop:dist": "npm run dist --workspace @stfc-mod-sidecar/desktop",

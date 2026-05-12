@@ -2,9 +2,10 @@ import {
     buildCommunityModProfileCapabilities,
     isKnownCommunityModProfile,
     normalizeCommunityModProfile,
+    profileFamiliesMatch,
 } from "./community-mod-profiles.mjs";
 
-const CAPABILITY_NAMES = Object.freeze(["settings", "installStatus", "battleLog", "eventStore"]);
+const CAPABILITY_NAMES = Object.freeze(["settings", "installStatus", "notifications", "battleLog", "eventStore"]);
 const RUNTIME_CAPABILITY_NAMES = Object.freeze(["battleLog", "eventStore"]);
 
 export function buildCommunityModVariantGateContext(options = {}) {
@@ -59,7 +60,10 @@ function normalizeInstalledProfile(install) {
         return { state: String(install.state ?? "unavailable"), profile: "unknown", confidence: "low" };
     }
 
-    const profile = isKnownCommunityModProfile(install.classification) ? install.classification : "unknown";
+    const classification = String(install.classification ?? "").trim().toLowerCase();
+    const profile = ["none", "unknown"].includes(classification)
+        ? classification
+        : normalizeCommunityModProfile(classification, { fallback: null }) ?? "unknown";
     if (profile === "unknown") {
         return { state: "installed", profile, confidence: "low" };
     }
@@ -79,6 +83,10 @@ function buildInstalledCapabilities(installed) {
             battleLog: false,
             eventStore: false,
         };
+    }
+
+    if (profileFamiliesMatch(installed.profile, "waffle-advanced")) {
+        return buildCommunityModProfileCapabilities("waffle-advanced");
     }
 
     return buildCommunityModProfileCapabilities(installed.profile);
@@ -120,7 +128,7 @@ function mismatchKindFor(installed, selectedProfile) {
         return "unknown_installed";
     }
 
-    if (installed.profile !== selectedProfile) {
+    if (installed.profile !== selectedProfile && !profileFamiliesMatch(installed.profile, selectedProfile)) {
         return "selected_differs_from_installed";
     }
 

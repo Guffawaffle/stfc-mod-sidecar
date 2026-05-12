@@ -1,11 +1,12 @@
 export const COMMUNITY_MOD_PROFILE_NETNIV_BASIC = "netniv-basic";
-export const COMMUNITY_MOD_PROFILE_GUFF_ADVANCED = "guff-advanced";
+export const COMMUNITY_MOD_PROFILE_WAFFLE_BASIC = "waffle-basic";
+export const COMMUNITY_MOD_PROFILE_WAFFLE_ADVANCED = "waffle-advanced";
 export const DEFAULT_COMMUNITY_MOD_PROFILE = COMMUNITY_MOD_PROFILE_NETNIV_BASIC;
 
 export const COMMUNITY_MOD_PROFILE_DEFINITIONS = Object.freeze({
     [COMMUNITY_MOD_PROFILE_NETNIV_BASIC]: Object.freeze({
         profile: COMMUNITY_MOD_PROFILE_NETNIV_BASIC,
-        label: "Official Basic",
+        label: "Basic",
         distribution: "official-basic",
         aliases: Object.freeze(["netniv-basic", "netniv", "official", "official-basic", "basic"]),
         release: Object.freeze({
@@ -16,15 +17,16 @@ export const COMMUNITY_MOD_PROFILE_DEFINITIONS = Object.freeze({
         capabilities: Object.freeze({
             settings: true,
             installStatus: true,
+            notifications: false,
             battleLog: false,
             eventStore: false,
         }),
     }),
-    [COMMUNITY_MOD_PROFILE_GUFF_ADVANCED]: Object.freeze({
-        profile: COMMUNITY_MOD_PROFILE_GUFF_ADVANCED,
-        label: "Guff Advanced",
-        distribution: "advanced-alpha",
-        aliases: Object.freeze(["guff-advanced", "guff", "advanced", "alpha", "advanced-alpha", "rc", "release-candidate"]),
+    [COMMUNITY_MOD_PROFILE_WAFFLE_BASIC]: Object.freeze({
+        profile: COMMUNITY_MOD_PROFILE_WAFFLE_BASIC,
+        label: "Waffle Basic",
+        distribution: "waffle-basic",
+        aliases: Object.freeze(["waffle-basic", "waffle", "waffle-notifications", "guff-basic"]),
         release: Object.freeze({
             repository: "Guffawaffle/stfc-mod",
             channel: "alpha",
@@ -33,6 +35,25 @@ export const COMMUNITY_MOD_PROFILE_DEFINITIONS = Object.freeze({
         capabilities: Object.freeze({
             settings: true,
             installStatus: true,
+            notifications: true,
+            battleLog: false,
+            eventStore: false,
+        }),
+    }),
+    [COMMUNITY_MOD_PROFILE_WAFFLE_ADVANCED]: Object.freeze({
+        profile: COMMUNITY_MOD_PROFILE_WAFFLE_ADVANCED,
+        label: "Waffle Advanced",
+        distribution: "advanced-alpha",
+        aliases: Object.freeze(["waffle-advanced", "waffle-dev", "guff-advanced", "guff", "advanced", "alpha", "advanced-alpha", "rc", "release-candidate"]),
+        release: Object.freeze({
+            repository: "Guffawaffle/stfc-mod",
+            channel: "alpha",
+            installSupported: true,
+        }),
+        capabilities: Object.freeze({
+            settings: true,
+            installStatus: true,
+            notifications: true,
             battleLog: true,
             eventStore: true,
         }),
@@ -91,6 +112,21 @@ export function communityModProfileDefinition(value) {
 
 export function buildCommunityModProfileCapabilities(value) {
     return { ...communityModProfileDefinition(value).capabilities };
+}
+
+export function profileFamiliesMatch(leftValue, rightValue) {
+    const left = normalizeCommunityModProfile(leftValue, { fallback: null });
+    const right = normalizeCommunityModProfile(rightValue, { fallback: null });
+    if (!left || !right) {
+        return false;
+    }
+
+    return profileFamily(left) === profileFamily(right);
+}
+
+export function profileFamily(value) {
+    const profile = normalizeCommunityModProfile(value);
+    return profile.startsWith("waffle-") ? "waffle" : profile;
 }
 
 function communityModProfileFromAlias(value, options = {}) {

@@ -12,7 +12,7 @@ import {
     isDirectChildPath,
 } from "./companion-uninstall.mjs";
 import { DEFAULT_MOD_PROFILE, initialDeveloperModeFromSources, normalizeDesktopSettings, normalizeModProfile } from "./desktop-settings.mjs";
-import { SECURITY_MOTTO, STFC_GAME_EXECUTABLE, validateStfcGameDirectory } from "./game-directory.mjs";
+import { SECURITY_MOTTO, STFC_GAME_EXECUTABLE, detectDefaultStfcGameDirectory, validateStfcGameDirectory } from "./game-directory.mjs";
 import { appendBoundedLogLineSync } from "../../viewer/bounded-log-file.mjs";
 import { buildReleaseInfo } from "../../viewer/release-info.mjs";
 
@@ -113,16 +113,26 @@ function createMainWindow(url) {
 }
 
 async function ensureSidecarServer() {
-    const port = Number.parseInt(process.env.STFC_SIDECAR_PORT ?? String(DEFAULT_PORT), 10);
-    const url = `http://127.0.0.1:${Number.isFinite(port) ? port : DEFAULT_PORT}`;
+    const requestedPort = Number.parseInt(process.env.STFC_SIDECAR_PORT ?? String(DEFAULT_PORT), 10);
+    const firstPort = Number.isFinite(requestedPort) ? requestedPort : DEFAULT_PORT;
 
-    const existing = await fetchHealth(url, 800);
-    if (existing?.ok) {
-        writeLog("log", `[sidecar-desktop] using existing sidecar server at ${url}`);
-        return { url, owned: false };
+    for (let offset = 0; offset < 10; offset += 1) {
+        const port = firstPort + offset;
+        const url = `http://127.0.0.1:${port}`;
+        const existing = await fetchHealth(url, 800);
+        if (!existing?.ok) {
+            return startSidecarServer(url);
+        }
+
+        if (existing.desktop === true) {
+            writeLog("log", `[sidecar-desktop] using existing desktop sidecar server at ${url}`);
+            return { url, owned: false };
+        }
+
+        writeLog("warn", `[sidecar-desktop] port ${port} already has a browser-mode sidecar server; trying next port`);
     }
 
-    return startSidecarServer(url);
+    throw new Error(`No available sidecar port near ${firstPort}; stop browser-mode viewer servers or set STFC_SIDECAR_PORT.`);
 }
 
 async function startSidecarServer(url) {
@@ -582,6 +592,22 @@ async function validatedDesktopGameDirectoryForStartup() {
     const gameDirectory = activeProfileGameDirectory();
     if (!gameDirectory) {
         desktopSettings = normalizeDesktopSettings(desktopSettings);
+        const detected = await detectDefaultStfcGameDirectory();
+        if (detected?.ok) {
+            desktopSettings = {
+                ...desktopSettings,
+                gameDirectory: detected.gameDirectory,
+                profileGameDirectories: {
+                    ...desktopSettings.profileGameDirectories,
+                    [desktopSettings.modProfile]: detected.gameDirectory,
+                },
+            };
+            bootstrapWarning = "";
+            saveDesktopSettings(desktopSettings);
+            writeLog("log", `[sidecar-desktop] detected game directory source=${detected.source} path=${sanitizeLogValue(detected.gameDirectory)}`);
+            return detected.gameDirectory;
+        }
+
         return "";
     }
 

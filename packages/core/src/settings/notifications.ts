@@ -320,7 +320,7 @@ function event(
     legacySystemPath,
     legacyAudioKey,
     legacyAudioPath,
-    profiles: ["guff-advanced"],
+    profiles: ["waffle-basic", "waffle-advanced"],
   };
 }
 

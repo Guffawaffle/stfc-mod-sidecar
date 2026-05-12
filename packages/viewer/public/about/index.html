@@ -36,16 +36,29 @@
             <p class="eyebrow">Mode Boundary</p>
             <h2>Standard By Default</h2>
             <p id="about-developer-mode-state" class="page-copy">Loading companion mode...</p>
-            <label id="about-developer-mode-option" class="toggle" hidden>
-              <input id="about-developer-mode-toggle" type="checkbox" />
-              <span>Developer Tools</span>
-            </label>
           </article>
 
           <article class="module-card">
             <p class="eyebrow">Configuration</p>
-            <h2>Schema First</h2>
-            <p class="page-copy">The companion UI should render settings from the shared schema, persist sparse startup config, and live-apply only schema-approved runtime settings.</p>
+            <h2>Settings Health</h2>
+            <div class="path-stack about-settings-health">
+              <div>
+                <span class="status-label">Config</span>
+                <strong id="about-settings-config-state">Loading...</strong>
+              </div>
+              <div>
+                <span class="status-label">Warnings</span>
+                <strong id="about-settings-warning-count">0</strong>
+              </div>
+            </div>
+            <h3>Troubleshooting Context</h3>
+            <p id="about-settings-coach-summary" class="page-copy">Loading settings context.</p>
+            <div class="diagnostics-actions">
+              <button id="preview-settings-prompt" type="button">Preview prompt</button>
+              <button id="copy-settings-prompt" type="button">Copy prompt</button>
+              <span id="about-settings-coach-state" class="page-copy" aria-live="polite">Ready</span>
+            </div>
+            <pre id="about-settings-prompt-preview" class="diagnostics-preview" hidden></pre>
           </article>
         </div>
 
@@ -56,9 +69,9 @@
             <p id="about-release-channel" class="page-copy">Loading release channel...</p>
             <p id="about-signature-policy" class="page-copy">Loading signature expectation...</p>
             <p id="about-update-mode" class="page-copy">Loading update mode...</p>
-            <p id="about-release-update-state" class="page-copy">Update check not run</p>
+            <p id="about-release-update-state" class="page-copy">Companion update check not run</p>
             <div class="diagnostics-actions">
-              <button id="check-release-update" type="button">Check for Updates</button>
+              <button id="check-release-update" type="button">Check Companion Updates</button>
               <a id="about-release-update-link" class="link-button link-button--secondary" href="#" target="_blank" rel="noreferrer" hidden>Open Release</a>
             </div>
           </article>
@@ -112,9 +125,9 @@
               <summary>Diagnostic details</summary>
               <div class="mod-diagnostics-list">
                 <p id="about-mod-release-state" class="page-copy">Release check not run</p>
-                <p id="about-mod-release-detail" class="page-copy">Use Check Mod Release to read GitHub release metadata.</p>
+                <p id="about-mod-release-detail" class="page-copy">Use Check Selected Mod Release to read GitHub release metadata.</p>
                 <p id="about-mod-plan-state" class="page-copy">Install plan not checked</p>
-                <p id="about-mod-plan-detail" class="page-copy">Check Mod Release to prepare a safe install/update plan.</p>
+                <p id="about-mod-plan-detail" class="page-copy">Check Selected Mod Release to prepare a safe install/update plan.</p>
                 <p id="about-mod-artifact-state" class="page-copy">Artifact not verified</p>
                 <p id="about-mod-artifact-detail" class="page-copy">
                   Verify Artifact downloads to the sidecar cache and checks SHA-256 before any install path exists.
@@ -140,7 +153,7 @@
                 <p id="about-mod-uninstall-execution-detail" class="page-copy">Execute Uninstall is available after confirmation and endpoint enablement.</p>
                 <p id="about-mod-uninstall-recovery-detail" class="page-copy">No uninstall recovery action is needed before execution runs.</p>
                 <div class="diagnostics-actions">
-                  <button id="check-mod-release" type="button">Check Mod Release</button>
+                  <button id="check-mod-release" type="button">Check Selected Mod Release</button>
                   <button id="verify-mod-artifact" type="button">Verify Artifact</button>
                   <button id="prepare-mod-confirmation" type="button">Prepare Confirmation</button>
                   <button id="execute-mod-install" type="button">Execute Install</button>

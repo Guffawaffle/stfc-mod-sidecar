@@ -385,6 +385,83 @@ button {
   gap: 12px;
 }
 
+.settings-save-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.settings-save-strip[data-dirty="true"] {
+  border-color: rgba(241, 170, 77, 0.62);
+  background: rgba(241, 170, 77, 0.13);
+}
+
+.settings-save-strip__copy {
+  display: grid;
+  gap: 2px;
+  min-width: min(240px, 100%);
+}
+
+.settings-save-strip__copy strong {
+  font-size: 0.92rem;
+}
+
+.settings-save-strip__actions,
+.settings-form-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+}
+
+.settings-save-strip button {
+  padding: 9px 12px;
+  border-radius: 10px;
+}
+
+.settings-save-strip .control {
+  flex: 1 1 220px;
+  max-width: 360px;
+}
+
+.settings-form-grid .control {
+  min-width: min(340px, 100%);
+}
+
+.settings-control-stack,
+.settings-directory-control,
+.settings-mode-control {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.settings-directory-control {
+  padding: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.settings-directory-control strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.about-settings-health {
+  margin-bottom: 14px;
+}
+
+.settings-toggle--wide {
+  min-height: 44px;
+  align-items: center;
+}
+
 .feed-column,
 .detail-column {
   min-width: 0;
@@ -1240,6 +1317,17 @@ button {
   box-shadow: none;
 }
 
+.settings-chip__action {
+  min-height: 22px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.64);
+  box-shadow: none;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
 .settings-chip--changed {
   color: #7a4a00;
   background: rgba(241, 170, 77, 0.18);
@@ -2089,6 +2177,7 @@ select {
   .about-grid .module-card--wide {
     grid-column: 1 / -1;
   }
+
 }
 
 @media (max-width: 560px) {

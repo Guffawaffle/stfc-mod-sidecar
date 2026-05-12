@@ -622,6 +622,7 @@ const server = createServer(async (request, response) => {
             feedPath,
             settingsPath,
             port,
+            desktop: process.env.STFC_SIDECAR_DESKTOP === "1",
             defaultLimit,
             developerMode,
             companionMode,
@@ -780,7 +781,7 @@ function isBattleLogPublicPath(pathname) {
 }
 
 function isPrivilegedModApiPath(pathname) {
-    return pathname === "/api/release/check" || pathname.startsWith("/api/mod/");
+    return pathname.startsWith("/api/mod/");
 }
 
 function isGithubNetworkApiPath(pathname) {
@@ -827,11 +828,15 @@ function variantGateCapabilityDetails(capability, reasons = []) {
 
 function communityModProfileLabel(profile) {
     if (profile === "netniv-basic") {
-        return "Official Basic";
+        return "Basic";
     }
 
-    if (profile === "guff-advanced") {
-        return "Guff Advanced";
+    if (profile === "waffle-basic") {
+        return "Waffle Basic";
+    }
+
+    if (["waffle-advanced", "guff-advanced"].includes(profile)) {
+        return "Waffle Advanced";
     }
 
     if (profile === "none") {
@@ -845,11 +850,13 @@ function variantGateReasonLabel(capability, reason) {
     if (capability === "battleLog") {
         switch (reason) {
             case "selected_profile_netniv-basic_does_not_support_battleLog":
-                return "Official Basic selection does not include Battle Log.";
-            case "selected_profile_guff-advanced_does_not_support_battleLog":
+                return "Basic selection does not include Battle Log.";
+            case "selected_profile_waffle-basic_does_not_support_battleLog":
+                return "Waffle Basic selection does not include Battle Log.";
+            case "selected_profile_waffle-advanced_does_not_support_battleLog":
                 return "Selected profile does not include Battle Log.";
             case "installed_profile_netniv-basic_does_not_support_battleLog":
-                return "Installed Official Basic DLL does not include Battle Log.";
+                return "Installed Basic DLL does not include Battle Log.";
             case "installed_dll_unknown":
                 return "Installed DLL is unknown.";
             case "installed_dll_missing":

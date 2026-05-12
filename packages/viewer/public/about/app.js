@@ -1,5 +1,6 @@
 import {
     communityModInstallLabel,
+    communityModProfileCapabilitySummary,
     communityModInstallSummary,
     communityModReleaseLabel,
     communityModReleaseSummary,
@@ -21,7 +22,14 @@ import {
     communityModUninstallExecutionLabel,
     communityModUninstallExecutionSummary,
     communityModUninstallExecutionRecoverySummary,
+    modProfileLabel,
+    normalizeModProfile,
 } from "../shared/community-mod-status.js";
+import {
+    buildSettingsTroubleshootingPrompt,
+    buildSettingsTroubleshootingSummary,
+    collectSettingsWarnings,
+} from "../settings/troubleshooting.js";
 
 const state = {
     bootstrap: null,
@@ -36,6 +44,10 @@ const state = {
     modUninstallPlan: null,
     modUninstallConfirmation: null,
     modUninstallExecution: null,
+    settingsSnapshot: null,
+    diagnosticSnapshot: null,
+    notificationSnapshot: null,
+    settingsError: "",
     modUninstallDeleteSettingsAndLogs: false,
     companionUninstallStatus: null,
     companionActionMessage: "",
@@ -51,9 +63,14 @@ const state = {
 };
 
 const elements = {
-    developerModeOption: document.querySelector("#about-developer-mode-option"),
-    developerModeToggle: document.querySelector("#about-developer-mode-toggle"),
     developerModeState: document.querySelector("#about-developer-mode-state"),
+    settingsConfigState: document.querySelector("#about-settings-config-state"),
+    settingsWarningCount: document.querySelector("#about-settings-warning-count"),
+    settingsCoachSummary: document.querySelector("#about-settings-coach-summary"),
+    settingsCoachState: document.querySelector("#about-settings-coach-state"),
+    settingsPromptPreview: document.querySelector("#about-settings-prompt-preview"),
+    previewSettingsPrompt: document.querySelector("#preview-settings-prompt"),
+    copySettingsPrompt: document.querySelector("#copy-settings-prompt"),
     releaseVersion: document.querySelector("#about-release-version"),
     releaseChannel: document.querySelector("#about-release-channel"),
     signaturePolicy: document.querySelector("#about-signature-policy"),
@@ -113,7 +130,8 @@ const elements = {
     confirmationDialogConfirm: document.querySelector("#about-confirmation-dialog-confirm"),
 };
 
-elements.developerModeToggle?.addEventListener("change", () => void setDeveloperMode(elements.developerModeToggle.checked));
+elements.previewSettingsPrompt?.addEventListener("click", previewSettingsPrompt);
+elements.copySettingsPrompt?.addEventListener("click", () => void copySettingsPrompt());
 elements.previewDiagnostics?.addEventListener("click", () => void previewDiagnostics());
 elements.copyDiagnostics?.addEventListener("click", () => void copyDiagnostics());
 elements.downloadDiagnostics?.addEventListener("click", () => void downloadDiagnostics());
@@ -139,6 +157,7 @@ elements.modUninstallDeleteSettingsAndLogs?.addEventListener("change", () => {
 });
 
 await loadMode();
+await loadSettingsContext();
 
 async function loadMode() {
     try {
@@ -172,8 +191,48 @@ async function loadServerMode() {
         modProfile: health.modProfile,
         settingsProfile: health.settingsProfile,
         communityModInstall: health.communityModInstall,
+        gameDirectory: health.gameDir,
+        feedPath: health.feedPath,
+        settingsPath: health.settingsPath,
         release: health.release,
     };
+}
+
+async function loadSettingsContext() {
+    renderSettingsContext();
+    try {
+        const [settingsSnapshot, notificationSnapshot, diagnosticSnapshot] = await Promise.all([
+            fetchJsonIfOk("/api/settings/hotkeys"),
+            fetchJsonIfOk("/api/settings/notifications"),
+            fetchJsonIfOk("/api/settings/diagnostics", { optionalStatuses: [403, 404] }),
+        ]);
+
+        state.settingsSnapshot = settingsSnapshot;
+        state.notificationSnapshot = notificationSnapshot;
+        state.diagnosticSnapshot = diagnosticSnapshot;
+        state.settingsError = "";
+    } catch (error) {
+        state.settingsSnapshot = null;
+        state.notificationSnapshot = null;
+        state.diagnosticSnapshot = null;
+        state.settingsError = error instanceof Error ? error.message : String(error);
+    }
+
+    renderSettingsContext();
+}
+
+async function fetchJsonIfOk(url, options = {}) {
+    const response = await fetch(url, { cache: "no-store" });
+    if ((options.optionalStatuses ?? []).includes(response.status)) {
+        return null;
+    }
+
+    const payload = await response.json();
+    if (!response.ok) {
+        throw new Error(payload?.error ?? `Request failed: ${response.status}`);
+    }
+
+    return payload;
 }
 
 async function setDeveloperMode(enabled) {
@@ -214,11 +273,6 @@ async function setDeveloperMode(enabled) {
 
 function renderMode() {
     const developerMode = state.pendingDeveloperMode ?? Boolean(state.bootstrap?.developerMode);
-    const canPersistMode = Boolean(window.stfcDesktop?.setDeveloperMode);
-
-    elements.developerModeOption.hidden = !canPersistMode;
-    elements.developerModeToggle.checked = developerMode;
-    elements.developerModeToggle.disabled = !canPersistMode || state.modeChanging;
 
     if (state.bootstrap?.error) {
         elements.developerModeState.textContent = state.bootstrap.error;
@@ -227,9 +281,69 @@ function renderMode() {
 
     elements.developerModeState.textContent = state.modeChanging
         ? "Applying mode change..."
-        : canPersistMode
-            ? modeLabel(developerMode)
-            : `${modeLabel(developerMode)} active`;
+        : `${modeLabel(developerMode)} active`;
+}
+
+function renderSettingsContext() {
+    if (state.settingsError) {
+        elements.settingsConfigState.textContent = "Unavailable";
+        elements.settingsWarningCount.textContent = "0";
+        elements.settingsCoachSummary.textContent = state.settingsError;
+        return;
+    }
+
+    if (!state.settingsSnapshot) {
+        elements.settingsConfigState.textContent = "Loading...";
+        elements.settingsWarningCount.textContent = "0";
+        elements.settingsCoachSummary.textContent = "Loading settings context.";
+        return;
+    }
+
+    const input = settingsTroubleshootingInput();
+    const warnings = collectSettingsWarnings(input);
+    elements.settingsConfigState.textContent = state.settingsSnapshot.parseError
+        ? "Invalid TOML"
+        : state.settingsSnapshot.exists ? "Found" : "Not found";
+    elements.settingsWarningCount.textContent = String(warnings.length);
+    elements.settingsCoachSummary.textContent = buildSettingsTroubleshootingSummary(input);
+}
+
+function previewSettingsPrompt() {
+    const prompt = buildSettingsTroubleshootingPrompt(settingsTroubleshootingInput());
+    elements.settingsPromptPreview.textContent = prompt;
+    elements.settingsPromptPreview.hidden = false;
+    setSettingsCoachState("Preview ready");
+}
+
+async function copySettingsPrompt() {
+    const prompt = buildSettingsTroubleshootingPrompt(settingsTroubleshootingInput());
+    elements.settingsPromptPreview.textContent = prompt;
+    elements.settingsPromptPreview.hidden = false;
+    setSettingsCoachState("Copying prompt...");
+
+    try {
+        await navigator.clipboard.writeText(prompt);
+        setSettingsCoachState("Prompt copied");
+    } catch (error) {
+        setSettingsCoachState(error instanceof Error ? error.message : String(error));
+    }
+}
+
+function setSettingsCoachState(message) {
+    elements.settingsCoachState.textContent = message;
+}
+
+function settingsTroubleshootingInput() {
+    const snapshot = state.settingsSnapshot;
+    return {
+        snapshot,
+        diagnosticSnapshot: state.diagnosticSnapshot,
+        notificationSnapshot: state.notificationSnapshot,
+        bootstrap: state.bootstrap,
+        draftBindings: new Map((snapshot?.actions ?? []).map((action) => [action.id, [...action.bindings]])),
+        draftHardSettings: new Map((snapshot?.hardSettings ?? []).map((setting) => [setting.id, setting.value])),
+        conflicts: [],
+    };
 }
 
 function modeLabel(developerMode) {
@@ -393,9 +507,10 @@ async function refreshModStatus() {
 
 function renderCommunityModStatus() {
     const install = state.bootstrap?.communityModInstall;
+    const profileHint = communityModProfileCapabilitySummary(install, state.bootstrap?.modProfile, state.bootstrap?.capabilities);
     elements.modInstallTitle.textContent = communityModInstallLabel(install);
     elements.modInstallState.textContent = communityModInstallLabel(install);
-    elements.modInstallDetail.textContent = communityModInstallSummary(install);
+    elements.modInstallDetail.textContent = [communityModInstallSummary(install), profileHint].filter(Boolean).join(" ");
     elements.modReleaseState.textContent = communityModReleaseLabel(state.modReleaseCatalog);
     elements.modReleaseDetail.textContent = communityModReleaseSummary(state.modReleaseCatalog);
     elements.modPlanState.textContent = communityModInstallPlanLabel(state.modInstallPlan);
@@ -506,12 +621,12 @@ function setModReleaseLink(url) {
 
 async function checkReleaseUpdate() {
     if (!await ensureGithubNetworkConsent()) {
-        setReleaseUpdateState("Update check cancelled");
+        setReleaseUpdateState("Companion update check cancelled");
         return;
     }
 
     elements.checkReleaseUpdate.disabled = true;
-    setReleaseUpdateState("Checking updates...");
+    setReleaseUpdateState("Checking Companion updates...");
     setReleaseUpdateLink("");
 
     try {
@@ -528,7 +643,7 @@ async function fetchReleaseUpdateCheck() {
     const response = await fetch("/api/release/check", modFetchOptions({ network: true }));
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result.ok === false) {
-        throw new Error(result.error ? `Update check failed: ${result.error}` : `Update check failed: ${response.status}`);
+        throw new Error(result.error ? `Companion update check failed: ${result.error}` : `Companion update check failed: ${response.status}`);
     }
 
     return result;
@@ -536,19 +651,19 @@ async function fetchReleaseUpdateCheck() {
 
 function renderReleaseUpdate(result) {
     if (result.status === "update_available") {
-        setReleaseUpdateState(`${result.latest?.version ?? "New version"} available`);
+        setReleaseUpdateState(`Companion ${result.latest?.version ?? "update"} available`);
         setReleaseUpdateLink(result.latest?.htmlUrl);
         return;
     }
 
     if (result.status === "up_to_date") {
-        setReleaseUpdateState(`Current version is latest: ${result.latest?.version ?? "unknown"}`);
+        setReleaseUpdateState(`Companion is current: ${result.latest?.version ?? "unknown"}`);
         setReleaseUpdateLink(result.latest?.htmlUrl);
         return;
     }
 
     if (result.status === "no_release") {
-        setReleaseUpdateState("No release found for this channel");
+        setReleaseUpdateState("No Companion release found for this channel");
         return;
     }
 
@@ -557,7 +672,7 @@ function renderReleaseUpdate(result) {
         return;
     }
 
-    setReleaseUpdateState("Update status unavailable");
+    setReleaseUpdateState("Companion update status unavailable");
 }
 
 function setReleaseUpdateState(message) {
@@ -1097,10 +1212,24 @@ function installButtonLabel() {
 
     const install = state.bootstrap?.communityModInstall;
     if (isCommunityModInstalled(install)) {
+        if (install.classification === "unknown") {
+            return `Replace With ${modProfileLabel(state.bootstrap?.modProfile)}`;
+        }
+
+        if (!communityModProfilesCompatible(install.classification, state.bootstrap?.modProfile)) {
+            return `Switch To ${modProfileLabel(state.bootstrap?.modProfile)}`;
+        }
+
         return "Update Community Mod";
     }
 
-    return "Install Community Mod";
+    return `Install ${modProfileLabel(state.bootstrap?.modProfile)}`;
+}
+
+function communityModProfilesCompatible(left, right) {
+    const leftProfile = normalizeModProfile(left);
+    const rightProfile = normalizeModProfile(right);
+    return leftProfile === rightProfile || (leftProfile.startsWith("waffle-") && rightProfile.startsWith("waffle-"));
 }
 
 function installConfirmLabel(confirmation) {

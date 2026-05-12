@@ -18,7 +18,7 @@ runtime_trace_report_interval_ms = 2500
 sidecar_jsonl = true
 sidecar_jsonl_replay_seconds = 60
 sidecar_jsonl_recent_logs = 1000
-`, { profile: "guff-advanced" });
+`, { profile: "waffle-advanced" });
 
     expect(snapshot.settings.find((setting) => setting.id === "debug.runtime_trace")?.value).toBe("detailed");
     expect(snapshot.settings.find((setting) => setting.id === "debug.runtime_trace_track_overhead")?.value).toBe(false);
@@ -32,14 +32,14 @@ sidecar_jsonl_recent_logs = 1000
     const snapshot = buildCommunityModDiagnosticSettingsSnapshot(`
 [debug]
 mod_impact_monitor = true
-`, { profile: "guff-advanced" });
+`, { profile: "waffle-advanced" });
 
     const trace = snapshot.settings.find((setting) => setting.id === "debug.runtime_trace");
     expect(trace?.value).toBe("summary");
     expect(trace?.source).toBe("legacy");
   });
 
-  it("shows diagnostics for the official basic profile in developer mode", () => {
+  it("shows diagnostics for the Basic profile in developer mode", () => {
     const snapshot = buildCommunityModDiagnosticSettingsSnapshot("", { profile: "netniv-basic" });
     expect(snapshot.settings.map((setting) => setting.id)).toContain("debug.runtime_trace");
     expect(snapshot.settings.map((setting) => setting.id)).toContain("sync.sidecar_jsonl");
@@ -56,7 +56,7 @@ mod_impact_monitor = true
         "sync.sidecar_jsonl_replay_seconds": 0,
         "sync.sidecar_jsonl_recent_logs": 0,
       },
-    }, { profile: "guff-advanced" });
+    }, { profile: "waffle-advanced" });
 
     expect(patch.diagnostics).toContainEqual({ section: "debug", key: "runtime_trace", value: "verbose" });
     expect(patch.diagnostics).toContainEqual({ section: "debug", key: "runtime_trace_track_overhead", value: true });
@@ -69,11 +69,11 @@ mod_impact_monitor = true
   it("rejects unknown settings and invalid levels", () => {
     expect(() => normalizeDiagnosticSettingsPatch({
       diagnostics: { "debug.nope": true },
-    }, { profile: "guff-advanced" })).toThrow(/Unknown diagnostic setting/);
+    }, { profile: "waffle-advanced" })).toThrow(/Unknown diagnostic setting/);
 
     expect(() => normalizeDiagnosticSettingsPatch({
       diagnostics: { "debug.runtime_trace": "firehose" },
-    }, { profile: "guff-advanced" })).toThrow(/must be one of/);
+    }, { profile: "waffle-advanced" })).toThrow(/must be one of/);
   });
 
   it("updates allowlisted debug TOML keys without deleting comments", () => {
@@ -91,7 +91,7 @@ runtime_trace = "off"
         "sync.sidecar_jsonl": true,
         "sync.sidecar_jsonl_replay_seconds": 30,
       },
-    }, { profile: "guff-advanced" });
+    }, { profile: "waffle-advanced" });
 
     expect(updated).toContain("# keep me");
     expect(updated).toContain("# existing trace comment");

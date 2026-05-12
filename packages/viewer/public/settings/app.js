@@ -1,12 +1,4 @@
-import {
-  buildSettingsTroubleshootingPrompt,
-  buildSettingsTroubleshootingSummary,
-} from "./troubleshooting.js";
-import {
-  communityModInstallLabel,
-  modProfileLabel,
-  normalizeModProfile,
-} from "../shared/community-mod-status.js";
+import { normalizeModProfile } from "../shared/community-mod-status.js";
 
 const state = {
   snapshot: null,
@@ -23,36 +15,25 @@ const state = {
   dirty: false,
   saving: false,
   bootstrap: null,
-  activeSettingsTab: "hard-settings",
+  activeSettingsTab: settingsTabFromHash() || "general",
 };
 
 const elements = {
   desktopBootstrap: document.querySelector("#desktop-bootstrap"),
   desktopBootstrapState: document.querySelector("#desktop-bootstrap-state"),
-  gameDirectory: document.querySelector("#game-directory"),
+  desktopBootstrapUnavailable: document.querySelector("#desktop-bootstrap-unavailable"),
   desktopGameDirectory: document.querySelector("#desktop-game-directory"),
-  companionMode: document.querySelector("#companion-mode"),
-  modProfile: document.querySelector("#mod-profile"),
-  communityModInstall: document.querySelector("#community-mod-install"),
-  desktopFeedPath: document.querySelector("#desktop-feed-path"),
-  desktopModProfile: document.querySelector("#desktop-mod-profile"),
-  desktopCommunityModInstall: document.querySelector("#desktop-community-mod-install"),
   desktopModProfileSelect: document.querySelector("#desktop-mod-profile-select"),
+  desktopDeveloperMode: document.querySelector("#desktop-developer-mode"),
   selectGameDirectory: document.querySelector("#select-game-directory"),
   openGameDirectory: document.querySelector("#open-game-directory"),
+  settingsSaveStrip: document.querySelector(".settings-save-strip"),
+  settingsChangeState: document.querySelector("#settings-change-state"),
+  settingsStatusMessage: document.querySelector("#settings-status-message"),
   settingsToken: document.querySelector("#settings-token"),
   settingsTokenControl: document.querySelector("#settings-token-control"),
   reloadSettings: document.querySelector("#reload-settings"),
   saveSettings: document.querySelector("#save-settings"),
-  settingsPath: document.querySelector("#settings-path"),
-  settingsState: document.querySelector("#settings-state"),
-  settingsWarningCount: document.querySelector("#settings-warning-count"),
-  settingsChangeCount: document.querySelector("#settings-change-count"),
-  settingsCoachSummary: document.querySelector("#settings-coach-summary"),
-  settingsCoachState: document.querySelector("#settings-coach-state"),
-  settingsPromptPreview: document.querySelector("#settings-prompt-preview"),
-  previewSettingsPrompt: document.querySelector("#preview-settings-prompt"),
-  copySettingsPrompt: document.querySelector("#copy-settings-prompt"),
   settingsTabButtons: [...document.querySelectorAll("[data-settings-tab]")],
   settingsTabPanels: [...document.querySelectorAll("[data-settings-panel]")],
   hardSettings: document.querySelector("#hard-settings"),
@@ -78,17 +59,18 @@ const elements = {
 elements.selectGameDirectory?.addEventListener("click", () => void selectGameDirectory());
 elements.openGameDirectory?.addEventListener("click", () => void openGameDirectory());
 elements.desktopModProfileSelect?.addEventListener("change", () => void setModProfile(elements.desktopModProfileSelect.value));
+elements.desktopDeveloperMode?.addEventListener("change", () => void setDeveloperMode(elements.desktopDeveloperMode.checked));
 elements.reloadSettings.addEventListener("click", () => void loadSettings());
 elements.saveSettings.addEventListener("click", () => void saveSettings());
-elements.previewSettingsPrompt.addEventListener("click", previewSettingsPrompt);
-elements.copySettingsPrompt.addEventListener("click", () => void copySettingsPrompt());
 elements.settingsTabButtons.forEach((button) => button.addEventListener("click", onSettingsTabClick));
 elements.settingsToken.addEventListener("input", renderSaveState);
 elements.hotkeySearch.addEventListener("input", renderHotkeys);
 elements.hotkeyGroup.addEventListener("change", renderHotkeys);
 elements.conflictsOnly.addEventListener("change", renderHotkeys);
 elements.hardSettings.addEventListener("change", onHardSettingChange);
+elements.hardSettings.addEventListener("click", onHardSettingClick);
 elements.diagnosticSettings?.addEventListener("change", onDiagnosticSettingChange);
+elements.diagnosticSettings?.addEventListener("click", onDiagnosticSettingClick);
 elements.notificationSettings.addEventListener("change", onNotificationChange);
 elements.notificationSettings.addEventListener("click", (event) => void onNotificationClick(event));
 elements.hotkeyGroups.addEventListener("click", onHotkeyClick);
@@ -97,6 +79,12 @@ elements.captureCancel.addEventListener("click", cancelCapture);
 window.addEventListener("keydown", onCaptureKeyDown, true);
 window.addEventListener("pointerdown", onCapturePointerDown, true);
 window.addEventListener("contextmenu", onCaptureContextMenu, true);
+window.addEventListener("hashchange", () => {
+  const tab = settingsTabFromHash();
+  if (tab) {
+    setActiveSettingsTab(tab, { updateHash: false });
+  }
+});
 
 await loadSettings();
 await loadBootstrap();
@@ -130,6 +118,7 @@ async function loadSettings() {
   state.saving = false;
 
   renderAll();
+  setStatus("Ready");
 }
 
 async function loadDiagnosticSettingsSnapshot() {
@@ -205,7 +194,6 @@ function renderAll() {
   renderNotifications();
   renderHotkeys();
   renderSettingsTabs();
-  renderTroubleshootingCoach();
   renderSaveState();
 }
 
@@ -215,21 +203,44 @@ function onSettingsTabClick(event) {
     return;
   }
 
-  state.activeSettingsTab = button.dataset.settingsTab;
+  setActiveSettingsTab(button.dataset.settingsTab);
+}
+
+function setActiveSettingsTab(tab, options = {}) {
+  state.activeSettingsTab = tab;
+  if (options.updateHash !== false) {
+    window.history.replaceState(null, "", `#${tab}`);
+  }
   renderSettingsTabs();
 }
 
+function settingsTabFromHash() {
+  const hash = window.location.hash.replace(/^#/, "").trim().toLowerCase();
+  const aliases = {
+    setup: "general",
+    general: "general",
+    "hard-settings": "hard-settings",
+    hard: "hard-settings",
+    keybindings: "keybindings",
+    hotkeys: "keybindings",
+    diagnostics: "diagnostics",
+    notifications: "notifications",
+    notification: "notifications",
+  };
+  return aliases[hash] ?? "";
+}
+
 function renderSettingsTabs() {
-  const availableTabs = new Set(["hard-settings", "keybindings"]);
+  const availableTabs = new Set(["general", "hard-settings", "keybindings"]);
   if ((state.diagnosticSnapshot?.settings.length ?? 0) > 0 && state.bootstrap?.developerMode !== false) {
     availableTabs.add("diagnostics");
   }
-  if ((state.notificationSnapshot?.events.length ?? 0) > 0) {
+  if (state.notificationSnapshot) {
     availableTabs.add("notifications");
   }
 
   if (!availableTabs.has(state.activeSettingsTab)) {
-    state.activeSettingsTab = "hard-settings";
+    state.activeSettingsTab = "general";
   }
 
   for (const button of elements.settingsTabButtons) {
@@ -248,26 +259,7 @@ function renderSettingsTabs() {
 }
 
 function renderSummary() {
-  const snapshot = state.snapshot;
-  if (!snapshot) {
-    return;
-  }
-
-  const conflicts = buildDraftConflicts();
-  const warnings = conflicts.filter((conflict) => conflict.severity === "warning").length
-    + snapshot.actions.reduce((count, action) => count + action.issues.filter((issue) => issue.severity !== "info").length, 0)
-    + snapshot.hardSettings.reduce((count, setting) => count + setting.issues.filter((issue) => issue.severity !== "info").length, 0)
-    + (state.diagnosticSnapshot?.settings ?? []).reduce((count, setting) => count + setting.issues.filter((issue) => issue.severity !== "info").length, 0)
-    + (state.notificationSnapshot?.events ?? []).reduce((count, item) => count + item.issues.filter((issue) => issue.severity !== "info").length, 0);
-
-  elements.gameDirectory.textContent = state.bootstrap?.gameDirectory || gameDirectoryFromSettingsPath(snapshot.settingsPath) || "Unknown";
-  elements.settingsPath.textContent = snapshot.settingsPath ?? "Unknown";
-  elements.companionMode.textContent = modeLabel(state.bootstrap?.developerMode);
-  elements.modProfile.textContent = modProfileLabel(state.bootstrap?.modProfile ?? snapshot.modProfile ?? snapshot.profile);
-  elements.communityModInstall.textContent = communityModInstallLabel(state.bootstrap?.communityModInstall);
-  elements.settingsState.textContent = snapshot.parseError ? "Invalid TOML" : snapshot.exists ? "Found" : "Not found";
-  elements.settingsWarningCount.textContent = String(warnings);
-  elements.settingsChangeCount.textContent = String(countChanges());
+  renderSaveState();
 }
 
 async function loadBootstrap() {
@@ -275,7 +267,6 @@ async function loadBootstrap() {
     state.bootstrap = await loadServerBootstrap();
     renderBootstrap();
     renderSummary();
-    renderTroubleshootingCoach();
     return;
   }
 
@@ -290,7 +281,6 @@ async function loadBootstrap() {
 
   renderBootstrap();
   renderSummary();
-  renderTroubleshootingCoach();
 }
 
 async function loadServerBootstrap() {
@@ -331,7 +321,6 @@ async function selectGameDirectory() {
     if (state.bootstrap?.ok === false) {
       renderBootstrap();
       renderSummary();
-      renderTroubleshootingCoach();
       return;
     }
 
@@ -343,7 +332,7 @@ async function selectGameDirectory() {
       error: error instanceof Error ? error.message : String(error),
     };
     renderBootstrap();
-    renderTroubleshootingCoach();
+    renderSummary();
   } finally {
     elements.selectGameDirectory.disabled = false;
   }
@@ -372,7 +361,6 @@ async function setModProfile(profile) {
     if (state.bootstrap?.ok === false) {
       renderBootstrap();
       renderSummary();
-      renderTroubleshootingCoach();
       return;
     }
 
@@ -385,9 +373,37 @@ async function setModProfile(profile) {
     };
     renderBootstrap();
     renderSummary();
-    renderTroubleshootingCoach();
   } finally {
     elements.desktopModProfileSelect.disabled = false;
+  }
+}
+
+async function setDeveloperMode(enabled) {
+  if (!window.stfcDesktop?.setDeveloperMode) {
+    return;
+  }
+
+  elements.desktopDeveloperMode.disabled = true;
+  elements.desktopBootstrapState.textContent = "Switching mode...";
+  try {
+    state.bootstrap = await window.stfcDesktop.setDeveloperMode(Boolean(enabled));
+    if (state.bootstrap?.ok === false) {
+      renderBootstrap();
+      renderSummary();
+      return;
+    }
+
+    await loadSettings();
+    await loadBootstrap();
+  } catch (error) {
+    state.bootstrap = {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+    renderBootstrap();
+    renderSummary();
+  } finally {
+    elements.desktopDeveloperMode.disabled = false;
   }
 }
 
@@ -398,27 +414,27 @@ function renderBootstrap() {
 
   const bootstrap = state.bootstrap;
   elements.desktopBootstrap.hidden = !window.stfcDesktop;
+  elements.desktopBootstrapUnavailable.hidden = Boolean(window.stfcDesktop);
   if (!window.stfcDesktop) {
-    elements.gameDirectory.textContent = gameDirectoryFromSettingsPath(state.snapshot?.settingsPath) || "Unknown";
+    elements.desktopBootstrapState.textContent = "Browser view: native setup controls are inactive.";
     return;
   }
 
-  const gameDirectory = bootstrap?.gameDirectory || "Not selected";
+  const gameDirectory = bootstrap?.gameDirectory || "Select STFC directory";
   const modProfile = bootstrap?.modProfile ?? state.snapshot?.modProfile ?? state.snapshot?.profile ?? "netniv-basic";
   elements.desktopGameDirectory.textContent = gameDirectory;
-  elements.desktopFeedPath.textContent = bootstrap?.feedPath || "Unknown";
-  elements.desktopModProfile.textContent = modProfileLabel(modProfile);
-  elements.desktopCommunityModInstall.textContent = communityModInstallLabel(bootstrap?.communityModInstall);
   elements.desktopModProfileSelect.value = normalizeModProfile(modProfile);
+  elements.desktopDeveloperMode.checked = Boolean(bootstrap?.developerMode);
   elements.openGameDirectory.disabled = !bootstrap?.gameDirectorySelected;
+  elements.selectGameDirectory.textContent = bootstrap?.gameDirectorySelected ? "Change STFC Game Directory" : "Select STFC Game Directory";
   if (bootstrap?.error) {
     elements.desktopBootstrapState.textContent = `${bootstrap.securityMotto ?? "Security"}: ${bootstrap.error}`;
   } else if (bootstrap?.gameDirectorySelected) {
-    elements.desktopBootstrapState.textContent = bootstrap.healthOk ? "Connected" : "Selected";
+    elements.desktopBootstrapState.textContent = bootstrap.healthOk ? "Companion connected." : "STFC directory selected.";
   } else {
     elements.desktopBootstrapState.textContent = bootstrap?.requiredExecutable
       ? `${bootstrap.securityMotto}: select a directory containing ${bootstrap.requiredExecutable}`
-      : "Default path";
+      : "Select STFC directory";
   }
 }
 
@@ -437,7 +453,7 @@ function renderGroupFilter() {
 function renderHardSettings() {
   elements.hardSettings.innerHTML = state.snapshot.hardSettings.map((setting) => {
     const value = state.draftHardSettings.get(setting.id);
-    const marker = value === setting.value ? "" : `<span class="settings-chip settings-chip--changed">Changed</span>`;
+    const marker = value === setting.value ? "" : changedBadge(`data-revert-hard-setting="${escapeHtml(setting.id)}"`, `Revert ${setting.label}`);
     const control = setting.type === "boolean"
       ? `<label class="settings-toggle"><input type="checkbox" data-hard-setting="${escapeHtml(setting.id)}"${value ? " checked" : ""} /><span>${escapeHtml(setting.label)}</span></label>`
       : `<label class="control"><span>${escapeHtml(setting.label)}</span><input type="number" min="${setting.min ?? 0}" max="${setting.max ?? 9999}" step="${setting.step ?? 1}" value="${escapeHtml(value)}" data-hard-setting="${escapeHtml(setting.id)}" /></label>`;
@@ -467,7 +483,7 @@ function renderDiagnostics() {
 
   elements.diagnosticSettings.innerHTML = snapshot.settings.map((setting) => {
     const value = state.draftDiagnostics.get(setting.id);
-    const marker = value === setting.value ? "" : `<span class="settings-chip settings-chip--changed">Changed</span>`;
+    const marker = value === setting.value ? "" : changedBadge(`data-revert-diagnostic-setting="${escapeHtml(setting.id)}"`, `Revert ${setting.label}`);
     const issues = setting.issues
       .map((issue) => `<span class="settings-chip settings-chip--${escapeHtml(issue.severity)}">${escapeHtml(issue.message)}</span>`)
       .join("");
@@ -507,7 +523,10 @@ function renderNotifications() {
   }
 
   if (snapshot.events.length === 0) {
-    elements.notificationSettings.hidden = true;
+    elements.notificationSettings.hidden = false;
+    elements.notificationMaster.innerHTML = "";
+    elements.notificationPreviewState.hidden = true;
+    elements.notificationRows.innerHTML = `<div class="empty-state notification-empty">Notification settings are not available for the current profile.</div>`;
     return;
   }
 
@@ -531,7 +550,7 @@ function renderNotifications() {
         ${snapshot.soundCatalog.map((sound) => `<option value="${escapeHtml(sound.id)}"${sound.id === master.defaultSound ? " selected" : ""}>${escapeHtml(sound.label)}</option>`).join("")}
       </select>
     </label>` : ""}
-    ${notificationMasterChangeCount() > 0 ? `<span class="settings-chip settings-chip--changed">Changed</span>` : ""}
+    ${notificationMasterChangeCount() > 0 ? changedBadge("data-revert-notification-master", "Revert notification defaults") : ""}
   `;
 
   if (!master.systemEnabled && !master.audioEnabled) {
@@ -584,7 +603,7 @@ function renderNotificationRow(item, master) {
       <div class="notification-row__actions">
         ${audioActive ? `<button type="button" data-notification-test="${escapeHtml(item.id)}">Play</button>` : ""}
         <span class="settings-chip settings-chip--info">${escapeHtml(source)}</span>
-        ${changed ? `<span class="settings-chip settings-chip--changed">Changed</span>` : ""}
+        ${changed ? changedBadge(`data-revert-notification-event="${escapeHtml(item.id)}"`, `Revert ${item.label}`) : ""}
         ${issues}
       </div>
     </article>
@@ -625,50 +644,7 @@ function renderHotkeys() {
   `).join("") || `<div class="empty-state">No hotkeys match the current filters.</div>`;
 
   renderSummary();
-  renderTroubleshootingCoach();
   renderSaveState();
-}
-
-function renderTroubleshootingCoach() {
-  elements.settingsCoachSummary.textContent = buildSettingsTroubleshootingSummary({
-    ...settingsTroubleshootingInput(),
-    changeCount: countChanges(),
-  });
-}
-
-function previewSettingsPrompt() {
-  const prompt = buildSettingsTroubleshootingPrompt(settingsTroubleshootingInput());
-  elements.settingsPromptPreview.textContent = prompt;
-  elements.settingsPromptPreview.hidden = false;
-  setCoachState("Preview ready");
-}
-
-async function copySettingsPrompt() {
-  const prompt = buildSettingsTroubleshootingPrompt(settingsTroubleshootingInput());
-  elements.settingsPromptPreview.textContent = prompt;
-  elements.settingsPromptPreview.hidden = false;
-  setCoachState("Copying prompt...");
-
-  try {
-    await navigator.clipboard.writeText(prompt);
-    setCoachState("Prompt copied");
-  } catch (error) {
-    setCoachState(error instanceof Error ? error.message : String(error));
-  }
-}
-
-function setCoachState(message) {
-  elements.settingsCoachState.textContent = message;
-}
-
-function settingsTroubleshootingInput() {
-  return {
-    snapshot: state.snapshot,
-    bootstrap: state.bootstrap,
-    draftBindings: state.draftBindings,
-    draftHardSettings: state.draftHardSettings,
-    conflicts: state.snapshot ? buildDraftConflicts() : [],
-  };
 }
 
 function renderConflicts(conflicts) {
@@ -715,9 +691,6 @@ function renderHotkeyAction(action) {
     : bindings.length === 1
       ? `<button type="button" data-command="change" data-action-id="${escapeHtml(action.id)}">Change</button>`
       : `<button type="button" data-command="capture" data-action-id="${escapeHtml(action.id)}">Add</button>`;
-  const resetButton = changed
-    ? `<button type="button" data-command="reset" data-action-id="${escapeHtml(action.id)}">Reset</button>`
-    : "";
   const atDefault = action.defaultBindings.length > 0
     && formatBindings(bindings) === formatBindings([...action.defaultBindings]);
   const defaultButton = action.defaultBindings.length > 0 && !atDefault
@@ -732,12 +705,11 @@ function renderHotkeyAction(action) {
           <p>${escapeHtml(action.id)}</p>
         </div>
         <div class="binding-row">${bindingMarkup}</div>
-        <div class="hotkey-issues">${changed ? `<span class="settings-chip settings-chip--changed">Changed</span>` : ""}${issueMarkup}${conflictMarkup}</div>
+        <div class="hotkey-issues">${changed ? changedBadge(`data-command="reset" data-action-id="${escapeHtml(action.id)}"`, `Revert ${action.label}`) : ""}${issueMarkup}${conflictMarkup}</div>
       </div>
       <div class="hotkey-row__controls">
         ${addChangeButton}
         <button type="button" data-command="off" data-action-id="${escapeHtml(action.id)}">${escapeHtml(unboundLabel)}</button>
-        ${resetButton}
         ${defaultButton}
       </div>
     </article>
@@ -760,7 +732,24 @@ function onHardSettingChange(event) {
   markDirty();
   renderHardSettings();
   renderSummary();
-  renderTroubleshootingCoach();
+  renderSaveState();
+}
+
+function onHardSettingClick(event) {
+  const button = event.target.closest("[data-revert-hard-setting]");
+  if (!button) {
+    return;
+  }
+
+  const setting = state.snapshot.hardSettings.find((item) => item.id === button.dataset.revertHardSetting);
+  if (!setting) {
+    return;
+  }
+
+  state.draftHardSettings.set(setting.id, setting.value);
+  markDirty();
+  renderHardSettings();
+  renderSummary();
   renderSaveState();
 }
 
@@ -780,7 +769,24 @@ function onDiagnosticSettingChange(event) {
   markDirty();
   renderDiagnostics();
   renderSummary();
-  renderTroubleshootingCoach();
+  renderSaveState();
+}
+
+function onDiagnosticSettingClick(event) {
+  const button = event.target.closest("[data-revert-diagnostic-setting]");
+  if (!button || !state.diagnosticSnapshot) {
+    return;
+  }
+
+  const setting = state.diagnosticSnapshot.settings.find((item) => item.id === button.dataset.revertDiagnosticSetting);
+  if (!setting) {
+    return;
+  }
+
+  state.draftDiagnostics.set(setting.id, setting.value);
+  markDirty();
+  renderDiagnostics();
+  renderSummary();
   renderSaveState();
 }
 
@@ -792,7 +798,6 @@ function onNotificationChange(event) {
     markDirty();
     renderNotifications();
     renderSummary();
-    renderTroubleshootingCoach();
     renderSaveState();
     return;
   }
@@ -814,11 +819,37 @@ function onNotificationChange(event) {
   markDirty();
   renderNotifications();
   renderSummary();
-  renderTroubleshootingCoach();
   renderSaveState();
 }
 
 async function onNotificationClick(event) {
+  const masterRevert = event.target.closest("[data-revert-notification-master]");
+  if (masterRevert && state.notificationSnapshot) {
+    state.draftNotificationMaster = { ...state.notificationSnapshot.master };
+    markDirty();
+    renderNotifications();
+    renderSummary();
+    renderSaveState();
+    return;
+  }
+
+  const eventRevert = event.target.closest("[data-revert-notification-event]");
+  if (eventRevert && state.notificationSnapshot) {
+    const item = state.notificationSnapshot.events.find((entry) => entry.id === eventRevert.dataset.revertNotificationEvent);
+    if (item) {
+      state.draftNotificationEvents.set(item.id, {
+        system: item.system,
+        audio: item.audio,
+        sound: item.sound,
+      });
+      markDirty();
+      renderNotifications();
+      renderSummary();
+      renderSaveState();
+    }
+    return;
+  }
+
   const button = event.target.closest("button[data-notification-test]");
   if (!button) {
     return;
@@ -878,7 +909,6 @@ function onHotkeyClick(event) {
   markDirty();
   renderHotkeys();
   renderSummary();
-  renderTroubleshootingCoach();
   renderSaveState();
 }
 
@@ -1002,7 +1032,6 @@ function addBinding(actionId, binding) {
   markDirty();
   renderHotkeys();
   renderSummary();
-  renderTroubleshootingCoach();
   renderSaveState();
   return true;
 }
@@ -1281,6 +1310,8 @@ function markDirty() {
 function renderSaveState() {
   const requiresToken = snapshotRequiresSaveToken(state.snapshot);
   const saveSupported = state.snapshot?.saveSupported !== false;
+  const changeCount = countChanges();
+  state.dirty = changeCount > 0;
   const canSave = state.snapshot && saveSupported && state.dirty && !state.saving && (!requiresToken || elements.settingsToken.value.trim().length > 0);
   if (elements.settingsTokenControl) {
     elements.settingsTokenControl.hidden = !requiresToken;
@@ -1289,7 +1320,17 @@ function renderSaveState() {
     elements.settingsToken.value = "";
   }
   elements.saveSettings.disabled = !canSave;
-  elements.saveSettings.textContent = state.saving ? "Saving..." : saveSupported ? "Save for next launch" : "Select game directory";
+  elements.saveSettings.textContent = state.saving ? "Saving..." : saveSupported ? "Save" : "Select folder";
+  elements.reloadSettings.textContent = state.dirty ? "Discard" : "Reload";
+  elements.reloadSettings.title = state.dirty ? "Discard unsaved changes and reload from disk" : "Reload settings from disk";
+  if (elements.settingsSaveStrip) {
+    elements.settingsSaveStrip.dataset.dirty = String(state.dirty);
+  }
+  if (elements.settingsChangeState) {
+    elements.settingsChangeState.textContent = state.dirty
+      ? `${changeCount} unsaved change${changeCount === 1 ? "" : "s"}`
+      : "No unsaved changes";
+  }
 }
 
 function snapshotRequiresSaveToken(snapshot) {
@@ -1305,21 +1346,15 @@ function snapshotRequiresSaveToken(snapshot) {
 }
 
 function setStatus(text) {
-  elements.settingsState.textContent = text;
+  elements.settingsStatusMessage.textContent = text;
+}
+
+function changedBadge(buttonAttributes, label) {
+  return `<span class="settings-chip settings-chip--changed"><span>Changed</span><button class="settings-chip__action" type="button" ${buttonAttributes} aria-label="${escapeHtml(label)}">Revert</button></span>`;
 }
 
 function modeLabel(developerMode) {
   return developerMode ? "Developer Tools" : "Standard Companion";
-}
-
-function gameDirectoryFromSettingsPath(settingsPath) {
-  if (!settingsPath) {
-    return "";
-  }
-
-  const normalized = String(settingsPath).replaceAll("\\", "/");
-  const index = normalized.lastIndexOf("/");
-  return index >= 0 ? settingsPath.slice(0, index) : "";
 }
 
 function cssEscape(value) {

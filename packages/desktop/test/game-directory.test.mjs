@@ -8,6 +8,8 @@ import {
     STFC_GAME_EXECUTABLE,
     STFC_GAME_REQUIRED_DIRECTORIES,
     STFC_GAME_REQUIRED_FILES,
+    defaultStfcGameDirectoryCandidates,
+    detectDefaultStfcGameDirectory,
     validateStfcGameDirectory,
 } from "../src/game-directory.mjs";
 
@@ -61,6 +63,36 @@ describe("validateStfcGameDirectory", () => {
 
         expect(result.ok).toBe(false);
         expect(result.code).toBe("relative_path");
+    });
+
+    test("builds default candidates with explicit env override first", () => {
+        const env = {
+            STFC_SIDECAR_GAME_DIR: path.join(os.tmpdir(), "stfc-explicit"),
+            SystemDrive: "C:",
+            ProgramFiles: "C:\\Program Files",
+            "ProgramFiles(x86)": "C:\\Program Files (x86)",
+        };
+
+        const candidates = defaultStfcGameDirectoryCandidates(env);
+
+        expect(candidates[0]).toBe(path.resolve(env.STFC_SIDECAR_GAME_DIR));
+        expect(candidates).toContain(path.resolve("C:\\Games\\Star Trek Fleet Command\\default\\game"));
+    });
+
+    test("detects a validated environment game directory", async () => {
+        const gameDirectory = await makeTempGameDirectory();
+        await fs.writeFile(path.join(gameDirectory, STFC_GAME_EXECUTABLE), "");
+
+        const result = await detectDefaultStfcGameDirectory({
+            env: {
+                STFC_SIDECAR_GAME_DIR: gameDirectory,
+                SystemDrive: "Z:",
+            },
+        });
+
+        expect(result.ok).toBe(true);
+        expect(result.gameDirectory).toBe(await fs.realpath(gameDirectory));
+        expect(result.detected).toBe(true);
     });
 });
 

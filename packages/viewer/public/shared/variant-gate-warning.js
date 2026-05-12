@@ -29,12 +29,11 @@ export function variantGateWarningViewModel(variantGate) {
             title: "Installed DLL needs review",
             summary: `The Companion cannot identify the installed version.dll. Runtime features stay blocked until it is replaced or recognized.`,
             details: [
-                `Selected profile: ${selectedProfile}`,
                 `Installed DLL: ${installedProfile} (${installedState})`,
                 ...reasons,
             ],
-            fixLabel: "Open Settings",
-            fixHref: "/settings/",
+            fixLabel: "Open General",
+            fixHref: "/settings/#general",
         };
     }
 
@@ -46,8 +45,8 @@ export function variantGateWarningViewModel(variantGate) {
             `Installed DLL: ${installedProfile} (${installedState})`,
             ...reasons,
         ],
-        fixLabel: "Open Settings",
-        fixHref: "/settings/",
+        fixLabel: "Open General",
+        fixHref: "/settings/#general",
     };
 }
 
@@ -61,11 +60,13 @@ function battleLogReasons(variantGate) {
 function friendlyGateReason(reason) {
     switch (reason) {
         case "selected_profile_netniv-basic_does_not_support_battleLog":
-            return "Official Basic selection does not include Battle Log.";
-        case "selected_profile_guff-advanced_does_not_support_battleLog":
+            return "Basic selection does not include Battle Log.";
+        case "selected_profile_waffle-basic_does_not_support_battleLog":
+            return "Waffle Basic selection does not include Battle Log.";
+        case "selected_profile_waffle-advanced_does_not_support_battleLog":
             return "Selected profile does not include Battle Log.";
         case "installed_profile_netniv-basic_does_not_support_battleLog":
-            return "Installed Official Basic DLL does not include Battle Log.";
+            return "Installed Basic DLL does not include Battle Log.";
         case "installed_dll_unknown":
             return "Installed DLL is unknown.";
         case "installed_dll_missing":
@@ -77,11 +78,15 @@ function friendlyGateReason(reason) {
 
 function profileLabel(profile) {
     if (profile === "netniv-basic") {
-        return "Official Basic";
+        return "Basic";
     }
 
-    if (profile === "guff-advanced") {
-        return "Guff Advanced";
+    if (profile === "waffle-basic") {
+        return "Waffle Basic";
+    }
+
+    if (profile === "waffle-advanced" || profile === "guff-advanced") {
+        return "Waffle Advanced";
     }
 
     if (profile === "none") {

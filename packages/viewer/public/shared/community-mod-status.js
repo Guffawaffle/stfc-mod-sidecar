@@ -8,7 +8,7 @@ export function communityModInstallLabel(install) {
     }
 
     if (install.state === "unselected") {
-        return "Directory not selected";
+        return "Select STFC directory";
     }
 
     if (install.state === "unsupported_platform") {
@@ -21,11 +21,15 @@ export function communityModInstallLabel(install) {
 
     if (install.state === "installed") {
         if (install.classification === "netniv-basic") {
-            return "Official Basic installed";
+            return "Basic installed";
         }
 
-        if (install.classification === "guff-advanced") {
-            return "Guff Advanced installed";
+        if (normalizeModProfile(install.classification) === "waffle-basic") {
+            return "Waffle Basic installed";
+        }
+
+        if (normalizeModProfile(install.classification) === "waffle-advanced") {
+            return "Waffle Advanced installed";
         }
 
         return "Unknown version.dll installed";
@@ -79,6 +83,20 @@ export function communityModInstallSummary(install) {
     }
 
     return parts.length > 0 ? parts.join(" | ") : communityModInstallLabel(install);
+}
+
+export function communityModProfileCapabilitySummary(install, selectedProfile, capabilities = {}) {
+    if (!install || install.state !== "installed") {
+        return "";
+    }
+
+    const installedProfile = normalizeModProfile(install.classification);
+    const activeProfile = normalizeModProfile(selectedProfile);
+    if (installedProfile === "waffle-advanced" && activeProfile === "waffle-basic" && capabilities.battleLog !== true) {
+        return "Selected Waffle Basic keeps Battle Log and Workbench hidden; choose Waffle Advanced in Settings to enable them.";
+    }
+
+    return "";
 }
 
 export function communityModInstallTone(install) {
@@ -604,14 +622,27 @@ export function communityModUninstallExecutionRecoverySummary(execution) {
 }
 
 export function modProfileLabel(profile) {
-    return normalizeModProfile(profile) === "netniv-basic" ? "Official Basic" : "Guff Advanced";
+    switch (normalizeModProfile(profile)) {
+        case "waffle-basic":
+            return "Waffle Basic";
+        case "waffle-advanced":
+            return "Waffle Advanced";
+        default:
+            return "Basic";
+    }
 }
 
 export function normalizeModProfile(profile) {
     const normalized = String(profile ?? "").toLowerCase();
-    return ["guff-advanced", "guff", "advanced", "alpha", "advanced-alpha", "rc", "release-candidate"].includes(normalized)
-        ? "guff-advanced"
-        : "netniv-basic";
+    if (["waffle-basic", "waffle", "waffle-notifications", "guff-basic"].includes(normalized)) {
+        return "waffle-basic";
+    }
+
+    if (["waffle-advanced", "waffle-dev", "guff-advanced", "guff", "advanced", "alpha", "advanced-alpha", "rc", "release-candidate"].includes(normalized)) {
+        return "waffle-advanced";
+    }
+
+    return "netniv-basic";
 }
 
 function settingsRetentionSummary(settings) {

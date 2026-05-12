@@ -20,7 +20,7 @@ default_sound = "soft"
 [notifications.events.fleet]
 arrived_in_system = { system = false, audio = true, sound = "arrival" }
 repair_complete = { system = true, audio = true, sound = "repair" }
-`, { profile: "guff-advanced" });
+`, { profile: "waffle-advanced" });
 
     const arrival = snapshot.events.find((event) => event.id === "fleet.arrived_in_system");
     const repair = snapshot.events.find((event) => event.id === "fleet.repair_complete");
@@ -35,7 +35,7 @@ repair_complete = { system = true, audio = true, sound = "repair" }
     expect(repair?.sound).toBe("repair");
   });
 
-  it("filters notification rows out of the official basic profile", () => {
+  it("filters notification rows out of the Basic profile", () => {
     const snapshot = buildCommunityModNotificationSettingsSnapshot("", { profile: "netniv-basic" });
     expect(snapshot.events).toEqual([]);
   });
@@ -46,7 +46,7 @@ repair_complete = { system = true, audio = true, sound = "repair" }
       events: {
         "fleet.arrived_in_system": { system: false, audio: true, sound: "arrival" },
       },
-    }, { profile: "guff-advanced" });
+    }, { profile: "waffle-advanced" });
 
     expect(patch.master).toEqual({ systemEnabled: true, audioEnabled: true, defaultSound: "soft" });
     expect(patch.events).toContainEqual({
@@ -62,11 +62,11 @@ repair_complete = { system = true, audio = true, sound = "repair" }
   it("rejects unknown notification rows and sounds", () => {
     expect(() => normalizeNotificationSettingsPatch({
       events: { "fleet.nope": { system: true, audio: false, sound: "soft" } },
-    }, { profile: "guff-advanced" })).toThrow(/Unknown notification event/);
+    }, { profile: "waffle-advanced" })).toThrow(/Unknown notification event/);
 
     expect(() => normalizeNotificationSettingsPatch({
       events: { "fleet.arrived_in_system": { system: true, audio: true, sound: "klaxon" } },
-    }, { profile: "guff-advanced" })).toThrow(/must be one of/);
+    }, { profile: "waffle-advanced" })).toThrow(/must be one of/);
   });
 
   it("writes compact inline TOML tables without deleting comments", () => {
@@ -85,7 +85,7 @@ arrived_in_system = { system = true, audio = false, sound = "soft" }
         "fleet.arrived_in_system": { system: false, audio: true, sound: "arrival" },
         "fleet.repair_complete": { system: true, audio: true, sound: "repair" },
       },
-    }, { profile: "guff-advanced" });
+    }, { profile: "waffle-advanced" });
 
     expect(updated).toContain("# keep me");
     expect(updated).toContain("# existing row comment");

@@ -6,6 +6,44 @@ export const STFC_GAME_REQUIRED_FILES = Object.freeze(["GameAssembly.dll", "Unit
 export const STFC_GAME_REQUIRED_DIRECTORIES = Object.freeze(["prime_Data"]);
 export const SECURITY_MOTTO = "Security is Paramount";
 
+export async function detectDefaultStfcGameDirectory(options = {}) {
+    const envGameDirectory = options.env?.STFC_SIDECAR_GAME_DIR ? path.resolve(options.env.STFC_SIDECAR_GAME_DIR) : "";
+    for (const candidate of defaultStfcGameDirectoryCandidates(options.env ?? process.env)) {
+        const validation = await validateStfcGameDirectory(candidate);
+        if (validation.ok) {
+            return {
+                ...validation,
+                detected: true,
+                source: candidate === envGameDirectory ? "environment" : "default_path",
+            };
+        }
+    }
+
+    return null;
+}
+
+export function defaultStfcGameDirectoryCandidates(env = process.env) {
+    const candidates = [];
+    const add = (candidate) => {
+        if (typeof candidate === "string" && candidate.trim()) {
+            candidates.push(candidate.trim());
+        }
+    };
+
+    add(env.STFC_SIDECAR_GAME_DIR);
+
+    const systemDrive = typeof env.SystemDrive === "string" && env.SystemDrive.trim()
+        ? env.SystemDrive.trim()
+        : process.platform === "win32"
+            ? "C:"
+            : "";
+    add(systemDrive ? path.join(systemDrive, "Games", "Star Trek Fleet Command", "default", "game") : "");
+    add(env.ProgramFiles ? path.join(env.ProgramFiles, "Star Trek Fleet Command", "default", "game") : "");
+    add(env["ProgramFiles(x86)"] ? path.join(env["ProgramFiles(x86)"], "Star Trek Fleet Command", "default", "game") : "");
+
+    return [...new Set(candidates.map((candidate) => path.resolve(candidate)))];
+}
+
 export async function validateStfcGameDirectory(candidatePath) {
     const candidate = typeof candidatePath === "string" ? candidatePath.trim() : "";
     if (!candidate) {
