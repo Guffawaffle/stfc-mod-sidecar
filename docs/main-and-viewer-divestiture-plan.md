@@ -15,9 +15,11 @@ This is a modularization plan for shrinking the largest Companion entrypoints wi
 - Current `packages/viewer/server/static-files.mjs` role: public asset path resolution, static content types, file sends, JSON sends, and text sends.
 - Completed: Viewer Slice 2 extracted health and shutdown routes to `packages/viewer/server/routes/health-routes.mjs`.
 - Current `packages/viewer/server/routes/health-routes.mjs` role: `/api/health` payload construction and `/api/admin/shutdown` method/token/auth handling.
-- Last validation run after Viewer Slice 2: `node --check packages/viewer/server.mjs`, `node --check packages/viewer/server/static-files.mjs`, `node --check packages/viewer/server/routes/health-routes.mjs`, `npm test --workspace @stfc-mod-sidecar/desktop`, `npm run ax -- check`, and `git diff --check`.
+- Completed: Viewer Slice 3 extracted settings route dispatch to `packages/viewer/server/routes/settings-routes.mjs`.
+- Current `packages/viewer/server/routes/settings-routes.mjs` role: `/api/settings/hotkeys`, `/api/settings/notifications`, and `/api/settings/diagnostics` method dispatch and Developer Tools gating.
+- Last validation run after Viewer Slice 3: `node --check packages/viewer/server.mjs`, `node --check packages/viewer/server/static-files.mjs`, `node --check packages/viewer/server/routes/health-routes.mjs`, `node --check packages/viewer/server/routes/settings-routes.mjs`, `npm test --workspace @stfc-mod-sidecar/desktop`, `npm run ax -- check`, and `git diff --check`.
 - Manual smoke not run yet: `npm run desktop:dev`.
-- Next recommended slice: extract settings routes behind `packages/viewer/server/routes/settings-routes.mjs`.
+- Next recommended slice: extract mod install route dispatch behind `packages/viewer/server/routes/mod-install-routes.mjs`.
 - Still recommended before release: run manual `npm run desktop:dev` smoke.
 
 ## Current Monoliths
@@ -89,11 +91,11 @@ Plan a separate PR for `packages/viewer/server.mjs` now that desktop `main.mjs` 
    Move `/api/health` response construction and `/api/admin/shutdown` handling behind `health-routes.mjs`. Keep shutdown token auth, desktop capability fields, release payload, mode fields, and game/settings/feed path fields unchanged.
    Validation: add or extend route-level tests if a harness exists; otherwise run full desktop tests and `npm run ax -- check`.
 
-3. Next: settings routes:
+3. Done: settings routes:
    Move `/api/settings/hotkeys`, `/api/settings/notifications`, and `/api/settings/diagnostics`. Keep Developer Tools gating for diagnostics, settings-token requirements, save modes, payload parsing limits, and TOML patch behavior unchanged.
    Validation: existing settings tests plus `npm run ax -- check`.
 
-4. Mod install routes:
+4. Next: mod install routes:
    Move `/api/mod/release-catalog`, `/api/mod/install-plan`, `/api/mod/verify-artifact`, `/api/mod/install-preflight`, `/api/mod/install-confirmation`, and `/api/mod/install-execution`. Keep GitHub network consent, mod bearer token auth, operation locks, selected profile normalization, artifact cache path, and all confirmation/execution semantics unchanged.
    Validation: existing install/release/artifact tests plus `npm run ax -- check`.
 

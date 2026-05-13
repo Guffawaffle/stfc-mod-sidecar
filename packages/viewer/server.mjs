@@ -53,6 +53,7 @@ import {
 } from "./community-mod-uninstall-execution.mjs";
 import { installBoundedConsoleLogSync } from "./bounded-log-file.mjs";
 import { handleHealthRoutes } from "./server/routes/health-routes.mjs";
+import { handleSettingsRoutes } from "./server/routes/settings-routes.mjs";
 import { resolvePublicAsset, sendFile, sendJson, sendText } from "./server/static-files.mjs";
 
 const DEFAULT_GAME_DIR = "C:\\Games\\Star Trek Fleet Command\\default\\game";
@@ -209,44 +210,17 @@ const server = createServer(async (request, response) => {
         return sendJson(response, 405, { ok: false, error: "Method not allowed" });
     }
 
-    if (requestUrl.pathname === "/api/settings/hotkeys") {
-        if (request.method === "GET") {
-            return sendJson(response, 200, await readHotkeySettingsSnapshot());
-        }
-
-        if (request.method === "PUT" || request.method === "PATCH" || request.method === "POST") {
-            return handleHotkeySettingsUpdate(request, response);
-        }
-
-        return sendJson(response, 405, { ok: false, error: "Method not allowed" });
-    }
-
-    if (requestUrl.pathname === "/api/settings/notifications") {
-        if (request.method === "GET") {
-            return sendJson(response, 200, await readNotificationSettingsSnapshot());
-        }
-
-        if (request.method === "PUT" || request.method === "PATCH" || request.method === "POST") {
-            return handleNotificationSettingsUpdate(request, response);
-        }
-
-        return sendJson(response, 405, { ok: false, error: "Method not allowed" });
-    }
-
-    if (requestUrl.pathname === "/api/settings/diagnostics") {
-        if (!developerMode) {
-            return sendJson(response, 403, developerModeRequiredPayload());
-        }
-
-        if (request.method === "GET") {
-            return sendJson(response, 200, await readDiagnosticSettingsSnapshot());
-        }
-
-        if (request.method === "PUT" || request.method === "PATCH" || request.method === "POST") {
-            return handleDiagnosticSettingsUpdate(request, response);
-        }
-
-        return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+    if (await handleSettingsRoutes(request, response, requestUrl, {
+        developerMode,
+        developerModeRequiredPayload,
+        handleDiagnosticSettingsUpdate,
+        handleHotkeySettingsUpdate,
+        handleNotificationSettingsUpdate,
+        readDiagnosticSettingsSnapshot,
+        readHotkeySettingsSnapshot,
+        readNotificationSettingsSnapshot,
+    })) {
+        return;
     }
 
     if (requestUrl.pathname === "/api/diagnostics/bundle") {
