@@ -1,4 +1,5 @@
 import { normalizeCommunityModReleaseProfile } from "./community-mod-release-catalog.mjs";
+import { profileFamiliesMatch } from "./community-mod-profiles.mjs";
 import {
     buildCommunityModInstallPlatformCapability,
     platformUnsupportedInstallSummary,
@@ -101,7 +102,7 @@ export function buildCommunityModInstallPlan(options = {}) {
         });
     }
 
-    if (install.classification !== profile) {
+    if (install.classification !== profile && !profileFamiliesMatch(install.classification, profile)) {
         return installPlanResult(base, {
             status: "profile_mismatch",
             action: "replace_profile",

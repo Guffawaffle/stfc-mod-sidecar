@@ -70,12 +70,12 @@ describe("Community Mod install plan", () => {
         });
     });
 
-    test("plans a Guff Advanced install from a supported Guffawaffle release", () => {
+    test("plans a Waffle Advanced install from a supported Guffawaffle release", () => {
         const plan = buildCommunityModInstallPlan({
-            profile: "guff-advanced",
+            profile: "waffle-advanced",
             install: install({ state: "none", classification: "none" }),
             catalog: readyCatalog({
-                profile: "guff-advanced",
+                profile: "waffle-advanced",
                 distribution: "advanced-alpha",
                 repository: "Guffawaffle/stfc-mod",
                 release: { tagName: "v1.0.0-guffa.9", version: "1.0.0-guffa.9" },
@@ -86,7 +86,7 @@ describe("Community Mod install plan", () => {
         expect(plan).toMatchObject({
             status: "install_available",
             action: "install",
-            profile: "guff-advanced",
+            profile: "waffle-advanced",
             target: {
                 repository: "Guffawaffle/stfc-mod",
                 tag: "v1.0.0-guffa.9",

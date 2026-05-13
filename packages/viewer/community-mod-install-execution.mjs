@@ -576,7 +576,15 @@ function buildInstallManifest({ confirmation, target, backupCreated, backupSha25
 }
 
 function distributionFromProfile(profile) {
-    return profile === "guff-advanced" ? "advanced-alpha" : "official-basic";
+    if (profile === "waffle-basic") {
+        return "waffle-basic";
+    }
+
+    if (["waffle-advanced", "guff-advanced"].includes(profile)) {
+        return "advanced-alpha";
+    }
+
+    return "official-basic";
 }
 
 function executionStatus(action) {

@@ -12,7 +12,8 @@ import {
     isDirectChildPath,
 } from "./companion-uninstall.mjs";
 import { DEFAULT_MOD_PROFILE, initialDeveloperModeFromSources, normalizeDesktopSettings, normalizeModProfile } from "./desktop-settings.mjs";
-import { SECURITY_MOTTO, STFC_GAME_EXECUTABLE, validateStfcGameDirectory } from "./game-directory.mjs";
+import { SECURITY_MOTTO, STFC_GAME_EXECUTABLE, detectDefaultStfcGameDirectory, validateStfcGameDirectory } from "./game-directory.mjs";
+import { appendBoundedLogLineSync } from "../../viewer/bounded-log-file.mjs";
 import { buildReleaseInfo } from "../../viewer/release-info.mjs";
 
 const DEFAULT_PORT = 43127;
@@ -112,16 +113,26 @@ function createMainWindow(url) {
 }
 
 async function ensureSidecarServer() {
-    const port = Number.parseInt(process.env.STFC_SIDECAR_PORT ?? String(DEFAULT_PORT), 10);
-    const url = `http://127.0.0.1:${Number.isFinite(port) ? port : DEFAULT_PORT}`;
+    const requestedPort = Number.parseInt(process.env.STFC_SIDECAR_PORT ?? String(DEFAULT_PORT), 10);
+    const firstPort = Number.isFinite(requestedPort) ? requestedPort : DEFAULT_PORT;
 
-    const existing = await fetchHealth(url, 800);
-    if (existing?.ok) {
-        writeLog("log", `[sidecar-desktop] using existing sidecar server at ${url}`);
-        return { url, owned: false };
+    for (let offset = 0; offset < 10; offset += 1) {
+        const port = firstPort + offset;
+        const url = `http://127.0.0.1:${port}`;
+        const existing = await fetchHealth(url, 800);
+        if (!existing?.ok) {
+            return startSidecarServer(url);
+        }
+
+        if (existing.desktop === true) {
+            writeLog("log", `[sidecar-desktop] using existing desktop sidecar server at ${url}`);
+            return { url, owned: false };
+        }
+
+        writeLog("warn", `[sidecar-desktop] port ${port} already has a browser-mode sidecar server; trying next port`);
     }
 
-    return startSidecarServer(url);
+    throw new Error(`No available sidecar port near ${firstPort}; stop browser-mode viewer servers or set STFC_SIDECAR_PORT.`);
 }
 
 async function startSidecarServer(url) {
@@ -276,7 +287,7 @@ function writeLog(level, message) {
     }
 
     try {
-        fs.appendFileSync(logPath, line, "utf8");
+        appendBoundedLogLineSync(logPath, line);
     } catch {
         // Logging must never prevent the companion app from starting.
     }
@@ -353,6 +364,10 @@ function registerDesktopIpc() {
         desktopSettings = {
             ...desktopSettings,
             gameDirectory: validation.gameDirectory,
+            profileGameDirectories: {
+                ...desktopSettings.profileGameDirectories,
+                [desktopSettings.modProfile]: validation.gameDirectory,
+            },
         };
         bootstrapWarning = "";
         saveDesktopSettings(desktopSettings);
@@ -360,11 +375,12 @@ function registerDesktopIpc() {
         return bootstrapSnapshot();
     });
     ipcMain.handle("sidecar-bootstrap:open-game-directory", async () => {
-        if (!desktopSettings.gameDirectory) {
+        const gameDirectory = activeProfileGameDirectory();
+        if (!gameDirectory) {
             return { ok: false, error: "No game directory is selected." };
         }
 
-        const validation = await validateStfcGameDirectory(desktopSettings.gameDirectory);
+        const validation = await validateStfcGameDirectory(gameDirectory);
         if (!validation.ok) {
             return { ok: false, error: validation.error };
         }
@@ -400,12 +416,14 @@ function currentWindowPath(fallback) {
 
 async function bootstrapSnapshot(options = {}) {
     const health = sidecarUrl ? await fetchHealth(sidecarUrl, 800) : null;
-    const selectedPaths = resolveSelectedGamePaths(desktopSettings.gameDirectory || health?.gameDir || "");
+    const selectedGameDirectory = activeProfileGameDirectory() || health?.gameDir || "";
+    const selectedPaths = resolveSelectedGamePaths(selectedGameDirectory);
     return {
         ok: options.ok ?? true,
         desktop: true,
-        gameDirectory: desktopSettings.gameDirectory || health?.gameDir || "",
-        gameDirectorySelected: Boolean(desktopSettings.gameDirectory),
+        gameDirectory: selectedGameDirectory,
+        gameDirectorySelected: Boolean(activeProfileGameDirectory()),
+        profileGameDirectories: desktopSettings.profileGameDirectories ?? {},
         feedPath: health?.feedPath ?? selectedPaths.feedPath,
         settingsPath: health?.settingsPath ?? selectedPaths.settingsPath,
         serverUrl: sidecarUrl,
@@ -571,16 +589,38 @@ function saveDesktopSettings(settings) {
 }
 
 async function validatedDesktopGameDirectoryForStartup() {
-    if (!desktopSettings.gameDirectory) {
+    const gameDirectory = activeProfileGameDirectory();
+    if (!gameDirectory) {
+        desktopSettings = normalizeDesktopSettings(desktopSettings);
+        const detected = await detectDefaultStfcGameDirectory();
+        if (detected?.ok) {
+            desktopSettings = {
+                ...desktopSettings,
+                gameDirectory: detected.gameDirectory,
+                profileGameDirectories: {
+                    ...desktopSettings.profileGameDirectories,
+                    [desktopSettings.modProfile]: detected.gameDirectory,
+                },
+            };
+            bootstrapWarning = "";
+            saveDesktopSettings(desktopSettings);
+            writeLog("log", `[sidecar-desktop] detected game directory source=${detected.source} path=${sanitizeLogValue(detected.gameDirectory)}`);
+            return detected.gameDirectory;
+        }
+
         return "";
     }
 
-    const validation = await validateStfcGameDirectory(desktopSettings.gameDirectory);
+    const validation = await validateStfcGameDirectory(gameDirectory);
     if (validation.ok) {
-        if (desktopSettings.gameDirectory !== validation.gameDirectory) {
+        if (gameDirectory !== validation.gameDirectory || desktopSettings.gameDirectory !== validation.gameDirectory) {
             desktopSettings = {
                 ...desktopSettings,
                 gameDirectory: validation.gameDirectory,
+                profileGameDirectories: {
+                    ...desktopSettings.profileGameDirectories,
+                    [desktopSettings.modProfile]: validation.gameDirectory,
+                },
             };
             saveDesktopSettings(desktopSettings);
         }
@@ -589,13 +629,20 @@ async function validatedDesktopGameDirectoryForStartup() {
     }
 
     bootstrapWarning = validation.error;
-    writeLog("warn", `[sidecar-desktop] ignoring saved game directory reason=${validation.code} path=${sanitizeLogValue(desktopSettings.gameDirectory)}`);
+    writeLog("warn", `[sidecar-desktop] ignoring saved game directory reason=${validation.code} profile=${desktopSettings.modProfile} path=${sanitizeLogValue(gameDirectory)}`);
+    const profileGameDirectories = { ...(desktopSettings.profileGameDirectories ?? {}) };
+    delete profileGameDirectories[desktopSettings.modProfile];
     desktopSettings = {
         ...desktopSettings,
         gameDirectory: "",
+        profileGameDirectories,
     };
     saveDesktopSettings(desktopSettings);
     return "";
+}
+
+function activeProfileGameDirectory() {
+    return desktopSettings.profileGameDirectories?.[desktopSettings.modProfile] ?? desktopSettings.gameDirectory ?? "";
 }
 
 function sanitizeLogValue(value) {

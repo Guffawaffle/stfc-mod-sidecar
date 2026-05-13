@@ -117,7 +117,7 @@ describe("Community Mod artifact verification", () => {
     test("does not fetch unsupported profile artifacts", async () => {
         const result = await verifyCommunityModArtifact({
             cacheDir: await tempCacheDir(),
-            catalog: readyCatalog({ profile: "guff-advanced", installSupported: false }),
+            catalog: readyCatalog({ profile: "waffle-advanced", installSupported: false }),
             fetchImpl: () => {
                 throw new Error("fetch should not be called");
             },

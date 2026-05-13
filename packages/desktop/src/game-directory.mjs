@@ -2,7 +2,47 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 export const STFC_GAME_EXECUTABLE = "prime.exe";
+export const STFC_GAME_REQUIRED_FILES = Object.freeze(["GameAssembly.dll", "UnityPlayer.dll"]);
+export const STFC_GAME_REQUIRED_DIRECTORIES = Object.freeze(["prime_Data"]);
 export const SECURITY_MOTTO = "Security is Paramount";
+
+export async function detectDefaultStfcGameDirectory(options = {}) {
+    const envGameDirectory = options.env?.STFC_SIDECAR_GAME_DIR ? path.resolve(options.env.STFC_SIDECAR_GAME_DIR) : "";
+    for (const candidate of defaultStfcGameDirectoryCandidates(options.env ?? process.env)) {
+        const validation = await validateStfcGameDirectory(candidate);
+        if (validation.ok) {
+            return {
+                ...validation,
+                detected: true,
+                source: candidate === envGameDirectory ? "environment" : "default_path",
+            };
+        }
+    }
+
+    return null;
+}
+
+export function defaultStfcGameDirectoryCandidates(env = process.env) {
+    const candidates = [];
+    const add = (candidate) => {
+        if (typeof candidate === "string" && candidate.trim()) {
+            candidates.push(candidate.trim());
+        }
+    };
+
+    add(env.STFC_SIDECAR_GAME_DIR);
+
+    const systemDrive = typeof env.SystemDrive === "string" && env.SystemDrive.trim()
+        ? env.SystemDrive.trim()
+        : process.platform === "win32"
+            ? "C:"
+            : "";
+    add(systemDrive ? path.join(systemDrive, "Games", "Star Trek Fleet Command", "default", "game") : "");
+    add(env.ProgramFiles ? path.join(env.ProgramFiles, "Star Trek Fleet Command", "default", "game") : "");
+    add(env["ProgramFiles(x86)"] ? path.join(env["ProgramFiles(x86)"], "Star Trek Fleet Command", "default", "game") : "");
+
+    return [...new Set(candidates.map((candidate) => path.resolve(candidate)))];
+}
 
 export async function validateStfcGameDirectory(candidatePath) {
     const candidate = typeof candidatePath === "string" ? candidatePath.trim() : "";
@@ -63,13 +103,73 @@ export async function validateStfcGameDirectory(candidatePath) {
         return invalid("prime_outside_directory", `${STFC_GAME_EXECUTABLE} must resolve directly inside the selected game directory.`);
     }
 
+    for (const requiredFile of STFC_GAME_REQUIRED_FILES) {
+        const fileResult = await validateDirectChildFile(gameDirectory, requiredFile);
+        if (!fileResult.ok) {
+            return fileResult;
+        }
+    }
+
+    for (const requiredDirectory of STFC_GAME_REQUIRED_DIRECTORIES) {
+        const directoryResult = await validateDirectChildDirectory(gameDirectory, requiredDirectory);
+        if (!directoryResult.ok) {
+            return directoryResult;
+        }
+    }
+
     return {
         ok: true,
         gameDirectory,
         executablePath,
         requiredExecutable: STFC_GAME_EXECUTABLE,
+        requiredFiles: STFC_GAME_REQUIRED_FILES,
+        requiredDirectories: STFC_GAME_REQUIRED_DIRECTORIES,
         securityMotto: SECURITY_MOTTO,
     };
+}
+
+async function validateDirectChildFile(gameDirectory, fileName) {
+    const candidate = path.join(gameDirectory, fileName);
+    let fileStat;
+    let filePath;
+    try {
+        fileStat = await fs.stat(candidate);
+        filePath = await fs.realpath(candidate);
+    } catch {
+        return invalid("missing_stfc_file", `Selected folder is not an STFC game directory. ${fileName} was not found directly inside it.`);
+    }
+
+    if (!fileStat.isFile()) {
+        return invalid("stfc_file_not_file", `${fileName} exists but is not a file.`);
+    }
+
+    if (!isDirectChildNamed(gameDirectory, filePath, fileName)) {
+        return invalid("stfc_file_outside_directory", `${fileName} must resolve directly inside the selected game directory.`);
+    }
+
+    return { ok: true };
+}
+
+async function validateDirectChildDirectory(gameDirectory, directoryName) {
+    const candidate = path.join(gameDirectory, directoryName);
+    let directoryStat;
+    let directoryPath;
+    try {
+        directoryStat = await fs.stat(candidate);
+        directoryPath = await fs.realpath(candidate);
+    } catch {
+        return invalid("missing_stfc_directory", `Selected folder is not an STFC game directory. ${directoryName} was not found directly inside it.`);
+    }
+
+    if (!directoryStat.isDirectory()) {
+        return invalid("stfc_directory_not_directory", `${directoryName} exists but is not a directory.`);
+    }
+
+    if (!isDirectChildNamed(gameDirectory, directoryPath, directoryName)) {
+        return invalid("stfc_directory_outside_directory", `${directoryName} must resolve directly inside the selected game directory.`);
+    }
+
+    return { ok: true };
 }
 
 function invalid(code, error) {
@@ -78,6 +178,8 @@ function invalid(code, error) {
         code,
         error,
         requiredExecutable: STFC_GAME_EXECUTABLE,
+        requiredFiles: STFC_GAME_REQUIRED_FILES,
+        requiredDirectories: STFC_GAME_REQUIRED_DIRECTORIES,
         securityMotto: SECURITY_MOTTO,
     };
 }

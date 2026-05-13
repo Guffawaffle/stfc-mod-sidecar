@@ -41,9 +41,9 @@ describe("community mod release catalog", () => {
         });
     });
 
-    test("selects the latest Guffawaffle tagged release for Guff Advanced installs", () => {
+    test("selects the latest Guffawaffle tagged release for Waffle Advanced installs", () => {
         const result = buildCommunityModReleaseCatalog({
-            profile: "guff-advanced",
+            profile: "waffle-advanced",
             releases: [
                 release("v1.0.0-guffa.8", {
                     assets: [asset("version.dll", { digest: "sha256:older" }), asset("SHA256SUMS.txt")],
@@ -58,7 +58,7 @@ describe("community mod release catalog", () => {
         expect(result).toMatchObject({
             status: "ready",
             installSupported: true,
-            profile: "guff-advanced",
+            profile: "waffle-advanced",
             repository: "Guffawaffle/stfc-mod",
             distribution: "advanced-alpha",
             release: { tagName: "v1.0.0-guffa.9", prerelease: true },
@@ -72,7 +72,7 @@ describe("community mod release catalog", () => {
 
     test("selects a Guffawaffle rc release when it is the newest compatible advanced build", () => {
         const result = buildCommunityModReleaseCatalog({
-            profile: "guff-advanced",
+            profile: "waffle-advanced",
             releases: [
                 release("v1.0.0-guffa.8", {
                     assets: [asset("version.dll", { digest: "sha256:old" })],
@@ -94,7 +94,7 @@ describe("community mod release catalog", () => {
         expect(result).toMatchObject({
             status: "ready",
             installSupported: true,
-            profile: "guff-advanced",
+            profile: "waffle-advanced",
             repository: "Guffawaffle/stfc-mod",
             release: { tagName: "v1.1.0-guffa.rc1", prerelease: true },
             windowsAsset: {
@@ -132,7 +132,8 @@ describe("community mod release catalog", () => {
 
     test("normalizes profile aliases", () => {
         expect(normalizeCommunityModReleaseProfile("official")).toBe("netniv-basic");
-        expect(normalizeCommunityModReleaseProfile("alpha")).toBe("guff-advanced");
+        expect(normalizeCommunityModReleaseProfile("waffle")).toBe("waffle-basic");
+        expect(normalizeCommunityModReleaseProfile("alpha")).toBe("waffle-advanced");
         expect(normalizeCommunityModReleaseProfile("unknown")).toBe("netniv-basic");
     });
 

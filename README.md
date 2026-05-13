@@ -6,8 +6,8 @@ This is a release candidate build. It is intended for people who are comfortable
 
 ## Download
 
-1. Open the repository's Releases page and choose `v0.1.0-rc.1`.
-2. Download the Windows installer named `STFC.Community.Mod.Companion-Setup-0.1.0-rc.1-x64.exe`.
+1. Open the repository's Releases page and choose `v0.1.0-rc.3`.
+2. Download the Windows installer named `STFC.Community.Mod.Companion-Setup-0.1.0-rc.3-x64.exe`.
 3. Run the installer.
 4. Launch `STFC Community Mod Companion` from Windows.
 
@@ -17,8 +17,8 @@ The portable `.exe` is useful for testing, but the setup installer is the recomm
 
 1. Close Star Trek Fleet Command.
 2. Open the Companion.
-3. Go to `Settings`.
-4. Click `Select STFC Game Directory`.
+3. Go to `Settings` -> `General`.
+4. If the Companion does not auto-detect STFC, click `Select STFC Game Directory`.
 5. Select the folder that contains `prime.exe`, usually:
 
 ```text
@@ -26,8 +26,10 @@ C:\Games\Star Trek Fleet Command\default\game
 ```
 
 6. Pick a Community Mod profile:
-   - `Official Basic`: release artifacts from `netniV/stfc-mod`.
-   - `Guff Advanced`: release artifacts from `Guffawaffle/stfc-mod`, including `v1.1.0-guffa.rc1`.
+   - `Basic`: release artifacts from `netniV/stfc-mod`.
+   - `Waffle Basic`: release artifacts from `Guffawaffle/stfc-mod`, including `v1.1.0-guffa.rc3`, with notification and audio settings enabled.
+   - `Waffle Advanced`: the Waffle profile with Battle Log, event-store, and developer-facing views enabled.
+7. Open `Settings` -> `Notifications` for desktop notification and audio cue controls when using a Waffle profile.
 
 ## Which Install Path Should I Use?
 
@@ -37,7 +39,7 @@ Use this path when you do not want to manually download `version.dll` or edit TO
 
 1. Close Star Trek Fleet Command.
 2. Install and launch the Companion.
-3. Open `Settings`, select the STFC game directory, and keep `Official Basic` unless you specifically want the Guffawaffle fork.
+3. Open `Settings` -> `General`, select the STFC game directory, and keep `Basic` unless you specifically want Waffle notifications or advanced views.
 4. Open `About`.
 5. Click `Install Community Mod`.
 6. Approve the GitHub release check.
@@ -51,34 +53,34 @@ The Companion downloads the selected release, verifies the artifact hash, stages
 Use this path when the mod is already installed and you mainly want safer config access instead of direct TOML edits.
 
 1. Launch the Companion.
-2. Open `Settings` and select the STFC game directory that contains your existing `version.dll` and `community_patch_settings.toml`.
-3. Keep the profile that matches your installed DLL. Use `Official Basic` for netniV releases, or `Guff Advanced` for Guffawaffle fork releases.
+2. Open `Settings` -> `General` and select the STFC game directory that contains your existing `version.dll` and `community_patch_settings.toml`.
+3. Keep the profile that matches your installed DLL. Use `Basic` for netniV releases, `Waffle Basic` for Waffle notifications without Battle Log, or `Waffle Advanced` for the full Waffle/dev surface.
 4. Use the settings and hotkey controls to make supported changes.
-5. Click `Save Settings`.
+5. Click `Save for next launch`.
 6. Restart STFC so the C++ mod reloads the saved TOML.
 
-The current settings UI is intentionally narrower than the full TOML surface. It is good for common settings and hotkeys. Advanced sync targets still require manual TOML edits for now.
+The current settings UI is intentionally narrower than the full TOML surface. It is good for common settings, hotkeys, notifications, and audio cues. Advanced sync targets still require manual TOML edits for now.
 
-### Existing User: Replace netniV With Guff Advanced RC
+### Existing User: Replace netniV With Waffle RC
 
-Use this path when you already have the official mod installed but want the Guffawaffle fork's release-quality behavior, including the redesigned input/action path, fork diagnostics, and Windows-verified `v1.1.0-guffa.rc1` release.
+Use this path when you already have the official mod installed but want the Waffle fork's release-quality behavior, including the redesigned input/action path, fork diagnostics, notification/audio settings, and Windows-verified `v1.1.0-guffa.rc3` release.
 
 1. Close Star Trek Fleet Command.
 2. Launch the Companion.
-3. Open `Settings`, select the STFC game directory, and choose `Guff Advanced`.
+3. Open `Settings` -> `General`, select the STFC game directory, and choose `Waffle Basic` or `Waffle Advanced`.
 4. Open `About`.
-5. Click `Check Mod Release`; the Guff profile should resolve to `Guffawaffle/stfc-mod` `v1.1.0-guffa.rc1` while that is the newest compatible Guff release.
+5. Click `Check Mod Release`; the Waffle profile should resolve to `Guffawaffle/stfc-mod` `v1.1.0-guffa.rc3` while that is the newest compatible Waffle release.
 6. Click through `Verify Artifact`, `Prepare Confirmation`, and `Install` or `Replace` when prompted.
-7. Confirm the replacement. The Companion backs up the existing `version.dll` before copying the Guff release.
+7. Confirm the replacement. The Companion backs up the existing `version.dll` before copying the Waffle release.
 8. Start STFC and check `community_patch.log` or the Companion status if something looks wrong.
 
 This path preserves your existing `community_patch_settings.toml` unless you explicitly uninstall with `Also delete settings and logs` checked.
 
-### Advanced User: Guff RC Plus Realtime Battle Log
+### Advanced User: Waffle Advanced Plus Realtime Battle Log
 
-Use this path when you want the Guff fork and are willing to enable incomplete sidecar-facing features manually.
+Use this path when you want the Waffle fork and are willing to enable incomplete sidecar-facing features manually.
 
-1. Install or replace the mod with the `Guff Advanced` profile first.
+1. Install or replace the mod with the `Waffle Advanced` profile first.
 2. Choose a local sync token. For a packaged Companion run, set it as a Windows user environment variable and restart the Companion:
 
 ```powershell
@@ -119,6 +121,33 @@ emit_feed = true
 6. Open the Companion `Battle Log` page after battles resolve.
 
 `sidecar_jsonl = true` keeps the zero-service JSONL fallback at `community_patch_battle_feed.jsonl`. `battlelogs_realtime = true` sends canonical battle events to the local Companion ingest API while the Companion is running. This advanced path is local-only, token-protected, and still evolving.
+
+### Advanced User: Experimental Fleet Telemetry To Majel
+
+Fleet telemetry reuses the mod's existing async `ships`/`slots` sync workers and posts only to the local Companion. Cloud upload is opt-in from the Companion process and targets Majel's strict `POST /api/sidecar/telemetry` route. This release uses an in-memory upload queue for advanced testing; it is not the durable telemetry outbox design yet.
+
+Set the local sync token and Majel upload values before launching the Companion:
+
+```powershell
+$env:STFC_SIDECAR_SYNC_TOKEN = "choose-a-long-local-token"
+$env:STFC_SIDECAR_CLOUD_TELEMETRY_URL = "https://your-majel-service/api/sidecar/telemetry"
+$env:STFC_SIDECAR_CLOUD_TELEMETRY_TOKEN = "choose-a-long-cloud-telemetry-token"
+npm run desktop:dev
+```
+
+Add a separate sync target in `community_patch_settings.toml`:
+
+```toml
+[sync.targets.sidecar_fleet]
+token = "choose-a-long-local-token"
+url = "http://127.0.0.1:43127/api/fleet/sync"
+battlelogs = false
+battlelogs_realtime = false
+ships = true
+slots = true
+```
+
+The Companion hashes ship identifiers locally, converts sync items to `stfc.telemetry.v1` events, and uploads batches only when both the URL and cloud token are configured. The mod never receives commands or cloud data.
 
 ## Install Community Mod
 
@@ -183,6 +212,15 @@ Run the desktop shell in development:
 ```bash
 npm run desktop:dev
 ```
+
+Browser smoke tests exercise the local viewer server and settings APIs, but native setup controls such as profile, Developer Tools mode, and game directory require the Electron desktop bridge. To test the browser surface with a real game directory and Waffle profile:
+
+```powershell
+$env:STFC_SIDECAR_MOD_PROFILE = "waffle-basic"
+npm run viewer:run -- --game-dir "C:\Games\Star Trek Fleet Command\default\game" --developer-mode --port 43127
+```
+
+Then open `http://127.0.0.1:43127/settings/#general`. Use `npm run desktop:dev` or the packaged executable for the full executable test, including directory picker, profile persistence, Developer Tools toggle, and install/update controls.
 
 Create Windows artifacts locally:
 

@@ -1,6 +1,6 @@
 {
   "name": "@stfc-mod-sidecar/core",
-  "version": "0.1.0-rc.1",
+  "version": "0.1.0-rc.3",
   "private": true,
   "description": "Core event types, battle-log parser, and diagnostics helpers for STFC Mod Sidecar.",
   "type": "module",

@@ -24,10 +24,17 @@ Explicit paths still win for development and troubleshooting:
 node packages\viewer\server.mjs --feed-path "D:\samples\feed.jsonl" --settings-path "D:\samples\settings.toml"
 ```
 
-The Electron companion stores the selected game directory in its user-data
-folder as `desktop-settings.json`, then restarts the bundled sidecar server with
-`--game-dir`. The Settings page shows the active directory and feed path, and in
-desktop mode exposes native directory selection.
+The Electron companion stores selected game directories in its user-data folder
+as `desktop-settings.json`, scoped by Community Mod profile, then restarts the
+bundled sidecar server with the active profile's `--game-dir`. The Settings page
+shows the active directory and feed path, and in desktop mode exposes native
+directory selection.
+
+If the active profile has no selected game directory, the desktop-launched
+server starts with empty game, feed, and settings paths. User-facing settings
+saves are disabled until a valid STFC game directory is selected; this prevents a
+new profile from accidentally reading or writing the development default path or
+another profile's install.
 
 The same desktop settings file also owns the runtime companion mode:
 
@@ -47,11 +54,12 @@ unless Developer Tools are enabled.
 
 Security is Paramount: desktop directory selection is a trust boundary. The main
 process canonicalizes the selected path, rejects relative, non-local, missing,
-or non-directory paths, and requires `prime.exe` to exist directly inside the
-selected directory before persisting it or deriving mod file paths. This limits
-path traversal and arbitrary path access mistakes in the user-facing bootstrap
-flow while keeping explicit `--feed-path` and `--settings-path` overrides
-available for development and troubleshooting.
+or non-directory paths, and requires STFC Unity/IL2CPP anchors to exist directly
+inside the selected directory: `prime.exe`, `GameAssembly.dll`,
+`UnityPlayer.dll`, and `prime_Data`. This limits path traversal and arbitrary
+path access mistakes in the user-facing bootstrap flow while keeping explicit
+`--feed-path` and `--settings-path` overrides available for development and
+troubleshooting.
 
 Future installer bootstrap should detect common install roots, but user choice
 must remain the source of truth because players can move STFC or run non-default

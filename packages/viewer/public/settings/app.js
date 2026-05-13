@@ -1,53 +1,47 @@
-import {
-  buildSettingsTroubleshootingPrompt,
-  buildSettingsTroubleshootingSummary,
-} from "./troubleshooting.js";
-import {
-  communityModInstallLabel,
-  modProfileLabel,
-  normalizeModProfile,
-} from "../shared/community-mod-status.js";
+import { normalizeModProfile } from "../shared/community-mod-status.js";
 
 const state = {
   snapshot: null,
+  notificationSnapshot: null,
+  diagnosticSnapshot: null,
   draftBindings: new Map(),
   draftHardSettings: new Map(),
+  draftDiagnostics: new Map(),
+  draftNotificationMaster: {},
+  draftNotificationEvents: new Map(),
   captureActionId: null,
   captureBinding: "",
   captureReplace: false,
   dirty: false,
   saving: false,
   bootstrap: null,
+  activeSettingsTab: settingsTabFromHash() || "general",
 };
 
 const elements = {
   desktopBootstrap: document.querySelector("#desktop-bootstrap"),
   desktopBootstrapState: document.querySelector("#desktop-bootstrap-state"),
-  gameDirectory: document.querySelector("#game-directory"),
+  desktopBootstrapUnavailable: document.querySelector("#desktop-bootstrap-unavailable"),
   desktopGameDirectory: document.querySelector("#desktop-game-directory"),
-  companionMode: document.querySelector("#companion-mode"),
-  modProfile: document.querySelector("#mod-profile"),
-  communityModInstall: document.querySelector("#community-mod-install"),
-  desktopFeedPath: document.querySelector("#desktop-feed-path"),
-  desktopModProfile: document.querySelector("#desktop-mod-profile"),
-  desktopCommunityModInstall: document.querySelector("#desktop-community-mod-install"),
   desktopModProfileSelect: document.querySelector("#desktop-mod-profile-select"),
+  desktopDeveloperMode: document.querySelector("#desktop-developer-mode"),
   selectGameDirectory: document.querySelector("#select-game-directory"),
   openGameDirectory: document.querySelector("#open-game-directory"),
+  settingsSaveStrip: document.querySelector(".settings-save-strip"),
+  settingsChangeState: document.querySelector("#settings-change-state"),
+  settingsStatusMessage: document.querySelector("#settings-status-message"),
   settingsToken: document.querySelector("#settings-token"),
   settingsTokenControl: document.querySelector("#settings-token-control"),
   reloadSettings: document.querySelector("#reload-settings"),
   saveSettings: document.querySelector("#save-settings"),
-  settingsPath: document.querySelector("#settings-path"),
-  settingsState: document.querySelector("#settings-state"),
-  settingsWarningCount: document.querySelector("#settings-warning-count"),
-  settingsChangeCount: document.querySelector("#settings-change-count"),
-  settingsCoachSummary: document.querySelector("#settings-coach-summary"),
-  settingsCoachState: document.querySelector("#settings-coach-state"),
-  settingsPromptPreview: document.querySelector("#settings-prompt-preview"),
-  previewSettingsPrompt: document.querySelector("#preview-settings-prompt"),
-  copySettingsPrompt: document.querySelector("#copy-settings-prompt"),
+  settingsTabButtons: [...document.querySelectorAll("[data-settings-tab]")],
+  settingsTabPanels: [...document.querySelectorAll("[data-settings-panel]")],
   hardSettings: document.querySelector("#hard-settings"),
+  notificationSettings: document.querySelector("#notification-settings"),
+  notificationMaster: document.querySelector("#notification-master"),
+  notificationPreviewState: document.querySelector("#notification-preview-state"),
+  notificationRows: document.querySelector("#notification-rows"),
+  diagnosticSettings: document.querySelector("#diagnostic-settings"),
   hotkeySearch: document.querySelector("#hotkey-search"),
   hotkeyGroup: document.querySelector("#hotkey-group"),
   conflictsOnly: document.querySelector("#conflicts-only"),
@@ -65,33 +59,58 @@ const elements = {
 elements.selectGameDirectory?.addEventListener("click", () => void selectGameDirectory());
 elements.openGameDirectory?.addEventListener("click", () => void openGameDirectory());
 elements.desktopModProfileSelect?.addEventListener("change", () => void setModProfile(elements.desktopModProfileSelect.value));
+elements.desktopDeveloperMode?.addEventListener("change", () => void setDeveloperMode(elements.desktopDeveloperMode.checked));
 elements.reloadSettings.addEventListener("click", () => void loadSettings());
 elements.saveSettings.addEventListener("click", () => void saveSettings());
-elements.previewSettingsPrompt.addEventListener("click", previewSettingsPrompt);
-elements.copySettingsPrompt.addEventListener("click", () => void copySettingsPrompt());
+elements.settingsTabButtons.forEach((button) => button.addEventListener("click", onSettingsTabClick));
 elements.settingsToken.addEventListener("input", renderSaveState);
 elements.hotkeySearch.addEventListener("input", renderHotkeys);
 elements.hotkeyGroup.addEventListener("change", renderHotkeys);
 elements.conflictsOnly.addEventListener("change", renderHotkeys);
 elements.hardSettings.addEventListener("change", onHardSettingChange);
+elements.hardSettings.addEventListener("click", onHardSettingClick);
+elements.diagnosticSettings?.addEventListener("change", onDiagnosticSettingChange);
+elements.diagnosticSettings?.addEventListener("click", onDiagnosticSettingClick);
+elements.notificationSettings.addEventListener("change", onNotificationChange);
+elements.notificationSettings.addEventListener("click", (event) => void onNotificationClick(event));
 elements.hotkeyGroups.addEventListener("click", onHotkeyClick);
 elements.captureOk.addEventListener("click", confirmCapture);
 elements.captureCancel.addEventListener("click", cancelCapture);
 window.addEventListener("keydown", onCaptureKeyDown, true);
 window.addEventListener("pointerdown", onCapturePointerDown, true);
 window.addEventListener("contextmenu", onCaptureContextMenu, true);
+window.addEventListener("hashchange", () => {
+  const tab = settingsTabFromHash();
+  if (tab) {
+    setActiveSettingsTab(tab, { updateHash: false });
+  }
+});
 
 await loadSettings();
 await loadBootstrap();
 
 async function loadSettings() {
   setStatus("Loading...");
-  const response = await fetch("/api/settings/hotkeys", { cache: "no-store" });
-  const snapshot = await response.json();
+  const [hotkeyResponse, notificationResponse] = await Promise.all([
+    fetch("/api/settings/hotkeys", { cache: "no-store" }),
+    fetch("/api/settings/notifications", { cache: "no-store" }),
+  ]);
+  const snapshot = await hotkeyResponse.json();
+  const notificationSnapshot = await notificationResponse.json();
+  const diagnosticSnapshot = await loadDiagnosticSettingsSnapshot();
 
   state.snapshot = snapshot;
+  state.notificationSnapshot = notificationSnapshot;
+  state.diagnosticSnapshot = diagnosticSnapshot;
   state.draftBindings = new Map(snapshot.actions.map((action) => [action.id, [...action.bindings]]));
   state.draftHardSettings = new Map(snapshot.hardSettings.map((setting) => [setting.id, setting.value]));
+  state.draftDiagnostics = new Map((diagnosticSnapshot?.settings ?? []).map((setting) => [setting.id, setting.value]));
+  state.draftNotificationMaster = { ...notificationSnapshot.master };
+  state.draftNotificationEvents = new Map(notificationSnapshot.events.map((item) => [item.id, {
+    system: item.system,
+    audio: item.audio,
+    sound: item.sound,
+  }]));
   state.captureActionId = null;
   state.captureBinding = "";
   state.captureReplace = false;
@@ -99,6 +118,17 @@ async function loadSettings() {
   state.saving = false;
 
   renderAll();
+  setStatus("Ready");
+}
+
+async function loadDiagnosticSettingsSnapshot() {
+  const response = await fetch("/api/settings/diagnostics", { cache: "no-store" });
+  if (response.status === 403 || response.status === 404) {
+    return null;
+  }
+
+  const payload = await response.json();
+  return response.ok ? payload : null;
 }
 
 async function saveSettings() {
@@ -111,30 +141,48 @@ async function saveSettings() {
 
   const token = elements.settingsToken.value.trim();
   const requiresToken = snapshotRequiresSaveToken(state.snapshot);
-  const response = await fetch("/api/settings/hotkeys", {
+  const hotkeyPayload = buildHotkeyPatchPayload();
+  const diagnosticPayload = buildDiagnosticPatchPayload();
+  const notificationPayload = buildNotificationPatchPayload();
+
+  try {
+    if (patchHasKeys(hotkeyPayload.shortcuts) || patchHasKeys(hotkeyPayload.hardSettings)) {
+      await sendSettingsUpdate("/api/settings/hotkeys", hotkeyPayload, token, requiresToken);
+    }
+
+    if (patchHasKeys(diagnosticPayload.diagnostics)) {
+      await sendSettingsUpdate("/api/settings/diagnostics", diagnosticPayload, token, requiresToken);
+    }
+
+    if (notificationPatchHasChanges(notificationPayload)) {
+      await sendSettingsUpdate("/api/settings/notifications", notificationPayload, token, requiresToken);
+    }
+  } catch (error) {
+    state.saving = false;
+    setStatus(error instanceof Error ? error.message : String(error));
+    renderSaveState();
+    return;
+  }
+
+  state.saving = false;
+  await loadSettings();
+  setStatus("Saved for next launch");
+}
+
+async function sendSettingsUpdate(url, payload, token, requiresToken) {
+  const response = await fetch(url, {
     method: "PUT",
     headers: {
       "authorization": requiresToken && token ? `Bearer ${token}` : "",
       "content-type": "application/json",
     },
-    body: JSON.stringify(buildPatchPayload()),
+    body: JSON.stringify(payload),
   });
-  const payload = await response.json();
-
-  if (!response.ok || !payload.ok) {
-    state.saving = false;
-    setStatus(payload.error ?? "Unable to save settings.");
-    renderSaveState();
-    return;
+  const body = await response.json();
+  if (!response.ok || !body.ok) {
+    throw new Error(body.error ?? "Unable to save settings.");
   }
-
-  state.snapshot = payload;
-  state.draftBindings = new Map(payload.actions.map((action) => [action.id, [...action.bindings]]));
-  state.draftHardSettings = new Map(payload.hardSettings.map((setting) => [setting.id, setting.value]));
-  state.dirty = false;
-  state.saving = false;
-  renderAll();
-  setStatus("Saved for next launch");
+  return body;
 }
 
 function renderAll() {
@@ -142,30 +190,76 @@ function renderAll() {
   renderBootstrap();
   renderGroupFilter();
   renderHardSettings();
+  renderDiagnostics();
+  renderNotifications();
   renderHotkeys();
-  renderTroubleshootingCoach();
+  renderSettingsTabs();
   renderSaveState();
 }
 
-function renderSummary() {
-  const snapshot = state.snapshot;
-  if (!snapshot) {
+function onSettingsTabClick(event) {
+  const button = event.currentTarget;
+  if (!(button instanceof HTMLElement) || !button.dataset.settingsTab) {
     return;
   }
 
-  const conflicts = buildDraftConflicts();
-  const warnings = conflicts.filter((conflict) => conflict.severity === "warning").length
-    + snapshot.actions.reduce((count, action) => count + action.issues.filter((issue) => issue.severity !== "info").length, 0)
-    + snapshot.hardSettings.reduce((count, setting) => count + setting.issues.filter((issue) => issue.severity !== "info").length, 0);
+  setActiveSettingsTab(button.dataset.settingsTab);
+}
 
-  elements.gameDirectory.textContent = state.bootstrap?.gameDirectory || gameDirectoryFromSettingsPath(snapshot.settingsPath) || "Unknown";
-  elements.settingsPath.textContent = snapshot.settingsPath ?? "Unknown";
-  elements.companionMode.textContent = modeLabel(state.bootstrap?.developerMode);
-  elements.modProfile.textContent = modProfileLabel(state.bootstrap?.modProfile ?? snapshot.modProfile ?? snapshot.profile);
-  elements.communityModInstall.textContent = communityModInstallLabel(state.bootstrap?.communityModInstall);
-  elements.settingsState.textContent = snapshot.parseError ? "Invalid TOML" : snapshot.exists ? "Found" : "Not found";
-  elements.settingsWarningCount.textContent = String(warnings);
-  elements.settingsChangeCount.textContent = String(countChanges());
+function setActiveSettingsTab(tab, options = {}) {
+  state.activeSettingsTab = tab;
+  if (options.updateHash !== false) {
+    window.history.replaceState(null, "", `#${tab}`);
+  }
+  renderSettingsTabs();
+}
+
+function settingsTabFromHash() {
+  const hash = window.location.hash.replace(/^#/, "").trim().toLowerCase();
+  const aliases = {
+    setup: "general",
+    general: "general",
+    "hard-settings": "hard-settings",
+    hard: "hard-settings",
+    keybindings: "keybindings",
+    hotkeys: "keybindings",
+    diagnostics: "diagnostics",
+    notifications: "notifications",
+    notification: "notifications",
+  };
+  return aliases[hash] ?? "";
+}
+
+function renderSettingsTabs() {
+  const availableTabs = new Set(["general", "hard-settings", "keybindings"]);
+  if ((state.diagnosticSnapshot?.settings.length ?? 0) > 0 && state.bootstrap?.developerMode !== false) {
+    availableTabs.add("diagnostics");
+  }
+  if (state.notificationSnapshot) {
+    availableTabs.add("notifications");
+  }
+
+  if (!availableTabs.has(state.activeSettingsTab)) {
+    state.activeSettingsTab = "general";
+  }
+
+  for (const button of elements.settingsTabButtons) {
+    const tab = button.dataset.settingsTab;
+    const available = availableTabs.has(tab);
+    const selected = tab === state.activeSettingsTab;
+    button.hidden = !available;
+    button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
+  }
+
+  for (const panel of elements.settingsTabPanels) {
+    const tab = panel.dataset.settingsPanel;
+    panel.hidden = tab !== state.activeSettingsTab || !availableTabs.has(tab);
+  }
+}
+
+function renderSummary() {
+  renderSaveState();
 }
 
 async function loadBootstrap() {
@@ -173,7 +267,6 @@ async function loadBootstrap() {
     state.bootstrap = await loadServerBootstrap();
     renderBootstrap();
     renderSummary();
-    renderTroubleshootingCoach();
     return;
   }
 
@@ -188,7 +281,6 @@ async function loadBootstrap() {
 
   renderBootstrap();
   renderSummary();
-  renderTroubleshootingCoach();
 }
 
 async function loadServerBootstrap() {
@@ -229,7 +321,6 @@ async function selectGameDirectory() {
     if (state.bootstrap?.ok === false) {
       renderBootstrap();
       renderSummary();
-      renderTroubleshootingCoach();
       return;
     }
 
@@ -241,7 +332,7 @@ async function selectGameDirectory() {
       error: error instanceof Error ? error.message : String(error),
     };
     renderBootstrap();
-    renderTroubleshootingCoach();
+    renderSummary();
   } finally {
     elements.selectGameDirectory.disabled = false;
   }
@@ -270,7 +361,6 @@ async function setModProfile(profile) {
     if (state.bootstrap?.ok === false) {
       renderBootstrap();
       renderSummary();
-      renderTroubleshootingCoach();
       return;
     }
 
@@ -283,9 +373,37 @@ async function setModProfile(profile) {
     };
     renderBootstrap();
     renderSummary();
-    renderTroubleshootingCoach();
   } finally {
     elements.desktopModProfileSelect.disabled = false;
+  }
+}
+
+async function setDeveloperMode(enabled) {
+  if (!window.stfcDesktop?.setDeveloperMode) {
+    return;
+  }
+
+  elements.desktopDeveloperMode.disabled = true;
+  elements.desktopBootstrapState.textContent = "Switching mode...";
+  try {
+    state.bootstrap = await window.stfcDesktop.setDeveloperMode(Boolean(enabled));
+    if (state.bootstrap?.ok === false) {
+      renderBootstrap();
+      renderSummary();
+      return;
+    }
+
+    await loadSettings();
+    await loadBootstrap();
+  } catch (error) {
+    state.bootstrap = {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+    renderBootstrap();
+    renderSummary();
+  } finally {
+    elements.desktopDeveloperMode.disabled = false;
   }
 }
 
@@ -296,31 +414,35 @@ function renderBootstrap() {
 
   const bootstrap = state.bootstrap;
   elements.desktopBootstrap.hidden = !window.stfcDesktop;
+  elements.desktopBootstrapUnavailable.hidden = Boolean(window.stfcDesktop);
   if (!window.stfcDesktop) {
-    elements.gameDirectory.textContent = gameDirectoryFromSettingsPath(state.snapshot?.settingsPath) || "Unknown";
+    elements.desktopBootstrapState.textContent = "Browser view: native setup controls are inactive.";
     return;
   }
 
-  const gameDirectory = bootstrap?.gameDirectory || "Not selected";
+  const gameDirectory = bootstrap?.gameDirectory || "Select STFC directory";
   const modProfile = bootstrap?.modProfile ?? state.snapshot?.modProfile ?? state.snapshot?.profile ?? "netniv-basic";
   elements.desktopGameDirectory.textContent = gameDirectory;
-  elements.desktopFeedPath.textContent = bootstrap?.feedPath || "Unknown";
-  elements.desktopModProfile.textContent = modProfileLabel(modProfile);
-  elements.desktopCommunityModInstall.textContent = communityModInstallLabel(bootstrap?.communityModInstall);
   elements.desktopModProfileSelect.value = normalizeModProfile(modProfile);
+  elements.desktopDeveloperMode.checked = Boolean(bootstrap?.developerMode);
   elements.openGameDirectory.disabled = !bootstrap?.gameDirectorySelected;
+  elements.selectGameDirectory.textContent = bootstrap?.gameDirectorySelected ? "Change STFC Game Directory" : "Select STFC Game Directory";
   if (bootstrap?.error) {
     elements.desktopBootstrapState.textContent = `${bootstrap.securityMotto ?? "Security"}: ${bootstrap.error}`;
   } else if (bootstrap?.gameDirectorySelected) {
-    elements.desktopBootstrapState.textContent = bootstrap.healthOk ? "Connected" : "Selected";
+    elements.desktopBootstrapState.textContent = bootstrap.healthOk ? "Companion connected." : "STFC directory selected.";
   } else {
     elements.desktopBootstrapState.textContent = bootstrap?.requiredExecutable
       ? `${bootstrap.securityMotto}: select a directory containing ${bootstrap.requiredExecutable}`
-      : "Default path";
+      : "Select STFC directory";
   }
 }
 
 function renderGroupFilter() {
+  if (!state.snapshot) {
+    return;
+  }
+
   const selected = elements.hotkeyGroup.value || "all";
   const groups = ["all", ...new Set(state.snapshot.actions.map((action) => action.group))];
   elements.hotkeyGroup.innerHTML = groups
@@ -331,7 +453,7 @@ function renderGroupFilter() {
 function renderHardSettings() {
   elements.hardSettings.innerHTML = state.snapshot.hardSettings.map((setting) => {
     const value = state.draftHardSettings.get(setting.id);
-    const marker = value === setting.value ? "" : `<span class="settings-chip settings-chip--changed">Changed</span>`;
+    const marker = value === setting.value ? "" : changedBadge(`data-revert-hard-setting="${escapeHtml(setting.id)}"`, `Revert ${setting.label}`);
     const control = setting.type === "boolean"
       ? `<label class="settings-toggle"><input type="checkbox" data-hard-setting="${escapeHtml(setting.id)}"${value ? " checked" : ""} /><span>${escapeHtml(setting.label)}</span></label>`
       : `<label class="control"><span>${escapeHtml(setting.label)}</span><input type="number" min="${setting.min ?? 0}" max="${setting.max ?? 9999}" step="${setting.step ?? 1}" value="${escapeHtml(value)}" data-hard-setting="${escapeHtml(setting.id)}" /></label>`;
@@ -346,6 +468,146 @@ function renderHardSettings() {
       </article>
     `;
   }).join("");
+}
+
+function renderDiagnostics() {
+  const snapshot = state.diagnosticSnapshot;
+  if (!elements.diagnosticSettings) {
+    return;
+  }
+
+  if (!snapshot || snapshot.settings.length === 0) {
+    elements.diagnosticSettings.innerHTML = `<div class="empty-state">Developer diagnostics are not available for this profile.</div>`;
+    return;
+  }
+
+  elements.diagnosticSettings.innerHTML = snapshot.settings.map((setting) => {
+    const value = state.draftDiagnostics.get(setting.id);
+    const marker = value === setting.value ? "" : changedBadge(`data-revert-diagnostic-setting="${escapeHtml(setting.id)}"`, `Revert ${setting.label}`);
+    const issues = setting.issues
+      .map((issue) => `<span class="settings-chip settings-chip--${escapeHtml(issue.severity)}">${escapeHtml(issue.message)}</span>`)
+      .join("");
+    const control = renderDiagnosticControl(setting, value);
+
+    return `
+      <article class="hard-setting-row">
+        <div>
+          ${control}
+          <p>${escapeHtml(setting.description)}</p>
+          ${issues ? `<div class="setting-issues">${issues}</div>` : ""}
+        </div>
+        ${marker}
+      </article>
+    `;
+  }).join("");
+}
+
+function renderDiagnosticControl(setting, value) {
+  if (setting.type === "boolean") {
+    return `<label class="settings-toggle"><input type="checkbox" data-diagnostic-setting="${escapeHtml(setting.id)}"${value ? " checked" : ""} /><span>${escapeHtml(setting.label)}</span></label>`;
+  }
+
+  if (setting.type === "select") {
+    return `<label class="control"><span>${escapeHtml(setting.label)}</span><select data-diagnostic-setting="${escapeHtml(setting.id)}">
+      ${(setting.options ?? []).map((option) => `<option value="${escapeHtml(option.value)}"${option.value === value ? " selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+    </select></label>`;
+  }
+
+  return `<label class="control"><span>${escapeHtml(setting.label)}</span><input type="number" min="${setting.min ?? 0}" max="${setting.max ?? 60000}" step="${setting.step ?? 1}" value="${escapeHtml(value)}" data-diagnostic-setting="${escapeHtml(setting.id)}" /></label>`;
+}
+
+function renderNotifications() {
+  const snapshot = state.notificationSnapshot;
+  if (!snapshot) {
+    return;
+  }
+
+  if (snapshot.events.length === 0) {
+    elements.notificationSettings.hidden = false;
+    elements.notificationMaster.innerHTML = "";
+    elements.notificationPreviewState.hidden = true;
+    elements.notificationRows.innerHTML = `<div class="empty-state notification-empty">Notification settings are not available for the current profile.</div>`;
+    return;
+  }
+
+  elements.notificationSettings.hidden = false;
+  const master = state.draftNotificationMaster;
+  elements.notificationSettings.dataset.systemEnabled = String(Boolean(master.systemEnabled));
+  elements.notificationSettings.dataset.audioEnabled = String(Boolean(master.audioEnabled));
+  elements.notificationPreviewState.hidden = !master.audioEnabled;
+  elements.notificationMaster.innerHTML = `
+    <label class="settings-toggle">
+      <input type="checkbox" data-notification-master="systemEnabled"${master.systemEnabled ? " checked" : ""} />
+      <span>Desktop notifications</span>
+    </label>
+    <label class="settings-toggle">
+      <input type="checkbox" data-notification-master="audioEnabled"${master.audioEnabled ? " checked" : ""} />
+      <span>Audio cues</span>
+    </label>
+    ${master.audioEnabled ? `<label class="control notification-master__sound">
+      <span>Default sound</span>
+      <select data-notification-master="defaultSound">
+        ${snapshot.soundCatalog.map((sound) => `<option value="${escapeHtml(sound.id)}"${sound.id === master.defaultSound ? " selected" : ""}>${escapeHtml(sound.label)}</option>`).join("")}
+      </select>
+    </label>` : ""}
+    ${notificationMasterChangeCount() > 0 ? changedBadge("data-revert-notification-master", "Revert notification defaults") : ""}
+  `;
+
+  if (!master.systemEnabled && !master.audioEnabled) {
+    elements.notificationRows.innerHTML = `<div class="empty-state notification-empty">Notification channels are off.</div>`;
+    return;
+  }
+
+  const groups = groupNotificationEvents(snapshot.events);
+  elements.notificationRows.innerHTML = [...groups.entries()].map(([groupName, rows]) => `
+    <section class="notification-group">
+      <div class="notification-group__heading">
+        <h3>${escapeHtml(groupName)}</h3>
+        <span>${rows.length} event${rows.length === 1 ? "" : "s"}</span>
+      </div>
+      <div class="notification-list">
+        ${rows.map((row) => renderNotificationRow(row, master)).join("")}
+      </div>
+    </section>
+  `).join("");
+}
+
+function renderNotificationRow(item, master) {
+  const draft = state.draftNotificationEvents.get(item.id) ?? item;
+  const delivery = notificationDeliveryValue(draft, master);
+  const audioActive = Boolean(master.audioEnabled && draft.audio);
+  const changed = draft.system !== item.system || draft.audio !== item.audio || draft.sound !== item.sound;
+  const issues = item.issues
+    .map((issue) => `<span class="settings-chip settings-chip--${escapeHtml(issue.severity)}">${escapeHtml(issue.message)}</span>`)
+    .join("");
+  const source = item.source === "event" ? "Configured" : item.source === "legacy" ? "Legacy" : "Default";
+
+  return `
+    <article class="notification-row" data-audio-active="${audioActive ? "true" : "false"}">
+      <div class="notification-row__title">
+        <h4>${escapeHtml(item.label)}</h4>
+        <p>${escapeHtml(item.id)}</p>
+      </div>
+      <label class="control notification-row__delivery">
+        <span>Delivery</span>
+        <select data-notification-event="${escapeHtml(item.id)}" data-notification-field="delivery">
+          ${notificationDeliveryOptions(master).map((option) => `<option value="${escapeHtml(option.id)}"${option.id === delivery ? " selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+        </select>
+      </label>
+      ${audioActive ? `<label class="control notification-row__sound">
+        <span>Sound</span>
+        <select data-notification-event="${escapeHtml(item.id)}" data-notification-field="sound">
+          ${state.notificationSnapshot.soundCatalog.map((sound) => `<option value="${escapeHtml(sound.id)}"${sound.id === draft.sound ? " selected" : ""}>${escapeHtml(sound.label)}</option>`).join("")}
+        </select>
+      </label>` : ""}
+      <div class="notification-row__actions">
+        ${audioActive ? `<button type="button" data-notification-test="${escapeHtml(item.id)}">Play</button>` : ""}
+        <span class="settings-chip settings-chip--info">${escapeHtml(source)}</span>
+        ${changed ? changedBadge(`data-revert-notification-event="${escapeHtml(item.id)}"`, `Revert ${item.label}`) : ""}
+        ${issues}
+      </div>
+    </article>
+  `;
 }
 
 function renderHotkeys() {
@@ -382,50 +644,7 @@ function renderHotkeys() {
   `).join("") || `<div class="empty-state">No hotkeys match the current filters.</div>`;
 
   renderSummary();
-  renderTroubleshootingCoach();
   renderSaveState();
-}
-
-function renderTroubleshootingCoach() {
-  elements.settingsCoachSummary.textContent = buildSettingsTroubleshootingSummary({
-    ...settingsTroubleshootingInput(),
-    changeCount: countChanges(),
-  });
-}
-
-function previewSettingsPrompt() {
-  const prompt = buildSettingsTroubleshootingPrompt(settingsTroubleshootingInput());
-  elements.settingsPromptPreview.textContent = prompt;
-  elements.settingsPromptPreview.hidden = false;
-  setCoachState("Preview ready");
-}
-
-async function copySettingsPrompt() {
-  const prompt = buildSettingsTroubleshootingPrompt(settingsTroubleshootingInput());
-  elements.settingsPromptPreview.textContent = prompt;
-  elements.settingsPromptPreview.hidden = false;
-  setCoachState("Copying prompt...");
-
-  try {
-    await navigator.clipboard.writeText(prompt);
-    setCoachState("Prompt copied");
-  } catch (error) {
-    setCoachState(error instanceof Error ? error.message : String(error));
-  }
-}
-
-function setCoachState(message) {
-  elements.settingsCoachState.textContent = message;
-}
-
-function settingsTroubleshootingInput() {
-  return {
-    snapshot: state.snapshot,
-    bootstrap: state.bootstrap,
-    draftBindings: state.draftBindings,
-    draftHardSettings: state.draftHardSettings,
-    conflicts: state.snapshot ? buildDraftConflicts() : [],
-  };
 }
 
 function renderConflicts(conflicts) {
@@ -472,9 +691,6 @@ function renderHotkeyAction(action) {
     : bindings.length === 1
       ? `<button type="button" data-command="change" data-action-id="${escapeHtml(action.id)}">Change</button>`
       : `<button type="button" data-command="capture" data-action-id="${escapeHtml(action.id)}">Add</button>`;
-  const resetButton = changed
-    ? `<button type="button" data-command="reset" data-action-id="${escapeHtml(action.id)}">Reset</button>`
-    : "";
   const atDefault = action.defaultBindings.length > 0
     && formatBindings(bindings) === formatBindings([...action.defaultBindings]);
   const defaultButton = action.defaultBindings.length > 0 && !atDefault
@@ -489,12 +705,11 @@ function renderHotkeyAction(action) {
           <p>${escapeHtml(action.id)}</p>
         </div>
         <div class="binding-row">${bindingMarkup}</div>
-        <div class="hotkey-issues">${changed ? `<span class="settings-chip settings-chip--changed">Changed</span>` : ""}${issueMarkup}${conflictMarkup}</div>
+        <div class="hotkey-issues">${changed ? changedBadge(`data-command="reset" data-action-id="${escapeHtml(action.id)}"`, `Revert ${action.label}`) : ""}${issueMarkup}${conflictMarkup}</div>
       </div>
       <div class="hotkey-row__controls">
         ${addChangeButton}
         <button type="button" data-command="off" data-action-id="${escapeHtml(action.id)}">${escapeHtml(unboundLabel)}</button>
-        ${resetButton}
         ${defaultButton}
       </div>
     </article>
@@ -517,8 +732,142 @@ function onHardSettingChange(event) {
   markDirty();
   renderHardSettings();
   renderSummary();
-  renderTroubleshootingCoach();
   renderSaveState();
+}
+
+function onHardSettingClick(event) {
+  const button = event.target.closest("[data-revert-hard-setting]");
+  if (!button) {
+    return;
+  }
+
+  const setting = state.snapshot.hardSettings.find((item) => item.id === button.dataset.revertHardSetting);
+  if (!setting) {
+    return;
+  }
+
+  state.draftHardSettings.set(setting.id, setting.value);
+  markDirty();
+  renderHardSettings();
+  renderSummary();
+  renderSaveState();
+}
+
+function onDiagnosticSettingChange(event) {
+  const input = event.target.closest("[data-diagnostic-setting]");
+  if (!input || !state.diagnosticSnapshot) {
+    return;
+  }
+
+  const setting = state.diagnosticSnapshot.settings.find((item) => item.id === input.dataset.diagnosticSetting);
+  if (!setting) {
+    return;
+  }
+
+  const value = setting.type === "boolean" ? input.checked : setting.type === "integer" ? Number(input.value) : input.value;
+  state.draftDiagnostics.set(setting.id, value);
+  markDirty();
+  renderDiagnostics();
+  renderSummary();
+  renderSaveState();
+}
+
+function onDiagnosticSettingClick(event) {
+  const button = event.target.closest("[data-revert-diagnostic-setting]");
+  if (!button || !state.diagnosticSnapshot) {
+    return;
+  }
+
+  const setting = state.diagnosticSnapshot.settings.find((item) => item.id === button.dataset.revertDiagnosticSetting);
+  if (!setting) {
+    return;
+  }
+
+  state.draftDiagnostics.set(setting.id, setting.value);
+  markDirty();
+  renderDiagnostics();
+  renderSummary();
+  renderSaveState();
+}
+
+function onNotificationChange(event) {
+  const masterInput = event.target.closest("[data-notification-master]");
+  if (masterInput) {
+    const key = masterInput.dataset.notificationMaster;
+    state.draftNotificationMaster[key] = masterInput.type === "checkbox" ? masterInput.checked : masterInput.value;
+    markDirty();
+    renderNotifications();
+    renderSummary();
+    renderSaveState();
+    return;
+  }
+
+  const input = event.target.closest("[data-notification-event]");
+  if (!input) {
+    return;
+  }
+
+  const draft = { ...(state.draftNotificationEvents.get(input.dataset.notificationEvent) ?? {}) };
+  if (input.dataset.notificationField === "delivery") {
+    const delivery = notificationDeliveryFlags(input.value);
+    draft.system = delivery.system;
+    draft.audio = delivery.audio;
+  } else {
+    draft[input.dataset.notificationField] = input.type === "checkbox" ? input.checked : input.value;
+  }
+  state.draftNotificationEvents.set(input.dataset.notificationEvent, draft);
+  markDirty();
+  renderNotifications();
+  renderSummary();
+  renderSaveState();
+}
+
+async function onNotificationClick(event) {
+  const masterRevert = event.target.closest("[data-revert-notification-master]");
+  if (masterRevert && state.notificationSnapshot) {
+    state.draftNotificationMaster = { ...state.notificationSnapshot.master };
+    markDirty();
+    renderNotifications();
+    renderSummary();
+    renderSaveState();
+    return;
+  }
+
+  const eventRevert = event.target.closest("[data-revert-notification-event]");
+  if (eventRevert && state.notificationSnapshot) {
+    const item = state.notificationSnapshot.events.find((entry) => entry.id === eventRevert.dataset.revertNotificationEvent);
+    if (item) {
+      state.draftNotificationEvents.set(item.id, {
+        system: item.system,
+        audio: item.audio,
+        sound: item.sound,
+      });
+      markDirty();
+      renderNotifications();
+      renderSummary();
+      renderSaveState();
+    }
+    return;
+  }
+
+  const button = event.target.closest("button[data-notification-test]");
+  if (!button) {
+    return;
+  }
+
+  const draft = state.draftNotificationEvents.get(button.dataset.notificationTest);
+  if (!state.draftNotificationMaster.audioEnabled || !draft?.audio) {
+    elements.notificationPreviewState.textContent = "Audio cue disabled";
+    return;
+  }
+
+  const sound = draft?.sound ?? "default";
+  try {
+    await playNotificationSound(sound);
+    elements.notificationPreviewState.textContent = sound === "none" ? "No sound selected" : `Played ${sound}`;
+  } catch (error) {
+    elements.notificationPreviewState.textContent = error instanceof Error ? error.message : String(error);
+  }
 }
 
 function onHotkeyClick(event) {
@@ -560,7 +909,6 @@ function onHotkeyClick(event) {
   markDirty();
   renderHotkeys();
   renderSummary();
-  renderTroubleshootingCoach();
   renderSaveState();
 }
 
@@ -684,7 +1032,6 @@ function addBinding(actionId, binding) {
   markDirty();
   renderHotkeys();
   renderSummary();
-  renderTroubleshootingCoach();
   renderSaveState();
   return true;
 }
@@ -780,7 +1127,7 @@ function keyTokenFromEvent(event) {
   return named[key] ?? key.toUpperCase();
 }
 
-function buildPatchPayload() {
+function buildHotkeyPatchPayload() {
   const shortcuts = {};
   const hardSettings = {};
 
@@ -799,6 +1146,47 @@ function buildPatchPayload() {
   }
 
   return { shortcuts, hardSettings };
+}
+
+function buildDiagnosticPatchPayload() {
+  const diagnostics = {};
+  const snapshot = state.diagnosticSnapshot;
+  if (!snapshot) {
+    return { diagnostics };
+  }
+
+  for (const setting of snapshot.settings) {
+    const value = state.draftDiagnostics.get(setting.id);
+    if (value !== setting.value) {
+      diagnostics[setting.id] = value;
+    }
+  }
+
+  return { diagnostics };
+}
+
+function buildNotificationPatchPayload() {
+  const snapshot = state.notificationSnapshot;
+  const master = {};
+  const events = {};
+  if (!snapshot) {
+    return { master, events };
+  }
+
+  for (const key of ["systemEnabled", "audioEnabled", "defaultSound"]) {
+    if (state.draftNotificationMaster[key] !== snapshot.master[key]) {
+      master[key] = state.draftNotificationMaster[key];
+    }
+  }
+
+  for (const item of snapshot.events) {
+    const draft = state.draftNotificationEvents.get(item.id) ?? item;
+    if (draft.system !== item.system || draft.audio !== item.audio || draft.sound !== item.sound) {
+      events[item.id] = { system: Boolean(draft.system), audio: Boolean(draft.audio), sound: draft.sound };
+    }
+  }
+
+  return { master, events };
 }
 
 function buildDraftConflicts() {
@@ -842,7 +1230,69 @@ function countChanges() {
     return 0;
   }
 
-  return Object.keys(buildPatchPayload().shortcuts).length + Object.keys(buildPatchPayload().hardSettings).length;
+  const hotkeys = buildHotkeyPatchPayload();
+  const diagnostics = buildDiagnosticPatchPayload();
+  const notifications = buildNotificationPatchPayload();
+  return Object.keys(hotkeys.shortcuts).length
+    + Object.keys(hotkeys.hardSettings).length
+    + Object.keys(diagnostics.diagnostics).length
+    + Object.keys(notifications.master).length
+    + Object.keys(notifications.events).length;
+}
+
+function patchHasKeys(value) {
+  return Object.keys(value).length > 0;
+}
+
+function notificationPatchHasChanges(value) {
+  return patchHasKeys(value.master) || patchHasKeys(value.events);
+}
+
+function notificationMasterChangeCount() {
+  const snapshot = state.notificationSnapshot;
+  if (!snapshot) {
+    return 0;
+  }
+
+  return ["systemEnabled", "audioEnabled", "defaultSound"]
+    .filter((key) => state.draftNotificationMaster[key] !== snapshot.master[key])
+    .length;
+}
+
+function notificationDeliveryOptions(master) {
+  const options = [{ id: "none", label: "None" }];
+  if (master.systemEnabled) {
+    options.push({ id: "desktop", label: "Desktop" });
+  }
+  if (master.audioEnabled) {
+    options.push({ id: "audio", label: "Audio" });
+  }
+  if (master.systemEnabled && master.audioEnabled) {
+    options.push({ id: "both", label: "Both" });
+  }
+  return options;
+}
+
+function notificationDeliveryValue(draft, master) {
+  const system = Boolean(master.systemEnabled && draft.system);
+  const audio = Boolean(master.audioEnabled && draft.audio);
+  if (system && audio) {
+    return "both";
+  }
+  if (system) {
+    return "desktop";
+  }
+  if (audio) {
+    return "audio";
+  }
+  return "none";
+}
+
+function notificationDeliveryFlags(value) {
+  return {
+    system: value === "desktop" || value === "both",
+    audio: value === "audio" || value === "both",
+  };
 }
 
 function formatBindings(bindings) {
@@ -859,7 +1309,10 @@ function markDirty() {
 
 function renderSaveState() {
   const requiresToken = snapshotRequiresSaveToken(state.snapshot);
-  const canSave = state.snapshot && state.dirty && !state.saving && (!requiresToken || elements.settingsToken.value.trim().length > 0);
+  const saveSupported = state.snapshot?.saveSupported !== false;
+  const changeCount = countChanges();
+  state.dirty = changeCount > 0;
+  const canSave = state.snapshot && saveSupported && state.dirty && !state.saving && (!requiresToken || elements.settingsToken.value.trim().length > 0);
   if (elements.settingsTokenControl) {
     elements.settingsTokenControl.hidden = !requiresToken;
   }
@@ -867,7 +1320,17 @@ function renderSaveState() {
     elements.settingsToken.value = "";
   }
   elements.saveSettings.disabled = !canSave;
-  elements.saveSettings.textContent = state.saving ? "Saving..." : "Save for next launch";
+  elements.saveSettings.textContent = state.saving ? "Saving..." : saveSupported ? "Save" : "Select folder";
+  elements.reloadSettings.textContent = state.dirty ? "Discard" : "Reload";
+  elements.reloadSettings.title = state.dirty ? "Discard unsaved changes and reload from disk" : "Reload settings from disk";
+  if (elements.settingsSaveStrip) {
+    elements.settingsSaveStrip.dataset.dirty = String(state.dirty);
+  }
+  if (elements.settingsChangeState) {
+    elements.settingsChangeState.textContent = state.dirty
+      ? `${changeCount} unsaved change${changeCount === 1 ? "" : "s"}`
+      : "No unsaved changes";
+  }
 }
 
 function snapshotRequiresSaveToken(snapshot) {
@@ -883,21 +1346,15 @@ function snapshotRequiresSaveToken(snapshot) {
 }
 
 function setStatus(text) {
-  elements.settingsState.textContent = text;
+  elements.settingsStatusMessage.textContent = text;
+}
+
+function changedBadge(buttonAttributes, label) {
+  return `<span class="settings-chip settings-chip--changed"><span>Changed</span><button class="settings-chip__action" type="button" ${buttonAttributes} aria-label="${escapeHtml(label)}">Revert</button></span>`;
 }
 
 function modeLabel(developerMode) {
   return developerMode ? "Developer Tools" : "Standard Companion";
-}
-
-function gameDirectoryFromSettingsPath(settingsPath) {
-  if (!settingsPath) {
-    return "";
-  }
-
-  const normalized = String(settingsPath).replaceAll("\\", "/");
-  const index = normalized.lastIndexOf("/");
-  return index >= 0 ? settingsPath.slice(0, index) : "";
 }
 
 function cssEscape(value) {
@@ -921,4 +1378,52 @@ function groupActions(actions) {
     grouped.set(action.group, items);
   }
   return grouped;
+}
+
+function groupNotificationEvents(events) {
+  const grouped = new Map();
+  for (const item of events) {
+    const rows = grouped.get(item.group) ?? [];
+    rows.push(item);
+    grouped.set(item.group, rows);
+  }
+  return grouped;
+}
+
+let notificationAudioContext;
+
+async function playNotificationSound(soundId) {
+  const sound = state.notificationSnapshot?.soundCatalog.find((item) => item.id === soundId);
+  if (!sound || sound.pattern.length === 0) {
+    return;
+  }
+
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextCtor) {
+    throw new Error("Audio preview is not supported in this browser.");
+  }
+
+  notificationAudioContext ??= new AudioContextCtor();
+  const context = notificationAudioContext;
+  await context.resume();
+
+  let when = context.currentTime + 0.01;
+  for (const segment of sound.pattern) {
+    const duration = Math.max(0, Number(segment.durationMs) / 1000);
+    if (segment.frequency > 0 && duration > 0) {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(segment.frequency, when);
+      gain.gain.setValueAtTime(0, when);
+      gain.gain.linearRampToValueAtTime(0.22, when + Math.min(0.01, duration / 3));
+      gain.gain.setValueAtTime(0.22, Math.max(when, when + duration - 0.025));
+      gain.gain.linearRampToValueAtTime(0, when + duration);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(when);
+      oscillator.stop(when + duration);
+    }
+    when += duration;
+  }
 }

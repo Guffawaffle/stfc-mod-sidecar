@@ -25,16 +25,16 @@ describe("variant gate warning", () => {
         const view = variantGateWarningViewModel(gate({ mismatchKind: "selected_differs_from_installed" }));
 
         expect(view.title).toMatch(/selected profile/i);
-        expect(view.summary).toContain("Official Basic");
-        expect(view.summary).toContain("Guff Advanced");
-        expect(view.fixHref).toBe("/settings/");
+        expect(view.summary).toContain("Basic");
+        expect(view.summary).toContain("Waffle Advanced");
+        expect(view.fixHref).toBe("/settings/#general");
     });
 });
 
 function gate(overrides = {}) {
     return {
         selectedProfile: overrides.selectedProfile ?? "netniv-basic",
-        installedProfile: overrides.installedProfile ?? "guff-advanced",
+        installedProfile: overrides.installedProfile ?? "waffle-advanced",
         installedState: overrides.installedState ?? "installed",
         mismatchKind: overrides.mismatchKind ?? "selected_differs_from_installed",
         capabilityReasons: {

@@ -13,8 +13,8 @@
       <header class="hero home-hero">
         <div>
           <p class="eyebrow">STFC Mod Sidecar</p>
-          <h1>Viewer Modules</h1>
-          <p class="hero-copy">Read-only local tooling for inspecting battle capture, future analyzers, and additional sidecar diagnostics.</p>
+          <h1>Dashboard</h1>
+          <p class="hero-copy">Local companion controls, settings, and diagnostics for the selected Community Mod profile.</p>
         </div>
       </header>
 
@@ -43,14 +43,38 @@
           <a class="link-button link-button--secondary" href="/battle-log/workbench/">Open Workbench</a>
         </article>
 
+        <article class="module-card" data-capability="notifications" hidden>
+          <p class="eyebrow">Waffle</p>
+          <h2>Notifications And Audio</h2>
+          <p class="page-copy">Tune desktop delivery, event sounds, and notification defaults for Waffle profiles.</p>
+          <ul class="module-list">
+            <li>System notification toggles</li>
+            <li>Per-event audio cues</li>
+            <li>Inline sound previews</li>
+          </ul>
+          <a class="link-button link-button--secondary" href="/settings/#notifications">Configure Alerts</a>
+        </article>
+
+        <article class="module-card" data-developer-only hidden>
+          <p class="eyebrow">Developer Tools</p>
+          <h2>Diagnostics Controls</h2>
+          <p class="page-copy">Access runtime trace, replay retention, and local diagnostics capture controls.</p>
+          <ul class="module-list">
+            <li>Runtime trace level</li>
+            <li>Replay window settings</li>
+            <li>Diagnostics bundle context</li>
+          </ul>
+          <a class="link-button link-button--secondary" href="/settings/#diagnostics">Open Diagnostics</a>
+        </article>
+
         <article class="module-card">
           <p class="eyebrow">New</p>
           <h2>Settings</h2>
-          <p class="page-copy">Review and edit community mod hotkey bindings, hard hotkey toggles, and next-launch keyboard behavior.</p>
+          <p class="page-copy">Review and edit community mod hotkeys, startup behavior, desktop notifications, and audio cues.</p>
           <ul class="module-list">
+            <li>Notification and audio cue controls</li>
             <li>Two binding slots per action</li>
             <li>Conflict and single-key visibility</li>
-            <li>Explicit Off state using NONE</li>
           </ul>
           <a class="link-button link-button--secondary" href="/settings/">Open Settings</a>
         </article>

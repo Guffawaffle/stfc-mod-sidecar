@@ -1,7 +1,7 @@
 export const viewerPages = [
     {
         id: "home",
-        label: "Home",
+        label: "Dashboard",
         href: "/",
     },
     {

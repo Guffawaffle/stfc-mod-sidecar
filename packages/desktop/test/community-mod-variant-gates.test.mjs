@@ -4,17 +4,18 @@ import { buildCommunityModVariantGateContext } from "../../viewer/community-mod-
 
 describe("community mod variant gates", () => {
     test("requires installed DLL reality and selected intent for Advanced runtime features", () => {
-        expect(gate({ classification: "guff-advanced" }, "guff-advanced").capabilities.battleLog).toBe(true);
-        expect(gate({ classification: "guff-advanced" }, "netniv-basic").capabilities.battleLog).toBe(false);
-        expect(gate({ classification: "netniv-basic" }, "guff-advanced").capabilities.battleLog).toBe(false);
+        expect(gate({ classification: "waffle-advanced" }, "waffle-advanced").capabilities.battleLog).toBe(true);
+        expect(gate({ classification: "waffle-advanced" }, "waffle-basic").capabilities.battleLog).toBe(false);
+        expect(gate({ classification: "netniv-basic" }, "waffle-advanced").capabilities.battleLog).toBe(false);
+        expect(gate({ classification: "waffle-advanced" }, "waffle-basic").capabilities.notifications).toBe(true);
     });
 
     test("fails closed for missing or unknown installed DLLs", () => {
         const missing = buildCommunityModVariantGateContext({
             install: { ok: true, state: "none", classification: "none", profile: "none" },
-            selectedProfile: "guff-advanced",
+            selectedProfile: "waffle-advanced",
         });
-        const unknown = gate({ classification: "unknown" }, "guff-advanced");
+        const unknown = gate({ classification: "unknown" }, "waffle-advanced");
 
         expect(missing.capabilityBits.battleLog).toBe(0);
         expect(missing.mismatchKind).toBe("no_install");
@@ -25,7 +26,7 @@ describe("community mod variant gates", () => {
     });
 
     test("keeps settings and install status available across DLL states", () => {
-        const unknown = gate({ classification: "unknown" }, "guff-advanced");
+        const unknown = gate({ classification: "unknown" }, "waffle-advanced");
 
         expect(unknown.capabilityBits.settings).toBe(1);
         expect(unknown.capabilityBits.installStatus).toBe(1);

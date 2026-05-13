@@ -95,6 +95,18 @@ export function collectSettingsWarnings(input = {}) {
     }
   }
 
+  for (const setting of input.diagnosticSnapshot?.settings ?? []) {
+    for (const issue of setting.issues.filter((item) => item.severity !== "info")) {
+      rows.push(`${setting.label} (${setting.id}): ${issue.severity}: ${issue.message}`);
+    }
+  }
+
+  for (const event of input.notificationSnapshot?.events ?? []) {
+    for (const issue of event.issues.filter((item) => item.severity !== "info")) {
+      rows.push(`${event.label} (${event.id}): ${issue.severity}: ${issue.message}`);
+    }
+  }
+
   return rows;
 }
 

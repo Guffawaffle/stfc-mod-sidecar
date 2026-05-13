@@ -1,14 +1,41 @@
 # Sidecar Changelog
 
-## Unreleased
+## 0.1.0-rc.3 - 2026-05-12
+
+### Changed
+
+- Auto-detect the default Windows STFC install folder when it validates as a real game directory.
+- Added a `Settings` -> `General` tab for STFC directory, profile, Developer Tools, reload, and save controls.
+- Split Community Mod intent into `Basic`, `Waffle Basic`, and `Waffle Advanced` profiles.
+- Moved profile selection out of the DLL review warning and into General settings.
+- Moved settings health, warning counts, and troubleshooting context into `About`.
+
+### Fixed
+
+- Replaced the dead-end `Directory not selected` desktop status with an actionable STFC directory prompt.
+- Removed the extra Home-page `Open Notifications` shortcut so notification controls live under Settings.
+
+## 0.1.0-rc.2 - 2026-05-12
+
+### Added
+
+- Added notification audio settings for Waffle Community Mod profiles.
+- Added developer trace diagnostics settings and local diagnostics capture warnings.
+- Added replay retention diagnostics and bounded managed viewer/process logs.
+- Added an experimental, token-gated `/api/fleet/sync` bridge that converts existing mod `ships`/`slots` sync payloads into cloud-safe `stfc.telemetry.v1` batches when Majel upload environment variables are configured.
+
+### Changed
+
+- Scoped selected STFC game directories by Companion profile.
+- Updated public install guidance for Companion `v0.1.0-rc.2` and Waffle mod `v1.1.0-guffa.rc2`.
 
 ## 0.1.0-rc.1 - 2026-05-08
 
 ### Changed
 
-- Added clearer install-path guidance for new users, existing installs, Guff RC upgrades, and advanced realtime Battle Log setups.
-- Updated active UI wording to show `Guff Advanced` while preserving the existing internal manifest/distribution identifier.
-- Prefer the newest compatible Guffawaffle rc release when the Guff Advanced profile selects Community Mod artifacts.
+- Added clearer install-path guidance for new users, existing installs, Waffle RC upgrades, and advanced realtime Battle Log setups.
+- Updated active UI wording to show `Waffle Advanced` while preserving legacy manifest/distribution aliases.
+- Prefer the newest compatible Guffawaffle rc release when a Waffle profile selects Community Mod artifacts.
 
 ## 0.1.0-beta.1 - 2026-05-06
 
@@ -16,7 +43,7 @@
 
 - Began first-class Community Mod variant gates: profile definitions are now
   shared on the viewer/desktop side, new-user profile intent defaults to
-  Official Basic, and runtime Battle Log gates require both selected intent and
+  Basic, and runtime Battle Log gates require both selected intent and
   installed DLL capability.
 - Added a session-only Security Is Paramount warning when the selected profile
   and installed DLL variant differ, or when the installed DLL is unknown.
@@ -75,9 +102,9 @@
 - Polished the LCARS shell header alignment and removed an unsupported Safari
   scrollbar compatibility warning from the shared viewer CSS.
 - Added initial Community Mod settings schema profiles so official netniV Basic mode can hide fork-only settings before broader settings editing expands.
-- Added a desktop Settings profile selector for switching between official Basic and Guff Advanced schemas.
-- Added Community Mod DLL install detection to classify missing, official Basic, advanced, and unknown installs by manifest/hash evidence.
-- Added Basic profile capability gates so Battle Log navigation, APIs, feed watching, and event storage stay off for official Basic mode.
+- Added a desktop Settings profile selector for switching between Basic and Waffle schemas.
+- Added Community Mod DLL install detection to classify missing, Basic, Waffle, and unknown installs by manifest/hash evidence.
+- Added Basic profile capability gates so Battle Log navigation, APIs, feed watching, and event storage stay off for Basic mode.
 - Added a Community Mod release catalog endpoint for profile-specific mod artifact selection without downloading or installing yet.
 - Added About and Settings status surfaces for installed Community Mod provenance and profile release metadata.
 - Added a dry-run Community Mod install/update plan endpoint and About-page plan status without enabling DLL writes yet.
@@ -92,8 +119,8 @@
 - Added a platform compatibility guard so non-Windows Community Mod install/update flows report unsupported instead of probing or executing the Windows `version.dll` path.
 - Added Community Mod install recovery guidance plus a temp-directory install execution smoke for guarded install/replace receipts.
 - Added full-uninstall groundwork with extended sidecar install manifest metadata plus Community Mod uninstall plan, confirmation, execution, optional settings/log cleanup, and About-page controls. Unknown/manual uninstall removes `version.dll` directly instead of retaining a DLL backup.
-- Added a dev-copy Community Mod reinstall smoke that drives the local viewer API, verifies uninstall creates no DLL backup, preserves settings/log artifacts, and reinstalls official Basic.
-- Added Guff Advanced install support for Guffawaffle tagged releases plus a dev-copy reinstall smoke option for the latest Guffawaffle release.
+- Added a dev-copy Community Mod reinstall smoke that drives the local viewer API, verifies uninstall creates no DLL backup, preserves settings/log artifacts, and reinstalls Basic.
+- Added Waffle install support for Guffawaffle tagged releases plus a dev-copy reinstall smoke option for the latest Waffle release.
 - Added local capability-token protection for Community Mod install/uninstall/release/artifact endpoints, explicit GitHub network-consent headers for release/artifact calls, and per-game-directory operation locking for install/uninstall writes.
 - Hardened Community Mod artifact handling to fail closed when trusted SHA-256 release metadata is missing and to recheck cached artifact hashes before staging.
 - Hardened Community Mod install/uninstall execution with realpath/lstat path checks, symlink blocking, split install/uninstall execution environment gates, and an accessible About-page confirmation dialog for destructive actions.

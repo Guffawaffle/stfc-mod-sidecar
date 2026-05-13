@@ -13,4 +13,10 @@ describe("viewer home markup", () => {
         expect(homeHtml).toMatch(/module-card module-card--primary[^>]+data-capability="battleLog"/);
         expect(homeHtml).toMatch(/module-card[^>]+data-developer-only[^>]+data-capability="battleLog"/);
     });
+
+    test("surfaces Waffle and Developer Tools dashboard modules", () => {
+        expect(homeHtml).toContain("<h1>Dashboard</h1>");
+        expect(homeHtml).toMatch(/module-card[^>]+data-capability="notifications"/);
+        expect(homeHtml).toMatch(/module-card[^>]+data-developer-only hidden/);
+    });
 });

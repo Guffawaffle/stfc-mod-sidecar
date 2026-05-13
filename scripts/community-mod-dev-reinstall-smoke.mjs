@@ -441,7 +441,7 @@ function parseInteger(value, fallback) {
 }
 
 function printUsage() {
-    console.log("Usage: node scripts/community-mod-dev-reinstall-smoke.mjs [--game-dir <dir>] [--port <port>] [--profile <netniv-basic|guff-advanced>] [--allow-non-dev-game-dir]");
+    console.log("Usage: node scripts/community-mod-dev-reinstall-smoke.mjs [--game-dir <dir>] [--port <port>] [--profile <netniv-basic|waffle-basic|waffle-advanced>] [--allow-non-dev-game-dir]");
     console.log(`Default game dir: ${DEFAULT_GAME_DIR}`);
     console.log(`Default port: ${DEFAULT_PORT}`);
     console.log(`Default profile: ${DEFAULT_PROFILE}`);

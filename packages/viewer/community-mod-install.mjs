@@ -21,6 +21,15 @@ export const DEFAULT_COMMUNITY_MOD_RELEASE_FINGERPRINTS = Object.freeze([
         assetName: "stfc-community-mod-v1.1.0.zip",
         dllSha256: "45DBE5FA43E23B05467A3FC3C7237DCD0C45EE0ED193658307B6001EC5508ACA",
     }),
+    Object.freeze({
+        profile: "waffle-advanced",
+        distribution: "advanced-alpha",
+        owner: "Guffawaffle",
+        repo: "stfc-mod",
+        tag: "v1.1.0-guffa.rc3",
+        assetName: "version.dll",
+        dllSha256: "B9F53514BDC8C6E9AF3853EDB458D72745051C06EE450C9B078C2B7846221B83",
+    }),
 ]);
 
 export async function detectCommunityModInstall(gameDirectory, options = {}) {

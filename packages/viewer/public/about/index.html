@@ -19,6 +19,95 @@
       </header>
 
       <section class="module-grid module-grid--two about-grid" aria-label="sidecar companion details">
+        <article class="module-card module-card--wide module-card--primary community-mod-card">
+          <p class="eyebrow">Community Mod</p>
+          <h2 id="about-mod-install-title">Install Status</h2>
+          <p id="about-mod-install-state" class="page-copy">Loading Community Mod status...</p>
+          <p id="about-mod-install-detail" class="page-copy">Loading install details...</p>
+          <div class="path-stack community-mod-overview">
+            <div>
+              <span class="status-label">Selected Profile</span>
+              <strong id="about-mod-profile-state">Loading...</strong>
+            </div>
+            <div>
+              <span class="status-label">Game Directory</span>
+              <strong id="about-mod-game-directory-state">Loading...</strong>
+            </div>
+            <div>
+              <span class="status-label">Installed DLL</span>
+              <strong id="about-mod-dll-state">Loading...</strong>
+            </div>
+            <div>
+              <span class="status-label">Selected Release</span>
+              <strong id="about-mod-release-summary-state">Release check not run</strong>
+            </div>
+          </div>
+          <p id="about-mod-install-guide-summary" class="page-copy">Loading install path...</p>
+          <ol id="about-mod-install-guide" class="setup-steps" aria-label="Community Mod install path"></ol>
+          <div class="diagnostics-actions mod-primary-actions">
+            <button id="select-mod-game-directory" class="button-secondary" type="button">Select STFC Folder</button>
+            <button id="refresh-mod-status" class="button-secondary" type="button">Refresh</button>
+            <button id="run-mod-install" type="button">Install Community Mod</button>
+            <button id="run-mod-uninstall" type="button">Uninstall</button>
+            <a
+              id="about-mod-release-link"
+              class="link-button link-button--secondary"
+              href="#"
+              target="_blank"
+              rel="noreferrer"
+              hidden
+            >
+              Open Mod Release
+            </a>
+          </div>
+          <label class="toggle" id="about-mod-uninstall-options">
+            <input id="about-mod-uninstall-delete-settings-logs" type="checkbox" />
+            <span>Also delete settings and logs</span>
+          </label>
+          <details class="mod-diagnostics-details">
+            <summary>Diagnostic details</summary>
+            <div class="mod-diagnostics-list">
+              <p id="about-mod-release-state" class="page-copy">Release check not run</p>
+              <p id="about-mod-release-detail" class="page-copy">Use Check Selected Mod Release to read GitHub release metadata.</p>
+              <p id="about-mod-plan-state" class="page-copy">Install plan not checked</p>
+              <p id="about-mod-plan-detail" class="page-copy">Check Selected Mod Release to prepare a safe install/update plan.</p>
+              <p id="about-mod-artifact-state" class="page-copy">Artifact not verified</p>
+              <p id="about-mod-artifact-detail" class="page-copy">
+                Verify Artifact downloads to the sidecar cache and checks SHA-256 before any install path exists.
+              </p>
+              <p id="about-mod-staging-state" class="page-copy">version.dll not staged</p>
+              <p id="about-mod-staging-detail" class="page-copy">
+                Prepare Confirmation stages the verified version.dll in the sidecar cache.
+              </p>
+              <p id="about-mod-confirmation-state" class="page-copy">Confirmation not prepared</p>
+              <p id="about-mod-confirmation-detail" class="page-copy">
+                Prepare Confirmation builds the final review text without copying files.
+              </p>
+              <p id="about-mod-execution-state" class="page-copy">Execution not run</p>
+              <p id="about-mod-execution-detail" class="page-copy">
+                Execute Install is available after confirmation in the desktop Companion.
+              </p>
+              <p id="about-mod-recovery-detail" class="page-copy">No recovery action is needed before execution runs.</p>
+              <p id="about-mod-uninstall-plan-state" class="page-copy">Uninstall plan not checked</p>
+              <p id="about-mod-uninstall-plan-detail" class="page-copy">Check Uninstall Plan to inspect removable Community Mod state.</p>
+              <p id="about-mod-uninstall-confirmation-state" class="page-copy">Uninstall confirmation not prepared</p>
+              <p id="about-mod-uninstall-confirmation-detail" class="page-copy">Prepare Uninstall builds the final review text without changing files.</p>
+              <p id="about-mod-uninstall-execution-state" class="page-copy">Uninstall execution not run</p>
+              <p id="about-mod-uninstall-execution-detail" class="page-copy">Execute Uninstall is available after confirmation and endpoint enablement.</p>
+              <p id="about-mod-uninstall-recovery-detail" class="page-copy">No uninstall recovery action is needed before execution runs.</p>
+              <div class="diagnostics-actions">
+                <button id="check-mod-release" type="button">Check Selected Mod Release</button>
+                <button id="verify-mod-artifact" type="button">Verify Artifact</button>
+                <button id="prepare-mod-confirmation" type="button">Prepare Confirmation</button>
+                <button id="execute-mod-install" type="button">Execute Install</button>
+                <button id="check-mod-uninstall" type="button">Check Uninstall Plan</button>
+                <button id="prepare-mod-uninstall" type="button">Prepare Uninstall</button>
+                <button id="execute-mod-uninstall" type="button">Execute Uninstall</button>
+              </div>
+            </div>
+          </details>
+        </article>
+
         <div class="about-grid__column">
           <article class="module-card module-card--primary">
             <p class="eyebrow">Boundary</p>
@@ -36,40 +125,45 @@
             <p class="eyebrow">Mode Boundary</p>
             <h2>Standard By Default</h2>
             <p id="about-developer-mode-state" class="page-copy">Loading companion mode...</p>
-            <label id="about-developer-mode-option" class="toggle" hidden>
-              <input id="about-developer-mode-toggle" type="checkbox" />
-              <span>Developer Tools</span>
-            </label>
           </article>
 
           <article class="module-card">
             <p class="eyebrow">Configuration</p>
-            <h2>Schema First</h2>
-            <p class="page-copy">The companion UI should render settings from the shared schema, persist sparse startup config, and live-apply only schema-approved runtime settings.</p>
+            <h2>Settings Health</h2>
+            <div class="path-stack about-settings-health">
+              <div>
+                <span class="status-label">Config</span>
+                <strong id="about-settings-config-state">Loading...</strong>
+              </div>
+              <div>
+                <span class="status-label">Warnings</span>
+                <strong id="about-settings-warning-count">0</strong>
+              </div>
+            </div>
+            <h3>Troubleshooting Context</h3>
+            <p id="about-settings-coach-summary" class="page-copy">Loading settings context.</p>
+            <div class="diagnostics-actions">
+              <button id="preview-settings-prompt" type="button">Preview prompt</button>
+              <button id="copy-settings-prompt" type="button">Copy prompt</button>
+              <span id="about-settings-coach-state" class="page-copy" aria-live="polite">Ready</span>
+            </div>
+            <pre id="about-settings-prompt-preview" class="diagnostics-preview" hidden></pre>
           </article>
         </div>
 
         <div class="about-grid__column">
           <article class="module-card">
-            <p class="eyebrow">Release</p>
+            <p class="eyebrow">Companion App</p>
             <h2 id="about-release-version">Version</h2>
             <p id="about-release-channel" class="page-copy">Loading release channel...</p>
             <p id="about-signature-policy" class="page-copy">Loading signature expectation...</p>
             <p id="about-update-mode" class="page-copy">Loading update mode...</p>
-            <p id="about-release-update-state" class="page-copy">Update check not run</p>
-            <div class="diagnostics-actions">
-              <button id="check-release-update" type="button">Check for Updates</button>
-              <a id="about-release-update-link" class="link-button link-button--secondary" href="#" target="_blank" rel="noreferrer" hidden>Open Release</a>
-            </div>
-          </article>
-
-          <article class="module-card">
-            <p class="eyebrow">Packaging</p>
-            <h2>Optional Installer</h2>
-            <p class="page-copy">Manual DLL/dylib installs stay available. The companion installer can add update, launch, diagnostics, and local viewer workflows for users who want them.</p>
+            <p id="about-release-update-state" class="page-copy">Companion update check not run</p>
             <p id="about-companion-install-state" class="page-copy">Loading app install status...</p>
             <p id="about-companion-install-detail" class="page-copy">Checking Companion install source...</p>
             <div class="diagnostics-actions">
+              <button id="check-release-update" type="button">Check Companion Updates</button>
+              <a id="about-release-update-link" class="link-button link-button--secondary" href="#" target="_blank" rel="noreferrer" hidden>Open Release</a>
               <button id="run-companion-uninstall" type="button" hidden>Uninstall Companion</button>
               <button id="open-windows-uninstall-settings" class="button-secondary" type="button" hidden>Windows Apps</button>
               <button id="show-companion-install-folder" class="button-secondary" type="button" hidden>Open Folder</button>
@@ -80,76 +174,6 @@
             <p class="eyebrow">Disclaimer</p>
             <h2>Independent Project</h2>
             <p class="page-copy">Star Trek and related marks belong to their respective owners. This project is not affiliated with, endorsed by, or sponsored by CBS Studios Inc. or Scopely.</p>
-          </article>
-        </div>
-
-        <div class="about-grid__column">
-          <article class="module-card">
-            <p class="eyebrow">Community Mod</p>
-            <h2 id="about-mod-install-title">Install Status</h2>
-            <p id="about-mod-install-state" class="page-copy">Loading Community Mod status...</p>
-            <p id="about-mod-install-detail" class="page-copy">Loading install details...</p>
-            <label class="toggle">
-              <input id="about-mod-uninstall-delete-settings-logs" type="checkbox" />
-              <span>Also delete settings and logs</span>
-            </label>
-            <div class="diagnostics-actions mod-primary-actions">
-              <button id="refresh-mod-status" class="button-secondary" type="button">Refresh</button>
-              <button id="run-mod-install" type="button">Install Community Mod</button>
-              <button id="run-mod-uninstall" type="button">Uninstall</button>
-              <a
-                id="about-mod-release-link"
-                class="link-button link-button--secondary"
-                href="#"
-                target="_blank"
-                rel="noreferrer"
-                hidden
-              >
-                Open Mod Release
-              </a>
-            </div>
-            <details class="mod-diagnostics-details">
-              <summary>Diagnostic details</summary>
-              <div class="mod-diagnostics-list">
-                <p id="about-mod-release-state" class="page-copy">Release check not run</p>
-                <p id="about-mod-release-detail" class="page-copy">Use Check Mod Release to read GitHub release metadata.</p>
-                <p id="about-mod-plan-state" class="page-copy">Install plan not checked</p>
-                <p id="about-mod-plan-detail" class="page-copy">Check Mod Release to prepare a safe install/update plan.</p>
-                <p id="about-mod-artifact-state" class="page-copy">Artifact not verified</p>
-                <p id="about-mod-artifact-detail" class="page-copy">
-                  Verify Artifact downloads to the sidecar cache and checks SHA-256 before any install path exists.
-                </p>
-                <p id="about-mod-staging-state" class="page-copy">version.dll not staged</p>
-                <p id="about-mod-staging-detail" class="page-copy">
-                  Prepare Confirmation stages the verified version.dll in the sidecar cache.
-                </p>
-                <p id="about-mod-confirmation-state" class="page-copy">Confirmation not prepared</p>
-                <p id="about-mod-confirmation-detail" class="page-copy">
-                  Prepare Confirmation builds the final review text without copying files.
-                </p>
-                <p id="about-mod-execution-state" class="page-copy">Execution not run</p>
-                <p id="about-mod-execution-detail" class="page-copy">
-                  Execute Install is available after confirmation in the desktop Companion.
-                </p>
-                <p id="about-mod-recovery-detail" class="page-copy">No recovery action is needed before execution runs.</p>
-                <p id="about-mod-uninstall-plan-state" class="page-copy">Uninstall plan not checked</p>
-                <p id="about-mod-uninstall-plan-detail" class="page-copy">Check Uninstall Plan to inspect removable Community Mod state.</p>
-                <p id="about-mod-uninstall-confirmation-state" class="page-copy">Uninstall confirmation not prepared</p>
-                <p id="about-mod-uninstall-confirmation-detail" class="page-copy">Prepare Uninstall builds the final review text without changing files.</p>
-                <p id="about-mod-uninstall-execution-state" class="page-copy">Uninstall execution not run</p>
-                <p id="about-mod-uninstall-execution-detail" class="page-copy">Execute Uninstall is available after confirmation and endpoint enablement.</p>
-                <p id="about-mod-uninstall-recovery-detail" class="page-copy">No uninstall recovery action is needed before execution runs.</p>
-                <div class="diagnostics-actions">
-                  <button id="check-mod-release" type="button">Check Mod Release</button>
-                  <button id="verify-mod-artifact" type="button">Verify Artifact</button>
-                  <button id="prepare-mod-confirmation" type="button">Prepare Confirmation</button>
-                  <button id="execute-mod-install" type="button">Execute Install</button>
-                  <button id="check-mod-uninstall" type="button">Check Uninstall Plan</button>
-                  <button id="prepare-mod-uninstall" type="button">Prepare Uninstall</button>
-                  <button id="execute-mod-uninstall" type="button">Execute Uninstall</button>
-                </div>
-              </div>
-            </details>
           </article>
         </div>
 

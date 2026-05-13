@@ -5,7 +5,9 @@ import { visibleViewerPages } from "../../viewer/public/shared/pages.js";
 describe("viewer page visibility", () => {
     test("hides capability-gated pages until the capability is explicitly enabled", () => {
         const pages = visibleViewerPages().map((page) => page.id);
+        const dashboard = visibleViewerPages().find((page) => page.id === "home");
 
+        expect(dashboard?.label).toBe("Dashboard");
         expect(pages).not.toContain("battle-log");
         expect(pages).not.toContain("battle-log-workbench");
         expect(pages).toContain("settings");
@@ -30,5 +32,15 @@ describe("viewer page visibility", () => {
 
         expect(pages).toContain("battle-log");
         expect(pages).not.toContain("battle-log-workbench");
+    });
+
+    test("shows the advanced workbench when Developer Tools and Battle Log are both enabled", () => {
+        const pages = visibleViewerPages({
+            developerMode: true,
+            capabilities: { battleLog: true },
+        }).map((page) => page.id);
+
+        expect(pages).toContain("battle-log");
+        expect(pages).toContain("battle-log-workbench");
     });
 });

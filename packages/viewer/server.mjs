@@ -23,6 +23,7 @@ import {
 import { buildReleaseInfo } from "./release-info.mjs";
 import { fetchReleaseUpdateCheck } from "./release-update.mjs";
 import { buildDiagnosticsBundle, buildDiagnosticsMarkdown } from "./diagnostics-bundle.mjs";
+import { createCloudTelemetryBridge } from "./cloud-telemetry.mjs";
 import { buildCapabilityUnavailablePage } from "./public-page-responses.mjs";
 import { buildCommunityModVariantGateContext } from "./community-mod-variant-gates.mjs";
 import { detectCommunityModInstall } from "./community-mod-install.mjs";
@@ -50,6 +51,7 @@ import {
     buildCommunityModUninstallExecutionRequest,
     executeCommunityModUninstall,
 } from "./community-mod-uninstall-execution.mjs";
+import { installBoundedConsoleLogSync } from "./bounded-log-file.mjs";
 
 const DEFAULT_GAME_DIR = "C:\\Games\\Star Trek Fleet Command\\default\\game";
 const DEFAULT_FEED_FILE = "community_patch_battle_feed.jsonl";
@@ -72,6 +74,8 @@ const repoRoot = path.resolve(__dirname, "..", "..");
 const publicDir = path.join(__dirname, "public");
 const DEFAULT_ARTIFACT_CACHE_DIR = path.join(repoRoot, ".sidecar", "mod-artifacts");
 
+installBoundedConsoleLogSync(process.env.STFC_SIDECAR_PROCESS_LOG_PATH?.trim() ?? "");
+
 const { gameDir, feedPath, settingsPath, port, defaultLimit, developerMode } = parseArgs(process.argv.slice(2));
 const companionMode = companionModeFromDeveloperMode(developerMode);
 const startedAt = new Date();
@@ -87,6 +91,12 @@ const releaseInfo = buildReleaseInfo({
     signaturePolicy: process.env.STFC_SIDECAR_SIGNATURE_POLICY,
     packaged: process.env.STFC_SIDECAR_DESKTOP === "1",
 });
+const cloudTelemetryBridge = createCloudTelemetryBridge({
+    env: process.env,
+    gameDir,
+    sidecarVersion: releaseInfo.version,
+    logger: console,
+});
 let feedIndex = createEmptyFeedIndex();
 let feedWatcher = null;
 let feedWatcherPath = "";
@@ -98,15 +108,23 @@ let shutdownRequested = false;
 let exitTimer;
 
 let createSqlSidecarEventStore;
+let applyCommunityModDiagnosticSettingsPatch;
 let applyCommunityModHotkeySettingsPatch;
+let applyCommunityModNotificationSettingsPatch;
+let buildCommunityModDiagnosticSettingsSnapshot;
 let buildCommunityModHotkeySettingsSnapshot;
+let buildCommunityModNotificationSettingsSnapshot;
 let normalizeCommunityModSettingsProfile;
 let isSidecarEvent;
 let parseEventJsonLine;
 try {
     ({
+        applyCommunityModDiagnosticSettingsPatch,
         applyCommunityModHotkeySettingsPatch,
+        applyCommunityModNotificationSettingsPatch,
+        buildCommunityModDiagnosticSettingsSnapshot,
         buildCommunityModHotkeySettingsSnapshot,
+        buildCommunityModNotificationSettingsSnapshot,
         createSqlSidecarEventStore,
         isSidecarEvent,
         normalizeCommunityModSettingsProfile,
@@ -181,6 +199,14 @@ const server = createServer(async (request, response) => {
         return handleEventStream(request, response);
     }
 
+    if (requestUrl.pathname === "/api/fleet/sync") {
+        if (request.method === "POST") {
+            return handleFleetSyncIngest(request, response);
+        }
+
+        return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+    }
+
     if (requestUrl.pathname === "/api/settings/hotkeys") {
         if (request.method === "GET") {
             return sendJson(response, 200, await readHotkeySettingsSnapshot());
@@ -188,6 +214,34 @@ const server = createServer(async (request, response) => {
 
         if (request.method === "PUT" || request.method === "PATCH" || request.method === "POST") {
             return handleHotkeySettingsUpdate(request, response);
+        }
+
+        return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+    }
+
+    if (requestUrl.pathname === "/api/settings/notifications") {
+        if (request.method === "GET") {
+            return sendJson(response, 200, await readNotificationSettingsSnapshot());
+        }
+
+        if (request.method === "PUT" || request.method === "PATCH" || request.method === "POST") {
+            return handleNotificationSettingsUpdate(request, response);
+        }
+
+        return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+    }
+
+    if (requestUrl.pathname === "/api/settings/diagnostics") {
+        if (!developerMode) {
+            return sendJson(response, 403, developerModeRequiredPayload());
+        }
+
+        if (request.method === "GET") {
+            return sendJson(response, 200, await readDiagnosticSettingsSnapshot());
+        }
+
+        if (request.method === "PUT" || request.method === "PATCH" || request.method === "POST") {
+            return handleDiagnosticSettingsUpdate(request, response);
         }
 
         return sendJson(response, 405, { ok: false, error: "Method not allowed" });
@@ -568,6 +622,7 @@ const server = createServer(async (request, response) => {
             feedPath,
             settingsPath,
             port,
+            desktop: process.env.STFC_SIDECAR_DESKTOP === "1",
             defaultLimit,
             developerMode,
             companionMode,
@@ -580,6 +635,7 @@ const server = createServer(async (request, response) => {
             release: releaseInfo,
             eventStoreBackend: eventStore?.backend ?? "none",
             storedEvents,
+            cloudTelemetry: cloudTelemetryBridge.status(),
             startedAt: startedAt.toISOString(),
             uptimeMs: Date.now() - startedAt.getTime(),
             shuttingDown: shutdownRequested,
@@ -605,6 +661,7 @@ const server = createServer(async (request, response) => {
             feedPath,
             settingsPath,
             eventStoreBackend: eventStore?.backend ?? "none",
+            cloudTelemetry: cloudTelemetryBridge.status(),
             generatedAt: new Date().toISOString(),
         });
     }
@@ -724,7 +781,7 @@ function isBattleLogPublicPath(pathname) {
 }
 
 function isPrivilegedModApiPath(pathname) {
-    return pathname === "/api/release/check" || pathname.startsWith("/api/mod/");
+    return pathname.startsWith("/api/mod/");
 }
 
 function isGithubNetworkApiPath(pathname) {
@@ -771,11 +828,15 @@ function variantGateCapabilityDetails(capability, reasons = []) {
 
 function communityModProfileLabel(profile) {
     if (profile === "netniv-basic") {
-        return "Official Basic";
+        return "Basic";
     }
 
-    if (profile === "guff-advanced") {
-        return "Guff Advanced";
+    if (profile === "waffle-basic") {
+        return "Waffle Basic";
+    }
+
+    if (["waffle-advanced", "guff-advanced"].includes(profile)) {
+        return "Waffle Advanced";
     }
 
     if (profile === "none") {
@@ -789,11 +850,13 @@ function variantGateReasonLabel(capability, reason) {
     if (capability === "battleLog") {
         switch (reason) {
             case "selected_profile_netniv-basic_does_not_support_battleLog":
-                return "Official Basic selection does not include Battle Log.";
-            case "selected_profile_guff-advanced_does_not_support_battleLog":
+                return "Basic selection does not include Battle Log.";
+            case "selected_profile_waffle-basic_does_not_support_battleLog":
+                return "Waffle Basic selection does not include Battle Log.";
+            case "selected_profile_waffle-advanced_does_not_support_battleLog":
                 return "Selected profile does not include Battle Log.";
             case "installed_profile_netniv-basic_does_not_support_battleLog":
-                return "Installed Official Basic DLL does not include Battle Log.";
+                return "Installed Basic DLL does not include Battle Log.";
             case "installed_dll_unknown":
                 return "Installed DLL is unknown.";
             case "installed_dll_missing":
@@ -939,7 +1002,8 @@ async function buildCurrentCommunityModUninstallConfirmation(options = {}) {
 
 async function readHotkeySettingsSnapshot() {
     const generatedAt = new Date().toISOString();
-    const exists = existsSync(settingsPath);
+    const saveSupported = Boolean(settingsPath);
+    const exists = saveSupported && existsSync(settingsPath);
     const contents = exists ? await readFile(settingsPath, "utf8") : "";
     const snapshot = buildCommunityModHotkeySettingsSnapshot(contents, { profile: communityModSettingsProfile });
 
@@ -950,9 +1014,53 @@ async function readHotkeySettingsSnapshot() {
         exists,
         saveRequiresToken: settingsSaveMode === SETTINGS_SAVE_MODE_REMOTE_PROTECTED,
         settingsSaveMode,
-        saveSupported: true,
+        saveSupported,
+        error: saveSupported ? undefined : "Select an STFC game directory before editing settings.",
         applyMode: "next_launch",
         modProfile: communityModSettingsProfile,
+    };
+}
+
+async function readNotificationSettingsSnapshot() {
+    const generatedAt = new Date().toISOString();
+    const saveSupported = Boolean(settingsPath);
+    const exists = saveSupported && existsSync(settingsPath);
+    const contents = exists ? await readFile(settingsPath, "utf8") : "";
+    const snapshot = buildCommunityModNotificationSettingsSnapshot(contents, { profile: communityModSettingsProfile });
+
+    return {
+        ...snapshot,
+        generatedAt,
+        settingsPath,
+        exists,
+        saveRequiresToken: settingsSaveMode === SETTINGS_SAVE_MODE_REMOTE_PROTECTED,
+        settingsSaveMode,
+        saveSupported,
+        error: saveSupported ? undefined : "Select an STFC game directory before editing settings.",
+        applyMode: "next_launch",
+        modProfile: communityModSettingsProfile,
+    };
+}
+
+async function readDiagnosticSettingsSnapshot() {
+    const generatedAt = new Date().toISOString();
+    const saveSupported = Boolean(settingsPath);
+    const exists = saveSupported && existsSync(settingsPath);
+    const contents = exists ? await readFile(settingsPath, "utf8") : "";
+    const snapshot = buildCommunityModDiagnosticSettingsSnapshot(contents, { profile: communityModSettingsProfile });
+
+    return {
+        ...snapshot,
+        generatedAt,
+        settingsPath,
+        exists,
+        saveRequiresToken: settingsSaveMode === SETTINGS_SAVE_MODE_REMOTE_PROTECTED,
+        settingsSaveMode,
+        saveSupported,
+        error: saveSupported ? undefined : "Select an STFC game directory before editing settings.",
+        applyMode: "next_launch",
+        modProfile: communityModSettingsProfile,
+        developerMode,
     };
 }
 
@@ -1019,6 +1127,10 @@ async function countStoredEvents() {
 }
 
 async function handleHotkeySettingsUpdate(request, response) {
+    if (!settingsPath) {
+        return sendJson(response, 400, { ok: false, error: "Select an STFC game directory before editing settings." });
+    }
+
     if (!isAuthorizedSettingsRequest(request)) {
         return sendJson(response, 401, { ok: false, error: "Unauthorized settings request" });
     }
@@ -1036,6 +1148,74 @@ async function handleHotkeySettingsUpdate(request, response) {
         await writeFile(settingsPath, nextContents, "utf8");
         console.log(`[sidecar-viewer] updated hotkey settings ${settingsPath}`);
         return sendJson(response, 200, await readHotkeySettingsSnapshot());
+    } catch (error) {
+        return sendJson(response, 400, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+}
+
+async function handleNotificationSettingsUpdate(request, response) {
+    if (!settingsPath) {
+        return sendJson(response, 400, { ok: false, error: "Select an STFC game directory before editing settings." });
+    }
+
+    if (!isAuthorizedSettingsRequest(request)) {
+        return sendJson(response, 401, { ok: false, error: "Unauthorized settings request" });
+    }
+
+    try {
+        const payload = await readJsonBody(request);
+        const previousContents = existsSync(settingsPath) ? await readFile(settingsPath, "utf8") : "";
+        const nextContents = applyCommunityModNotificationSettingsPatch(previousContents, payload, {
+            profile: communityModSettingsProfile,
+        });
+        await mkdir(path.dirname(settingsPath), { recursive: true });
+
+        if (existsSync(settingsPath)) {
+            await copyFile(settingsPath, `${settingsPath}.bak.sidecar`);
+        }
+
+        await writeFile(settingsPath, nextContents, "utf8");
+        console.log(`[sidecar-viewer] updated notification settings ${settingsPath}`);
+        return sendJson(response, 200, await readNotificationSettingsSnapshot());
+    } catch (error) {
+        return sendJson(response, 400, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+}
+
+async function handleDiagnosticSettingsUpdate(request, response) {
+    if (!developerMode) {
+        return sendJson(response, 403, developerModeRequiredPayload());
+    }
+
+    if (!isAuthorizedSettingsRequest(request)) {
+        return sendJson(response, 401, { ok: false, error: "Unauthorized settings request" });
+    }
+
+    if (!settingsPath) {
+        return sendJson(response, 400, { ok: false, error: "Select an STFC game directory before editing settings." });
+    }
+
+    try {
+        const payload = await readJsonBody(request);
+        const previousContents = existsSync(settingsPath) ? await readFile(settingsPath, "utf8") : "";
+        const nextContents = applyCommunityModDiagnosticSettingsPatch(previousContents, payload, {
+            profile: communityModSettingsProfile,
+        });
+        await mkdir(path.dirname(settingsPath), { recursive: true });
+
+        if (existsSync(settingsPath)) {
+            await copyFile(settingsPath, `${settingsPath}.bak.sidecar`);
+        }
+
+        await writeFile(settingsPath, nextContents, "utf8");
+        console.log(`[sidecar-viewer] updated diagnostic settings ${settingsPath}`);
+        return sendJson(response, 200, await readDiagnosticSettingsSnapshot());
     } catch (error) {
         return sendJson(response, 400, {
             ok: false,
@@ -1109,7 +1289,8 @@ function parseArgs(args) {
     }
 
     const resolvedGameDir = resolveGameDir(selectedGameDir);
-    const resolvedFeedPath = resolveFeedPath(selectedFeedPath || path.join(resolvedGameDir, DEFAULT_FEED_FILE));
+    const defaultFeedPath = resolvedGameDir ? path.join(resolvedGameDir, DEFAULT_FEED_FILE) : "";
+    const resolvedFeedPath = resolveFeedPath(selectedFeedPath || defaultFeedPath);
     return {
         gameDir: resolvedGameDir,
         feedPath: resolvedFeedPath,
@@ -1130,16 +1311,29 @@ function readPackageVersion() {
 }
 
 function resolveGameDir(gameDir) {
-    const platformPath = normalizeWindowsPathForWsl(gameDir || DEFAULT_GAME_DIR);
+    const fallbackGameDir = process.env.STFC_SIDECAR_DESKTOP === "1" ? "" : DEFAULT_GAME_DIR;
+    const platformPath = normalizeWindowsPathForWsl(gameDir || fallbackGameDir);
+    if (!platformPath) {
+        return "";
+    }
+
     return path.resolve(platformPath);
 }
 
 function resolveFeedPath(feedPath) {
+    if (!feedPath) {
+        return "";
+    }
+
     const platformPath = normalizeWindowsPathForWsl(feedPath);
     return path.resolve(platformPath);
 }
 
 function resolveSettingsPath(selectedSettingsPath, selectedFeedPath) {
+    if (!selectedSettingsPath && !selectedFeedPath) {
+        return "";
+    }
+
     const settingsPathValue = selectedSettingsPath || path.join(path.dirname(selectedFeedPath), DEFAULT_SETTINGS_FILE);
     const platformPath = normalizeWindowsPathForWsl(settingsPathValue);
     return path.resolve(platformPath);
@@ -1216,6 +1410,22 @@ async function handleEventIngest(request, response) {
             backend: store.backend,
             ...result,
         });
+    } catch (error) {
+        return sendJson(response, 400, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+}
+
+async function handleFleetSyncIngest(request, response) {
+    if (!isAuthorizedSyncRequest(request)) {
+        return sendJson(response, 401, { ok: false, error: "Unauthorized sidecar sync request" });
+    }
+
+    try {
+        const payload = await readJsonBody(request);
+        return sendJson(response, 202, cloudTelemetryBridge.ingestSyncPayload(payload));
     } catch (error) {
         return sendJson(response, 400, {
             ok: false,

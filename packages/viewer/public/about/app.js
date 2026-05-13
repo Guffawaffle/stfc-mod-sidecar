@@ -1,5 +1,6 @@
 import {
     communityModInstallLabel,
+    communityModProfileCapabilitySummary,
     communityModInstallSummary,
     communityModReleaseLabel,
     communityModReleaseSummary,
@@ -21,7 +22,14 @@ import {
     communityModUninstallExecutionLabel,
     communityModUninstallExecutionSummary,
     communityModUninstallExecutionRecoverySummary,
+    modProfileLabel,
+    normalizeModProfile,
 } from "../shared/community-mod-status.js";
+import {
+    buildSettingsTroubleshootingPrompt,
+    buildSettingsTroubleshootingSummary,
+    collectSettingsWarnings,
+} from "../settings/troubleshooting.js";
 
 const state = {
     bootstrap: null,
@@ -36,6 +44,10 @@ const state = {
     modUninstallPlan: null,
     modUninstallConfirmation: null,
     modUninstallExecution: null,
+    settingsSnapshot: null,
+    diagnosticSnapshot: null,
+    notificationSnapshot: null,
+    settingsError: "",
     modUninstallDeleteSettingsAndLogs: false,
     companionUninstallStatus: null,
     companionActionMessage: "",
@@ -51,9 +63,14 @@ const state = {
 };
 
 const elements = {
-    developerModeOption: document.querySelector("#about-developer-mode-option"),
-    developerModeToggle: document.querySelector("#about-developer-mode-toggle"),
     developerModeState: document.querySelector("#about-developer-mode-state"),
+    settingsConfigState: document.querySelector("#about-settings-config-state"),
+    settingsWarningCount: document.querySelector("#about-settings-warning-count"),
+    settingsCoachSummary: document.querySelector("#about-settings-coach-summary"),
+    settingsCoachState: document.querySelector("#about-settings-coach-state"),
+    settingsPromptPreview: document.querySelector("#about-settings-prompt-preview"),
+    previewSettingsPrompt: document.querySelector("#preview-settings-prompt"),
+    copySettingsPrompt: document.querySelector("#copy-settings-prompt"),
     releaseVersion: document.querySelector("#about-release-version"),
     releaseChannel: document.querySelector("#about-release-channel"),
     signaturePolicy: document.querySelector("#about-signature-policy"),
@@ -69,6 +86,12 @@ const elements = {
     modInstallTitle: document.querySelector("#about-mod-install-title"),
     modInstallState: document.querySelector("#about-mod-install-state"),
     modInstallDetail: document.querySelector("#about-mod-install-detail"),
+    modProfileState: document.querySelector("#about-mod-profile-state"),
+    modGameDirectoryState: document.querySelector("#about-mod-game-directory-state"),
+    modDllState: document.querySelector("#about-mod-dll-state"),
+    modReleaseSummaryState: document.querySelector("#about-mod-release-summary-state"),
+    modInstallGuideSummary: document.querySelector("#about-mod-install-guide-summary"),
+    modInstallGuide: document.querySelector("#about-mod-install-guide"),
     modReleaseState: document.querySelector("#about-mod-release-state"),
     modReleaseDetail: document.querySelector("#about-mod-release-detail"),
     modPlanState: document.querySelector("#about-mod-plan-state"),
@@ -90,6 +113,8 @@ const elements = {
     modUninstallExecutionDetail: document.querySelector("#about-mod-uninstall-execution-detail"),
     modUninstallRecoveryDetail: document.querySelector("#about-mod-uninstall-recovery-detail"),
     modUninstallDeleteSettingsAndLogs: document.querySelector("#about-mod-uninstall-delete-settings-logs"),
+    modUninstallOptions: document.querySelector("#about-mod-uninstall-options"),
+    selectModGameDirectory: document.querySelector("#select-mod-game-directory"),
     refreshModStatus: document.querySelector("#refresh-mod-status"),
     runModInstall: document.querySelector("#run-mod-install"),
     runModUninstall: document.querySelector("#run-mod-uninstall"),
@@ -113,7 +138,8 @@ const elements = {
     confirmationDialogConfirm: document.querySelector("#about-confirmation-dialog-confirm"),
 };
 
-elements.developerModeToggle?.addEventListener("change", () => void setDeveloperMode(elements.developerModeToggle.checked));
+elements.previewSettingsPrompt?.addEventListener("click", previewSettingsPrompt);
+elements.copySettingsPrompt?.addEventListener("click", () => void copySettingsPrompt());
 elements.previewDiagnostics?.addEventListener("click", () => void previewDiagnostics());
 elements.copyDiagnostics?.addEventListener("click", () => void copyDiagnostics());
 elements.downloadDiagnostics?.addEventListener("click", () => void downloadDiagnostics());
@@ -121,6 +147,7 @@ elements.checkReleaseUpdate?.addEventListener("click", () => void checkReleaseUp
 elements.runCompanionUninstall?.addEventListener("click", () => void runCompanionUninstall());
 elements.openWindowsUninstallSettings?.addEventListener("click", () => void openWindowsUninstallSettings());
 elements.showCompanionInstallFolder?.addEventListener("click", () => void showCompanionInstallFolder());
+elements.selectModGameDirectory?.addEventListener("click", () => void selectModGameDirectory());
 elements.refreshModStatus?.addEventListener("click", () => void refreshModStatus());
 elements.runModInstall?.addEventListener("click", () => void runModInstall());
 elements.runModUninstall?.addEventListener("click", () => void runModUninstall());
@@ -139,6 +166,7 @@ elements.modUninstallDeleteSettingsAndLogs?.addEventListener("change", () => {
 });
 
 await loadMode();
+await loadSettingsContext();
 
 async function loadMode() {
     try {
@@ -172,8 +200,50 @@ async function loadServerMode() {
         modProfile: health.modProfile,
         settingsProfile: health.settingsProfile,
         communityModInstall: health.communityModInstall,
+        gameDirectory: health.gameDir,
+        feedPath: health.feedPath,
+        settingsPath: health.settingsPath,
+        capabilities: health.capabilities ?? {},
+        variantGate: health.variantGate ?? null,
         release: health.release,
     };
+}
+
+async function loadSettingsContext() {
+    renderSettingsContext();
+    try {
+        const [settingsSnapshot, notificationSnapshot, diagnosticSnapshot] = await Promise.all([
+            fetchJsonIfOk("/api/settings/hotkeys"),
+            fetchJsonIfOk("/api/settings/notifications"),
+            fetchJsonIfOk("/api/settings/diagnostics", { optionalStatuses: [403, 404] }),
+        ]);
+
+        state.settingsSnapshot = settingsSnapshot;
+        state.notificationSnapshot = notificationSnapshot;
+        state.diagnosticSnapshot = diagnosticSnapshot;
+        state.settingsError = "";
+    } catch (error) {
+        state.settingsSnapshot = null;
+        state.notificationSnapshot = null;
+        state.diagnosticSnapshot = null;
+        state.settingsError = error instanceof Error ? error.message : String(error);
+    }
+
+    renderSettingsContext();
+}
+
+async function fetchJsonIfOk(url, options = {}) {
+    const response = await fetch(url, { cache: "no-store" });
+    if ((options.optionalStatuses ?? []).includes(response.status)) {
+        return null;
+    }
+
+    const payload = await response.json();
+    if (!response.ok) {
+        throw new Error(payload?.error ?? `Request failed: ${response.status}`);
+    }
+
+    return payload;
 }
 
 async function setDeveloperMode(enabled) {
@@ -214,11 +284,6 @@ async function setDeveloperMode(enabled) {
 
 function renderMode() {
     const developerMode = state.pendingDeveloperMode ?? Boolean(state.bootstrap?.developerMode);
-    const canPersistMode = Boolean(window.stfcDesktop?.setDeveloperMode);
-
-    elements.developerModeOption.hidden = !canPersistMode;
-    elements.developerModeToggle.checked = developerMode;
-    elements.developerModeToggle.disabled = !canPersistMode || state.modeChanging;
 
     if (state.bootstrap?.error) {
         elements.developerModeState.textContent = state.bootstrap.error;
@@ -227,9 +292,69 @@ function renderMode() {
 
     elements.developerModeState.textContent = state.modeChanging
         ? "Applying mode change..."
-        : canPersistMode
-            ? modeLabel(developerMode)
-            : `${modeLabel(developerMode)} active`;
+        : `${modeLabel(developerMode)} active`;
+}
+
+function renderSettingsContext() {
+    if (state.settingsError) {
+        elements.settingsConfigState.textContent = "Unavailable";
+        elements.settingsWarningCount.textContent = "0";
+        elements.settingsCoachSummary.textContent = state.settingsError;
+        return;
+    }
+
+    if (!state.settingsSnapshot) {
+        elements.settingsConfigState.textContent = "Loading...";
+        elements.settingsWarningCount.textContent = "0";
+        elements.settingsCoachSummary.textContent = "Loading settings context.";
+        return;
+    }
+
+    const input = settingsTroubleshootingInput();
+    const warnings = collectSettingsWarnings(input);
+    elements.settingsConfigState.textContent = state.settingsSnapshot.parseError
+        ? "Invalid TOML"
+        : state.settingsSnapshot.exists ? "Found" : "Not found";
+    elements.settingsWarningCount.textContent = String(warnings.length);
+    elements.settingsCoachSummary.textContent = buildSettingsTroubleshootingSummary(input);
+}
+
+function previewSettingsPrompt() {
+    const prompt = buildSettingsTroubleshootingPrompt(settingsTroubleshootingInput());
+    elements.settingsPromptPreview.textContent = prompt;
+    elements.settingsPromptPreview.hidden = false;
+    setSettingsCoachState("Preview ready");
+}
+
+async function copySettingsPrompt() {
+    const prompt = buildSettingsTroubleshootingPrompt(settingsTroubleshootingInput());
+    elements.settingsPromptPreview.textContent = prompt;
+    elements.settingsPromptPreview.hidden = false;
+    setSettingsCoachState("Copying prompt...");
+
+    try {
+        await navigator.clipboard.writeText(prompt);
+        setSettingsCoachState("Prompt copied");
+    } catch (error) {
+        setSettingsCoachState(error instanceof Error ? error.message : String(error));
+    }
+}
+
+function setSettingsCoachState(message) {
+    elements.settingsCoachState.textContent = message;
+}
+
+function settingsTroubleshootingInput() {
+    const snapshot = state.settingsSnapshot;
+    return {
+        snapshot,
+        diagnosticSnapshot: state.diagnosticSnapshot,
+        notificationSnapshot: state.notificationSnapshot,
+        bootstrap: state.bootstrap,
+        draftBindings: new Map((snapshot?.actions ?? []).map((action) => [action.id, [...action.bindings]])),
+        draftHardSettings: new Map((snapshot?.hardSettings ?? []).map((setting) => [setting.id, setting.value])),
+        conflicts: [],
+    };
 }
 
 function modeLabel(developerMode) {
@@ -391,11 +516,21 @@ async function refreshModStatus() {
     }
 }
 
+async function selectModGameDirectory() {
+    await ensureGameDirectorySelected({ force: true });
+}
+
 function renderCommunityModStatus() {
     const install = state.bootstrap?.communityModInstall;
+    const profileHint = communityModProfileCapabilitySummary(install, state.bootstrap?.modProfile, state.bootstrap?.capabilities);
     elements.modInstallTitle.textContent = communityModInstallLabel(install);
     elements.modInstallState.textContent = communityModInstallLabel(install);
-    elements.modInstallDetail.textContent = communityModInstallSummary(install);
+    elements.modInstallDetail.textContent = [communityModInstallSummary(install), profileHint].filter(Boolean).join(" ");
+    elements.modProfileState.textContent = modProfileLabel(state.bootstrap?.modProfile ?? state.bootstrap?.settingsProfile);
+    elements.modGameDirectoryState.textContent = state.bootstrap?.gameDirectory || "Not selected";
+    elements.modDllState.textContent = communityModDllStateLabel(install);
+    elements.modReleaseSummaryState.textContent = communityModReleaseLabel(state.modReleaseCatalog);
+    renderModInstallGuide(buildModInstallGuideSteps(install));
     elements.modReleaseState.textContent = communityModReleaseLabel(state.modReleaseCatalog);
     elements.modReleaseDetail.textContent = communityModReleaseSummary(state.modReleaseCatalog);
     elements.modPlanState.textContent = communityModInstallPlanLabel(state.modInstallPlan);
@@ -420,7 +555,17 @@ function renderCommunityModStatus() {
     elements.modUninstallDeleteSettingsAndLogs.disabled = state.modUninstallChecking
         || state.modUninstallConfirming
         || state.modUninstallExecuting;
+    elements.modUninstallOptions.hidden = !isCommunityModInstalled(install) || !canRunModOperations();
     setModReleaseLink(state.modReleaseCatalog?.release?.htmlUrl);
+    elements.selectModGameDirectory.hidden = !window.stfcDesktop?.selectGameDirectory;
+    elements.selectModGameDirectory.textContent = state.bootstrap?.gameDirectory ? "Change STFC Folder" : "Select STFC Folder";
+    elements.selectModGameDirectory.disabled = state.modReleaseChecking
+        || state.modArtifactVerifying
+        || state.modInstallConfirming
+        || state.modInstallExecuting
+        || state.modUninstallChecking
+        || state.modUninstallConfirming
+        || state.modUninstallExecuting;
     elements.runModInstall.textContent = installButtonLabel();
     elements.runModInstall.disabled = !canRunModOperations()
         || state.modReleaseChecking
@@ -454,6 +599,192 @@ function renderCommunityModStatus() {
         || state.modUninstallConfirming
         || state.modUninstallExecuting
         || !isUninstallExecutionReady(state.modUninstallConfirmation);
+}
+
+function communityModDllStateLabel(install) {
+    if (!install) {
+        return "Loading...";
+    }
+
+    if (install.ok === false) {
+        return "Unavailable";
+    }
+
+    if (install.state === "unselected") {
+        return "Select folder first";
+    }
+
+    if (install.state === "unsupported_platform") {
+        return "Unsupported platform";
+    }
+
+    if (install.state === "none" || install.classification === "none") {
+        return "Not installed";
+    }
+
+    if (install.state !== "installed") {
+        return "Status unavailable";
+    }
+
+    if (install.classification === "unknown") {
+        return "Unknown version.dll";
+    }
+
+    return communityModInstallLabel(install);
+}
+
+function buildModInstallGuideSteps(install) {
+    const profile = modProfileLabel(state.bootstrap?.modProfile ?? state.bootstrap?.settingsProfile);
+    const hasDesktopInstall = canRunModOperations();
+    const gameDirectory = state.bootstrap?.gameDirectory ?? "";
+    const installed = isCommunityModInstalled(install);
+    const compatible = installed
+        && install.classification !== "unknown"
+        && communityModProfilesCompatible(install.classification, state.bootstrap?.modProfile);
+    const plan = state.modInstallPlan;
+    const confirmation = state.modInstallConfirmation;
+    const releaseLabel = communityModReleaseLabel(state.modReleaseCatalog);
+
+    const directoryStep = gameDirectory
+        ? guideStep("Choose STFC folder", "Ready", gameDirectory)
+        : guideStep("Choose STFC folder", "Required", "Select the folder that contains prime.exe.");
+    const dllStep = buildDllGuideStep(install, compatible, profile);
+    const releaseWaitingDetail = hasDesktopInstall
+        ? `Use ${installButtonLabel()} to check the selected ${profile} release and verify the DLL before install.`
+        : "Open the desktop Companion to check releases and install or update version.dll.";
+    const releaseStep = state.modReleaseCatalog
+        ? guideStep("Prepare selected release", releaseLabel, communityModInstallPlanSummary(plan))
+        : guideStep("Prepare selected release", "Waiting", releaseWaitingDetail);
+    const confirmStep = isInstallExecutionReady(confirmation)
+        ? guideStep("Confirm install", "Ready", communityModInstallConfirmationSummary(confirmation))
+        : guideStep("Confirm install", "Waiting", installGuideConfirmationDetail(install, plan));
+
+    return {
+        summary: installGuideSummary(install, compatible, profile),
+        steps: [directoryStep, dllStep, releaseStep, confirmStep],
+    };
+}
+
+function buildDllGuideStep(install, compatible, profile) {
+    if (!install) {
+        return guideStep("Inspect version.dll", "Loading", "Checking the selected game directory.");
+    }
+
+    if (install.ok === false) {
+        return guideStep("Inspect version.dll", "Blocked", String(install.error ?? "Install status is unavailable."));
+    }
+
+    if (install.state === "unselected") {
+        return guideStep("Inspect version.dll", "Waiting", "The folder must be selected before version.dll can be inspected.");
+    }
+
+    if (install.state === "none" || install.classification === "none") {
+        return guideStep("Install version.dll", "Required", `No Community Mod DLL is installed; install ${profile} for this folder.`);
+    }
+
+    if (install.classification === "unknown") {
+        return guideStep("Review installed DLL", "Needs review", "An unknown version.dll is present; replacement requires explicit confirmation and backup.");
+    }
+
+    if (!compatible) {
+        return guideStep("Match selected profile", "Needs review", `Installed ${modProfileLabel(install.classification)} differs from selected ${profile}.`);
+    }
+
+    return guideStep("Inspect version.dll", "Ready", communityModInstallSummary(install));
+}
+
+function installGuideConfirmationDetail(install, plan) {
+    if (!canRunModOperations()) {
+        return "Open the desktop Companion to prepare and execute Community Mod changes.";
+    }
+
+    if (!state.bootstrap?.gameDirectory) {
+        return "Select the STFC folder before preparing confirmation.";
+    }
+
+    if (plan?.ok === false) {
+        return String(plan.error ?? "Resolve the install plan before confirming.");
+    }
+
+    if (plan?.action === "none" && isCommunityModInstalled(install)) {
+        return "No install action is currently required for the selected profile.";
+    }
+
+    return "The install button prepares release metadata, verifies the artifact, stages version.dll, and then asks for confirmation.";
+}
+
+function installGuideSummary(install, compatible, profile) {
+    if (!canRunModOperations() && !state.bootstrap?.gameDirectory) {
+        return `Open the desktop Companion to select the STFC game folder and install ${profile}.`;
+    }
+
+    if (!state.bootstrap?.gameDirectory) {
+        return `Select the STFC game folder first, then install ${profile}.`;
+    }
+
+    if (!install || install.ok === false) {
+        return "The selected folder needs a readable Community Mod install status before install can continue.";
+    }
+
+    if (install.state === "none" || install.classification === "none") {
+        if (!canRunModOperations()) {
+            return `This folder has no version.dll. Open the desktop Companion to install ${profile}.`;
+        }
+
+        return `This folder has no version.dll. Install ${profile} from the selected release.`;
+    }
+
+    if (install.classification === "unknown") {
+        if (!canRunModOperations()) {
+            return `This folder has an unknown version.dll. Open the desktop Companion before replacing it with ${profile}.`;
+        }
+
+        return `This folder has an unknown version.dll. Replace it with ${profile} only after reviewing the confirmation.`;
+    }
+
+    if (!compatible) {
+        if (!canRunModOperations()) {
+            return `This folder has ${modProfileLabel(install.classification)} installed. Open the desktop Companion to switch it to ${profile}.`;
+        }
+
+        return `This folder has ${modProfileLabel(install.classification)} installed. Switch it to ${profile} from the selected release.`;
+    }
+
+    if (!canRunModOperations()) {
+        return `${modProfileLabel(install.classification)} is installed for this folder. Open the desktop Companion for install or update actions.`;
+    }
+
+    return `${modProfileLabel(install.classification)} is installed for this folder. Use the install action when a selected release update is available.`;
+}
+
+function guideStep(label, status, detail) {
+    return { label, status, detail };
+}
+
+function renderModInstallGuide(result) {
+    elements.modInstallGuideSummary.textContent = result.summary;
+    elements.modInstallGuide.replaceChildren(...result.steps.map((step) => {
+        const item = document.createElement("li");
+        item.className = "setup-step";
+
+        const heading = document.createElement("div");
+        heading.className = "setup-step__heading";
+
+        const label = document.createElement("strong");
+        label.textContent = step.label;
+
+        const status = document.createElement("span");
+        status.className = "settings-chip";
+        status.textContent = step.status;
+
+        const detail = document.createElement("p");
+        detail.className = "page-copy";
+        detail.textContent = step.detail;
+
+        heading.append(label, status);
+        item.append(heading, detail);
+        return item;
+    }));
 }
 
 async function checkModRelease() {
@@ -506,12 +837,12 @@ function setModReleaseLink(url) {
 
 async function checkReleaseUpdate() {
     if (!await ensureGithubNetworkConsent()) {
-        setReleaseUpdateState("Update check cancelled");
+        setReleaseUpdateState("Companion update check cancelled");
         return;
     }
 
     elements.checkReleaseUpdate.disabled = true;
-    setReleaseUpdateState("Checking updates...");
+    setReleaseUpdateState("Checking Companion updates...");
     setReleaseUpdateLink("");
 
     try {
@@ -528,7 +859,7 @@ async function fetchReleaseUpdateCheck() {
     const response = await fetch("/api/release/check", modFetchOptions({ network: true }));
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result.ok === false) {
-        throw new Error(result.error ? `Update check failed: ${result.error}` : `Update check failed: ${response.status}`);
+        throw new Error(result.error ? `Companion update check failed: ${result.error}` : `Companion update check failed: ${response.status}`);
     }
 
     return result;
@@ -536,19 +867,19 @@ async function fetchReleaseUpdateCheck() {
 
 function renderReleaseUpdate(result) {
     if (result.status === "update_available") {
-        setReleaseUpdateState(`${result.latest?.version ?? "New version"} available`);
+        setReleaseUpdateState(`Companion ${result.latest?.version ?? "update"} available`);
         setReleaseUpdateLink(result.latest?.htmlUrl);
         return;
     }
 
     if (result.status === "up_to_date") {
-        setReleaseUpdateState(`Current version is latest: ${result.latest?.version ?? "unknown"}`);
+        setReleaseUpdateState(`Companion is current: ${result.latest?.version ?? "unknown"}`);
         setReleaseUpdateLink(result.latest?.htmlUrl);
         return;
     }
 
     if (result.status === "no_release") {
-        setReleaseUpdateState("No release found for this channel");
+        setReleaseUpdateState("No Companion release found for this channel");
         return;
     }
 
@@ -557,7 +888,7 @@ function renderReleaseUpdate(result) {
         return;
     }
 
-    setReleaseUpdateState("Update status unavailable");
+    setReleaseUpdateState("Companion update status unavailable");
 }
 
 function setReleaseUpdateState(message) {
@@ -786,8 +1117,8 @@ async function runModInstall() {
     await confirmAndExecuteModInstall();
 }
 
-async function ensureGameDirectorySelected() {
-    if (state.bootstrap?.gameDirectory) {
+async function ensureGameDirectorySelected(options = {}) {
+    if (!options.force && state.bootstrap?.gameDirectory) {
         return true;
     }
 
@@ -1097,10 +1428,24 @@ function installButtonLabel() {
 
     const install = state.bootstrap?.communityModInstall;
     if (isCommunityModInstalled(install)) {
+        if (install.classification === "unknown") {
+            return `Replace With ${modProfileLabel(state.bootstrap?.modProfile)}`;
+        }
+
+        if (!communityModProfilesCompatible(install.classification, state.bootstrap?.modProfile)) {
+            return `Switch To ${modProfileLabel(state.bootstrap?.modProfile)}`;
+        }
+
         return "Update Community Mod";
     }
 
-    return "Install Community Mod";
+    return `Install ${modProfileLabel(state.bootstrap?.modProfile)}`;
+}
+
+function communityModProfilesCompatible(left, right) {
+    const leftProfile = normalizeModProfile(left);
+    const rightProfile = normalizeModProfile(right);
+    return leftProfile === rightProfile || (leftProfile.startsWith("waffle-") && rightProfile.startsWith("waffle-"));
 }
 
 function installConfirmLabel(confirmation) {

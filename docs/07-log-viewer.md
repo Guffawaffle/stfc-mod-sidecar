@@ -1,6 +1,6 @@
 # Log Viewer
 
-The sidecar now includes a multipage local viewer for the JSONL data emitted by `stfc-mod`.
+The sidecar now includes a multipage local viewer for the JSONL data emitted by `stfc-mod` when local JSONL fallback capture is explicitly enabled.
 
 ## What It Does
 
@@ -16,7 +16,7 @@ By default the viewer reads:
 
 `C:\Games\Star Trek Fleet Command\default\game\community_patch_battle_feed.jsonl`
 
-That is the structured feed written by the battle-log decoder path in `stfc-mod`.
+That is the structured feed written by the battle-log decoder path in `stfc-mod` when `sync.sidecar_jsonl` is enabled. Preferred durable export remains ingress-first through sidecar or another configured consumer.
 
 ## Start The Viewer
 
@@ -34,7 +34,7 @@ From there, open the Battle Log page, or navigate directly to:
 
 `http://127.0.0.1:43127/battle-log/`
 
-The managed start command builds the sidecar core package first, launches the viewer in the background, records its pid in `.sidecar/viewer-server.json`, and writes process logs to `.sidecar/viewer-server.log`.
+The managed start command builds the sidecar core package first, launches the viewer in the background, records its pid in `.sidecar/viewer-server.json`, and writes bounded process logs to `.sidecar/viewer-server.log`. Treat that file as a local troubleshooting log, not as durable telemetry.
 
 ## Server Control Commands
 

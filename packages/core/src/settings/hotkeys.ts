@@ -2,7 +2,7 @@ import { parse as parseToml } from "smol-toml";
 
 export const HOTKEY_MAX_BINDINGS = 2;
 
-export const COMMUNITY_MOD_SETTINGS_PROFILES = ["netniv-basic", "guff-advanced"] as const;
+export const COMMUNITY_MOD_SETTINGS_PROFILES = ["netniv-basic", "waffle-basic", "waffle-advanced"] as const;
 export const DEFAULT_COMMUNITY_MOD_SETTINGS_PROFILE: CommunityModSettingsProfile = "netniv-basic";
 
 export type CommunityModSettingsProfile = typeof COMMUNITY_MOD_SETTINGS_PROFILES[number];
@@ -193,18 +193,18 @@ const utilityActions = [
   action("toggle_cargo_armada", "Toggle armada cargo", "Cargo & Locate", ["ALT-5"]),
   action("toggle_preview_locate", "Toggle preview locate", "Cargo & Locate", ["CTRL-R"]),
   action("toggle_preview_recall", "Toggle preview recall", "Cargo & Locate", ["CTRL-T"]),
-  action("move_up", "Move up", "Experimental", ["W"], { profiles: ["guff-advanced"] }),
-  action("move_down", "Move down", "Experimental", ["S"], { profiles: ["guff-advanced"] }),
-  action("move_left", "Move left", "Experimental", ["A"], { profiles: ["guff-advanced"] }),
-  action("move_right", "Move right", "Experimental", ["D"], { profiles: ["guff-advanced"] }),
+  action("move_up", "Move up", "Experimental", ["W"], { profiles: ["waffle-advanced"] }),
+  action("move_down", "Move down", "Experimental", ["S"], { profiles: ["waffle-advanced"] }),
+  action("move_left", "Move left", "Experimental", ["A"], { profiles: ["waffle-advanced"] }),
+  action("move_right", "Move right", "Experimental", ["D"], { profiles: ["waffle-advanced"] }),
   action("log_trace", "Log trace", "Hotkeys Master Switch & Logs", ["CTRL-SHIFT-F7"]),
   action("log_info", "Log info", "Hotkeys Master Switch & Logs", ["CTRL-SHIFT-F8"]),
   action("log_debug", "Log debug", "Hotkeys Master Switch & Logs", ["CTRL-SHIFT-F9"]),
   action("log_warn", "Log warn", "Hotkeys Master Switch & Logs", ["CTRL-SHIFT-F10"]),
   action("log_error", "Log error", "Hotkeys Master Switch & Logs", ["CTRL-SHIFT-F11"]),
   action("log_off", "Log off", "Hotkeys Master Switch & Logs", ["CTRL-SHIFT-F12"]),
-  action("set_hotkeys_disable", "Disable mod hotkeys", "Hotkeys Master Switch & Logs", ["CTRL-ALT-MINUS"], { profiles: ["guff-advanced"] }),
-  action("set_hotkeys_enabled", "Enable mod hotkeys", "Hotkeys Master Switch & Logs", ["CTRL-ALT-="], { profiles: ["guff-advanced"] }),
+  action("set_hotkeys_disable", "Disable mod hotkeys", "Hotkeys Master Switch & Logs", ["CTRL-ALT-MINUS"], { profiles: ["waffle-advanced"] }),
+  action("set_hotkeys_enabled", "Enable mod hotkeys", "Hotkeys Master Switch & Logs", ["CTRL-ALT-="], { profiles: ["waffle-advanced"] }),
   action("quit", "Quit process", "Hotkeys Master Switch & Logs", ["F10"]),
 ] as const;
 
@@ -252,7 +252,7 @@ export const HOTKEY_HARD_SETTING_CATALOG: readonly HotkeyHardSettingCatalogItem[
     type: "boolean",
     defaultValue: false,
     description: "Let unhandled key frames continue into the original game input path.",
-    profiles: ["guff-advanced"],
+    profiles: ["waffle-advanced"],
   },
   {
     id: "control.select_timer",
@@ -304,7 +304,7 @@ export const HOTKEY_HARD_SETTING_CATALOG: readonly HotkeyHardSettingCatalogItem[
     min: 0,
     max: 2000,
     step: 50,
-    profiles: ["guff-advanced"],
+    profiles: ["waffle-advanced"],
   },
 ];
 
@@ -396,8 +396,12 @@ export function normalizeCommunityModSettingsProfile(value: unknown): CommunityM
     return "netniv-basic";
   }
 
-  if (["guff-advanced", "guff", "advanced", "alpha", "advanced-alpha"].includes(normalized)) {
-    return "guff-advanced";
+  if (["waffle-basic", "waffle", "waffle-notifications", "guff-basic"].includes(normalized)) {
+    return "waffle-basic";
+  }
+
+  if (["waffle-advanced", "waffle-dev", "guff-advanced", "guff", "advanced", "alpha", "advanced-alpha"].includes(normalized)) {
+    return "waffle-advanced";
   }
 
   return DEFAULT_COMMUNITY_MOD_SETTINGS_PROFILE;
