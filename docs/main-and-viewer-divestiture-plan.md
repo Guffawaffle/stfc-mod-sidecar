@@ -11,10 +11,12 @@ This is a modularization plan for shrinking the largest Companion entrypoints wi
 - Current `packages/desktop/src/main-window.mjs` role: BrowserWindow construction and direct window behavior only.
 - Current `packages/desktop/src/sidecar-server-process.mjs` role: sidecar port probing, process spawn, runtime path resolution, health polling, shutdown, process token state, and release env construction.
 - Current `packages/desktop/src/desktop-ipc.mjs` role: desktop bridge IPC channel registration, Developer Tools/profile handlers, game-directory selection/open handlers, and companion app uninstall handoff handlers.
-- Last validation run after Slice 3: `node --check packages/desktop/src/main.mjs`, `node --check packages/desktop/src/desktop-ipc.mjs`, `node --check packages/desktop/src/main-window.mjs`, `node --check packages/desktop/src/sidecar-server-process.mjs`, `npm test --workspace @stfc-mod-sidecar/desktop`, `npm run ax -- check`, and `git diff --check`.
+- Completed: Viewer Slice 1 extracted static file resolution and response helpers to `packages/viewer/server/static-files.mjs`.
+- Current `packages/viewer/server/static-files.mjs` role: public asset path resolution, static content types, file sends, JSON sends, and text sends.
+- Last validation run after Viewer Slice 1: `node --check packages/viewer/server.mjs`, `node --check packages/viewer/server/static-files.mjs`, `npm test --workspace @stfc-mod-sidecar/desktop`, `npm run ax -- check`, and `git diff --check`.
 - Manual smoke not run yet: `npm run desktop:dev`.
-- Next recommended slice: pause desktop extraction for manual `npm run desktop:dev` smoke, then plan the viewer server split in a separate PR.
-- Do not start viewer server route splitting until desktop `main.mjs` is smaller and stable.
+- Next recommended slice: extract `/api/health` and `/api/admin/shutdown` behind `packages/viewer/server/routes/health-routes.mjs`.
+- Still recommended before release: run manual `npm run desktop:dev` smoke.
 
 ## Current Monoliths
 
@@ -77,11 +79,11 @@ Plan a separate PR for `packages/viewer/server.mjs` now that desktop `main.mjs` 
 
 ### Route Split Order
 
-1. Static files and response helpers:
+1. Done: static files and response helpers:
    Move `resolvePublicAsset`, `publicPathCandidates`, `isWithinPublicDir`, `contentTypeForPath`, `sendFile`, `sendJson`, and `sendText` into a small static/response module. Keep cache headers, content types, URL decoding, and public-dir path boundary checks unchanged.
    Validation: `npm test --workspace @stfc-mod-sidecar/desktop`, `npm run ax -- check`.
 
-2. Health and shutdown routes:
+2. Next: health and shutdown routes:
    Move `/api/health` response construction and `/api/admin/shutdown` handling behind `health-routes.mjs`. Keep shutdown token auth, desktop capability fields, release payload, mode fields, and game/settings/feed path fields unchanged.
    Validation: add or extend route-level tests if a harness exists; otherwise run full desktop tests and `npm run ax -- check`.
 

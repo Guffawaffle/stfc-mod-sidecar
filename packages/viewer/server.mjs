@@ -52,6 +52,7 @@ import {
     executeCommunityModUninstall,
 } from "./community-mod-uninstall-execution.mjs";
 import { installBoundedConsoleLogSync } from "./bounded-log-file.mjs";
+import { resolvePublicAsset, sendFile, sendJson, sendText } from "./server/static-files.mjs";
 
 const DEFAULT_GAME_DIR = "C:\\Games\\Star Trek Fleet Command\\default\\game";
 const DEFAULT_FEED_FILE = "community_patch_battle_feed.jsonl";
@@ -708,7 +709,7 @@ const server = createServer(async (request, response) => {
         }), "text/html; charset=utf-8");
     }
 
-    const publicAsset = await resolvePublicAsset(requestUrl.pathname);
+    const publicAsset = await resolvePublicAsset(publicDir, requestUrl.pathname);
     if (publicAsset) {
         return sendFile(response, publicAsset.filePath, publicAsset.contentType);
     }
@@ -2173,75 +2174,6 @@ function asText(value) {
     return typeof value === "string" ? value : "";
 }
 
-async function resolvePublicAsset(pathname) {
-    for (const relativePath of publicPathCandidates(pathname)) {
-        const filePath = path.resolve(publicDir, `.${relativePath}`);
-        if (!isWithinPublicDir(filePath)) {
-            continue;
-        }
-
-        try {
-            const fileStat = await stat(filePath);
-            if (!fileStat.isFile()) {
-                continue;
-            }
-
-            return {
-                filePath,
-                contentType: contentTypeForPath(filePath),
-            };
-        } catch {
-            continue;
-        }
-    }
-
-    return null;
-}
-
-function publicPathCandidates(pathname) {
-    const decodedPathname = decodeURIComponent(pathname);
-    if (decodedPathname === "/") {
-        return ["/index.html"];
-    }
-
-    if (path.extname(decodedPathname)) {
-        return [decodedPathname];
-    }
-
-    const normalizedPathname = decodedPathname.endsWith("/") ? decodedPathname.slice(0, -1) : decodedPathname;
-    return [`${normalizedPathname}/index.html`, decodedPathname];
-}
-
-function isWithinPublicDir(filePath) {
-    const relativePath = path.relative(publicDir, filePath);
-    return relativePath !== "" && !relativePath.startsWith("..") && !path.isAbsolute(relativePath);
-}
-
-function contentTypeForPath(filePath) {
-    switch (path.extname(filePath).toLowerCase()) {
-        case ".html":
-            return "text/html; charset=utf-8";
-        case ".js":
-        case ".mjs":
-            return "text/javascript; charset=utf-8";
-        case ".css":
-            return "text/css; charset=utf-8";
-        case ".json":
-            return "application/json; charset=utf-8";
-        case ".svg":
-            return "image/svg+xml";
-        case ".png":
-            return "image/png";
-        case ".jpg":
-        case ".jpeg":
-            return "image/jpeg";
-        case ".ico":
-            return "image/x-icon";
-        default:
-            return "application/octet-stream";
-    }
-}
-
 function isAuthorizedShutdownRequest(request) {
     return isShutdownRequestAuthorized(request, shutdownToken);
 }
@@ -2282,36 +2214,4 @@ async function shutdownServer(reason) {
         console.log("[sidecar-viewer] shutdown complete");
         process.exit(0);
     });
-}
-
-async function sendFile(response, filePath, contentType) {
-    try {
-        const body = await readFile(filePath);
-        response.writeHead(200, {
-            "content-type": contentType,
-            "cache-control": "no-store",
-        });
-        response.end(body);
-    } catch (error) {
-        sendJson(response, 500, {
-            ok: false,
-            error: error instanceof Error ? error.message : String(error),
-        });
-    }
-}
-
-function sendJson(response, statusCode, value) {
-    response.writeHead(statusCode, {
-        "content-type": "application/json; charset=utf-8",
-        "cache-control": "no-store",
-    });
-    response.end(JSON.stringify(value));
-}
-
-function sendText(response, statusCode, value, contentType) {
-    response.writeHead(statusCode, {
-        "content-type": contentType,
-        "cache-control": "no-store",
-    });
-    response.end(value);
 }
