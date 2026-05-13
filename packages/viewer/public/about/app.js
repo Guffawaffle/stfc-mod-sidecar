@@ -86,6 +86,12 @@ const elements = {
     modInstallTitle: document.querySelector("#about-mod-install-title"),
     modInstallState: document.querySelector("#about-mod-install-state"),
     modInstallDetail: document.querySelector("#about-mod-install-detail"),
+    modProfileState: document.querySelector("#about-mod-profile-state"),
+    modGameDirectoryState: document.querySelector("#about-mod-game-directory-state"),
+    modDllState: document.querySelector("#about-mod-dll-state"),
+    modReleaseSummaryState: document.querySelector("#about-mod-release-summary-state"),
+    modInstallGuideSummary: document.querySelector("#about-mod-install-guide-summary"),
+    modInstallGuide: document.querySelector("#about-mod-install-guide"),
     modReleaseState: document.querySelector("#about-mod-release-state"),
     modReleaseDetail: document.querySelector("#about-mod-release-detail"),
     modPlanState: document.querySelector("#about-mod-plan-state"),
@@ -107,6 +113,8 @@ const elements = {
     modUninstallExecutionDetail: document.querySelector("#about-mod-uninstall-execution-detail"),
     modUninstallRecoveryDetail: document.querySelector("#about-mod-uninstall-recovery-detail"),
     modUninstallDeleteSettingsAndLogs: document.querySelector("#about-mod-uninstall-delete-settings-logs"),
+    modUninstallOptions: document.querySelector("#about-mod-uninstall-options"),
+    selectModGameDirectory: document.querySelector("#select-mod-game-directory"),
     refreshModStatus: document.querySelector("#refresh-mod-status"),
     runModInstall: document.querySelector("#run-mod-install"),
     runModUninstall: document.querySelector("#run-mod-uninstall"),
@@ -139,6 +147,7 @@ elements.checkReleaseUpdate?.addEventListener("click", () => void checkReleaseUp
 elements.runCompanionUninstall?.addEventListener("click", () => void runCompanionUninstall());
 elements.openWindowsUninstallSettings?.addEventListener("click", () => void openWindowsUninstallSettings());
 elements.showCompanionInstallFolder?.addEventListener("click", () => void showCompanionInstallFolder());
+elements.selectModGameDirectory?.addEventListener("click", () => void selectModGameDirectory());
 elements.refreshModStatus?.addEventListener("click", () => void refreshModStatus());
 elements.runModInstall?.addEventListener("click", () => void runModInstall());
 elements.runModUninstall?.addEventListener("click", () => void runModUninstall());
@@ -194,6 +203,8 @@ async function loadServerMode() {
         gameDirectory: health.gameDir,
         feedPath: health.feedPath,
         settingsPath: health.settingsPath,
+        capabilities: health.capabilities ?? {},
+        variantGate: health.variantGate ?? null,
         release: health.release,
     };
 }
@@ -505,12 +516,21 @@ async function refreshModStatus() {
     }
 }
 
+async function selectModGameDirectory() {
+    await ensureGameDirectorySelected({ force: true });
+}
+
 function renderCommunityModStatus() {
     const install = state.bootstrap?.communityModInstall;
     const profileHint = communityModProfileCapabilitySummary(install, state.bootstrap?.modProfile, state.bootstrap?.capabilities);
     elements.modInstallTitle.textContent = communityModInstallLabel(install);
     elements.modInstallState.textContent = communityModInstallLabel(install);
     elements.modInstallDetail.textContent = [communityModInstallSummary(install), profileHint].filter(Boolean).join(" ");
+    elements.modProfileState.textContent = modProfileLabel(state.bootstrap?.modProfile ?? state.bootstrap?.settingsProfile);
+    elements.modGameDirectoryState.textContent = state.bootstrap?.gameDirectory || "Not selected";
+    elements.modDllState.textContent = communityModDllStateLabel(install);
+    elements.modReleaseSummaryState.textContent = communityModReleaseLabel(state.modReleaseCatalog);
+    renderModInstallGuide(buildModInstallGuideSteps(install));
     elements.modReleaseState.textContent = communityModReleaseLabel(state.modReleaseCatalog);
     elements.modReleaseDetail.textContent = communityModReleaseSummary(state.modReleaseCatalog);
     elements.modPlanState.textContent = communityModInstallPlanLabel(state.modInstallPlan);
@@ -535,7 +555,17 @@ function renderCommunityModStatus() {
     elements.modUninstallDeleteSettingsAndLogs.disabled = state.modUninstallChecking
         || state.modUninstallConfirming
         || state.modUninstallExecuting;
+    elements.modUninstallOptions.hidden = !isCommunityModInstalled(install) || !canRunModOperations();
     setModReleaseLink(state.modReleaseCatalog?.release?.htmlUrl);
+    elements.selectModGameDirectory.hidden = !window.stfcDesktop?.selectGameDirectory;
+    elements.selectModGameDirectory.textContent = state.bootstrap?.gameDirectory ? "Change STFC Folder" : "Select STFC Folder";
+    elements.selectModGameDirectory.disabled = state.modReleaseChecking
+        || state.modArtifactVerifying
+        || state.modInstallConfirming
+        || state.modInstallExecuting
+        || state.modUninstallChecking
+        || state.modUninstallConfirming
+        || state.modUninstallExecuting;
     elements.runModInstall.textContent = installButtonLabel();
     elements.runModInstall.disabled = !canRunModOperations()
         || state.modReleaseChecking
@@ -569,6 +599,192 @@ function renderCommunityModStatus() {
         || state.modUninstallConfirming
         || state.modUninstallExecuting
         || !isUninstallExecutionReady(state.modUninstallConfirmation);
+}
+
+function communityModDllStateLabel(install) {
+    if (!install) {
+        return "Loading...";
+    }
+
+    if (install.ok === false) {
+        return "Unavailable";
+    }
+
+    if (install.state === "unselected") {
+        return "Select folder first";
+    }
+
+    if (install.state === "unsupported_platform") {
+        return "Unsupported platform";
+    }
+
+    if (install.state === "none" || install.classification === "none") {
+        return "Not installed";
+    }
+
+    if (install.state !== "installed") {
+        return "Status unavailable";
+    }
+
+    if (install.classification === "unknown") {
+        return "Unknown version.dll";
+    }
+
+    return communityModInstallLabel(install);
+}
+
+function buildModInstallGuideSteps(install) {
+    const profile = modProfileLabel(state.bootstrap?.modProfile ?? state.bootstrap?.settingsProfile);
+    const hasDesktopInstall = canRunModOperations();
+    const gameDirectory = state.bootstrap?.gameDirectory ?? "";
+    const installed = isCommunityModInstalled(install);
+    const compatible = installed
+        && install.classification !== "unknown"
+        && communityModProfilesCompatible(install.classification, state.bootstrap?.modProfile);
+    const plan = state.modInstallPlan;
+    const confirmation = state.modInstallConfirmation;
+    const releaseLabel = communityModReleaseLabel(state.modReleaseCatalog);
+
+    const directoryStep = gameDirectory
+        ? guideStep("Choose STFC folder", "Ready", gameDirectory)
+        : guideStep("Choose STFC folder", "Required", "Select the folder that contains prime.exe.");
+    const dllStep = buildDllGuideStep(install, compatible, profile);
+    const releaseWaitingDetail = hasDesktopInstall
+        ? `Use ${installButtonLabel()} to check the selected ${profile} release and verify the DLL before install.`
+        : "Open the desktop Companion to check releases and install or update version.dll.";
+    const releaseStep = state.modReleaseCatalog
+        ? guideStep("Prepare selected release", releaseLabel, communityModInstallPlanSummary(plan))
+        : guideStep("Prepare selected release", "Waiting", releaseWaitingDetail);
+    const confirmStep = isInstallExecutionReady(confirmation)
+        ? guideStep("Confirm install", "Ready", communityModInstallConfirmationSummary(confirmation))
+        : guideStep("Confirm install", "Waiting", installGuideConfirmationDetail(install, plan));
+
+    return {
+        summary: installGuideSummary(install, compatible, profile),
+        steps: [directoryStep, dllStep, releaseStep, confirmStep],
+    };
+}
+
+function buildDllGuideStep(install, compatible, profile) {
+    if (!install) {
+        return guideStep("Inspect version.dll", "Loading", "Checking the selected game directory.");
+    }
+
+    if (install.ok === false) {
+        return guideStep("Inspect version.dll", "Blocked", String(install.error ?? "Install status is unavailable."));
+    }
+
+    if (install.state === "unselected") {
+        return guideStep("Inspect version.dll", "Waiting", "The folder must be selected before version.dll can be inspected.");
+    }
+
+    if (install.state === "none" || install.classification === "none") {
+        return guideStep("Install version.dll", "Required", `No Community Mod DLL is installed; install ${profile} for this folder.`);
+    }
+
+    if (install.classification === "unknown") {
+        return guideStep("Review installed DLL", "Needs review", "An unknown version.dll is present; replacement requires explicit confirmation and backup.");
+    }
+
+    if (!compatible) {
+        return guideStep("Match selected profile", "Needs review", `Installed ${modProfileLabel(install.classification)} differs from selected ${profile}.`);
+    }
+
+    return guideStep("Inspect version.dll", "Ready", communityModInstallSummary(install));
+}
+
+function installGuideConfirmationDetail(install, plan) {
+    if (!canRunModOperations()) {
+        return "Open the desktop Companion to prepare and execute Community Mod changes.";
+    }
+
+    if (!state.bootstrap?.gameDirectory) {
+        return "Select the STFC folder before preparing confirmation.";
+    }
+
+    if (plan?.ok === false) {
+        return String(plan.error ?? "Resolve the install plan before confirming.");
+    }
+
+    if (plan?.action === "none" && isCommunityModInstalled(install)) {
+        return "No install action is currently required for the selected profile.";
+    }
+
+    return "The install button prepares release metadata, verifies the artifact, stages version.dll, and then asks for confirmation.";
+}
+
+function installGuideSummary(install, compatible, profile) {
+    if (!canRunModOperations() && !state.bootstrap?.gameDirectory) {
+        return `Open the desktop Companion to select the STFC game folder and install ${profile}.`;
+    }
+
+    if (!state.bootstrap?.gameDirectory) {
+        return `Select the STFC game folder first, then install ${profile}.`;
+    }
+
+    if (!install || install.ok === false) {
+        return "The selected folder needs a readable Community Mod install status before install can continue.";
+    }
+
+    if (install.state === "none" || install.classification === "none") {
+        if (!canRunModOperations()) {
+            return `This folder has no version.dll. Open the desktop Companion to install ${profile}.`;
+        }
+
+        return `This folder has no version.dll. Install ${profile} from the selected release.`;
+    }
+
+    if (install.classification === "unknown") {
+        if (!canRunModOperations()) {
+            return `This folder has an unknown version.dll. Open the desktop Companion before replacing it with ${profile}.`;
+        }
+
+        return `This folder has an unknown version.dll. Replace it with ${profile} only after reviewing the confirmation.`;
+    }
+
+    if (!compatible) {
+        if (!canRunModOperations()) {
+            return `This folder has ${modProfileLabel(install.classification)} installed. Open the desktop Companion to switch it to ${profile}.`;
+        }
+
+        return `This folder has ${modProfileLabel(install.classification)} installed. Switch it to ${profile} from the selected release.`;
+    }
+
+    if (!canRunModOperations()) {
+        return `${modProfileLabel(install.classification)} is installed for this folder. Open the desktop Companion for install or update actions.`;
+    }
+
+    return `${modProfileLabel(install.classification)} is installed for this folder. Use the install action when a selected release update is available.`;
+}
+
+function guideStep(label, status, detail) {
+    return { label, status, detail };
+}
+
+function renderModInstallGuide(result) {
+    elements.modInstallGuideSummary.textContent = result.summary;
+    elements.modInstallGuide.replaceChildren(...result.steps.map((step) => {
+        const item = document.createElement("li");
+        item.className = "setup-step";
+
+        const heading = document.createElement("div");
+        heading.className = "setup-step__heading";
+
+        const label = document.createElement("strong");
+        label.textContent = step.label;
+
+        const status = document.createElement("span");
+        status.className = "settings-chip";
+        status.textContent = step.status;
+
+        const detail = document.createElement("p");
+        detail.className = "page-copy";
+        detail.textContent = step.detail;
+
+        heading.append(label, status);
+        item.append(heading, detail);
+        return item;
+    }));
 }
 
 async function checkModRelease() {
@@ -901,8 +1117,8 @@ async function runModInstall() {
     await confirmAndExecuteModInstall();
 }
 
-async function ensureGameDirectorySelected() {
-    if (state.bootstrap?.gameDirectory) {
+async function ensureGameDirectorySelected(options = {}) {
+    if (!options.force && state.bootstrap?.gameDirectory) {
         return true;
     }
 

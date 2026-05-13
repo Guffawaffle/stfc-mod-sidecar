@@ -11,19 +11,21 @@ const defaultViewerState = Object.freeze({
     variantGate: null,
 });
 const VARIANT_GATE_WARNING_SESSION_KEY = "stfc.variantGateWarning.ignoredKey";
+const VIEWER_STATE_SESSION_KEY = "stfc.viewerState.v1";
+const VIEWER_STATE_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
 
-for (const nav of document.querySelectorAll("[data-viewer-nav]")) {
-    renderNavigation(nav, defaultViewerState);
-}
+let currentViewerStateKey = "";
 
-applyViewerState(defaultViewerState);
+applyViewerState(readCachedViewerState() ?? defaultViewerState, { force: true });
 void refreshViewerState({ retries: 6 });
 window.addEventListener("stfc:mode-changed", (event) => {
-    applyViewerState({
+    const state = normalizeViewerState({
         developerMode: Boolean(event.detail?.developerMode),
         capabilities: event.detail?.capabilities ?? {},
         variantGate: event.detail?.variantGate ?? null,
     });
+    writeCachedViewerState(state);
+    applyViewerState(state);
 });
 window.addEventListener("pageshow", () => void refreshViewerState());
 window.addEventListener("focus", () => void refreshViewerState());
@@ -35,9 +37,16 @@ document.addEventListener("visibilitychange", () => {
 
 function renderNavigation(nav, state) {
     const currentPage = nav.dataset.currentPage ?? "";
+    const pages = visibleViewerPages(state);
+    const signature = `${currentPage}:${pages.map((page) => page.id).join("|")}`;
+    if (nav.dataset.renderedPages === signature) {
+        return;
+    }
+
+    nav.dataset.renderedPages = signature;
     nav.textContent = "";
 
-    for (const page of visibleViewerPages(state)) {
+    for (const page of pages) {
         const link = document.createElement("a");
         link.className = page.id === currentPage ? "site-nav__link site-nav__link--active" : "site-nav__link";
         link.href = page.href;
@@ -53,11 +62,13 @@ async function refreshViewerState(options = {}) {
             const response = await fetch("/api/health", { cache: "no-store" });
             if (response.ok) {
                 const health = await response.json();
-                applyViewerState({
+                const state = normalizeViewerState({
                     developerMode: Boolean(health.developerMode),
                     capabilities: health.capabilities ?? {},
                     variantGate: health.variantGate ?? null,
                 });
+                writeCachedViewerState(state);
+                applyViewerState(state);
                 return;
             }
         } catch {
@@ -69,23 +80,48 @@ async function refreshViewerState(options = {}) {
         }
     }
 
-    applyViewerState(defaultViewerState);
+    if (!readCachedViewerState()) {
+        applyViewerState(defaultViewerState);
+    }
 }
 
-function applyViewerState(state) {
+function applyViewerState(state, options = {}) {
+    const normalizedState = normalizeViewerState(state);
+    const stateKey = viewerStateKey(normalizedState);
+    if (!options.force && stateKey === currentViewerStateKey) {
+        return;
+    }
+
+    currentViewerStateKey = stateKey;
     for (const nav of document.querySelectorAll("[data-viewer-nav]")) {
-        renderNavigation(nav, state);
+        renderNavigation(nav, normalizedState);
     }
 
     for (const element of document.querySelectorAll("[data-developer-only]")) {
-        element.hidden = !state.developerMode;
+        element.hidden = !normalizedState.developerMode;
     }
 
     for (const element of document.querySelectorAll("[data-capability]")) {
-        element.hidden = state.capabilities?.[element.dataset.capability] !== true;
+        element.hidden = normalizedState.capabilities?.[element.dataset.capability] !== true;
     }
 
-    renderVariantGateWarning(state.variantGate);
+    renderVariantGateWarning(normalizedState.variantGate);
+}
+
+function normalizeViewerState(state = {}) {
+    return {
+        developerMode: Boolean(state.developerMode),
+        capabilities: { ...(state.capabilities ?? {}) },
+        variantGate: state.variantGate ?? null,
+    };
+}
+
+function viewerStateKey(state) {
+    return JSON.stringify({
+        developerMode: Boolean(state.developerMode),
+        capabilities: state.capabilities ?? {},
+        variantGate: state.variantGate ?? null,
+    });
 }
 
 function renderVariantGateWarning(variantGate) {
@@ -174,6 +210,30 @@ function readSessionValue(key) {
 function writeSessionValue(key, value) {
     try {
         window.sessionStorage?.setItem(key, value);
+    } catch {
+        return;
+    }
+}
+
+function readCachedViewerState() {
+    try {
+        const cached = JSON.parse(window.sessionStorage?.getItem(VIEWER_STATE_SESSION_KEY) ?? "null");
+        if (!cached || Date.now() - Number(cached.savedAt ?? 0) > VIEWER_STATE_CACHE_MAX_AGE_MS) {
+            return null;
+        }
+
+        return normalizeViewerState(cached.state);
+    } catch {
+        return null;
+    }
+}
+
+function writeCachedViewerState(state) {
+    try {
+        window.sessionStorage?.setItem(VIEWER_STATE_SESSION_KEY, JSON.stringify({
+            savedAt: Date.now(),
+            state: normalizeViewerState(state),
+        }));
     } catch {
         return;
     }
