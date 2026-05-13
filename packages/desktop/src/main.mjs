@@ -1,24 +1,17 @@
-import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 
-import {
-    WINDOWS_APPS_FEATURES_URI,
-    buildCompanionAppUninstallStatus,
-    isDirectChildPath,
-} from "./companion-uninstall.mjs";
-import { DEFAULT_MOD_PROFILE, initialDeveloperModeFromSources, normalizeDesktopSettings, normalizeModProfile } from "./desktop-settings.mjs";
+import { DEFAULT_MOD_PROFILE, initialDeveloperModeFromSources, normalizeDesktopSettings } from "./desktop-settings.mjs";
+import { buildDesktopCompanionAppUninstallStatus, registerDesktopIpc } from "./desktop-ipc.mjs";
 import { SECURITY_MOTTO, STFC_GAME_EXECUTABLE, detectDefaultStfcGameDirectory, validateStfcGameDirectory } from "./game-directory.mjs";
+import createMainWindow from "./main-window.mjs";
+import { createSidecarServerProcess } from "./sidecar-server-process.mjs";
 import { appendBoundedLogLineSync } from "../../viewer/bounded-log-file.mjs";
 import { buildReleaseInfo } from "../../viewer/release-info.mjs";
 
-const DEFAULT_PORT = 43127;
-const READY_TIMEOUT_MS = 15000;
-const SHUTDOWN_TIMEOUT_MS = 5000;
 const DEFAULT_FEED_FILE = "community_patch_battle_feed.jsonl";
 const DEFAULT_SETTINGS_FILE = "community_patch_settings.toml";
 const DESKTOP_SETTINGS_FILE = "desktop-settings.json";
@@ -26,17 +19,23 @@ const DESKTOP_INITIAL_SETTINGS_FILE = "desktop-initial-settings.json";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const desktopPackageJsonPath = path.resolve(__dirname, "..", "package.json");
+const preloadPath = path.join(__dirname, "preload.cjs");
 
 let mainWindow = null;
-let sidecarProcess = null;
-let sidecarShutdownToken = "";
-let sidecarSyncToken = "";
-let sidecarModToken = "";
-let sidecarUrl = "";
 let logPath = "";
 let desktopSettingsPath = "";
 let bootstrapWarning = "";
 let desktopSettings = normalizeDesktopSettings();
+const sidecarServer = createSidecarServerProcess({
+    app,
+    dirname: __dirname,
+    getCompanionMode: companionMode,
+    getDesktopSettings: () => desktopSettings,
+    getGameDirectoryForStartup: validatedDesktopGameDirectoryForStartup,
+    getReleaseInfo: desktopReleaseInfo,
+    writeLog,
+});
 
 app.setName("STFC Community Mod Companion");
 
@@ -44,13 +43,31 @@ app.whenReady().then(async () => {
     logPath = path.join(app.getPath("userData"), "desktop.log");
     desktopSettingsPath = path.join(app.getPath("userData"), DESKTOP_SETTINGS_FILE);
     desktopSettings = loadDesktopSettings();
-    registerDesktopIpc();
+    registerDesktopIpc({
+        app,
+        bootstrapSnapshot,
+        dialog,
+        getDesktopSettings: () => desktopSettings,
+        getMainWindow: () => mainWindow,
+        ipcMain,
+        process,
+        restartSidecarServer,
+        saveDesktopSettings,
+        setBootstrapWarning: (value) => {
+            bootstrapWarning = value;
+        },
+        setDesktopSettings: (settings) => {
+            desktopSettings = settings;
+        },
+        shell,
+        validateStfcGameDirectory,
+        writeLog,
+    });
     writeLog("log", `[sidecar-desktop] starting packaged=${app.isPackaged} execPath=${process.execPath}`);
 
     try {
-        const server = await ensureSidecarServer();
-        sidecarUrl = server.url;
-        mainWindow = createMainWindow(server.url);
+        const server = await sidecarServer.ensureSidecarServer();
+        mainWindow = createMainWindow(server.url, { preloadPath, shell });
     } catch (error) {
         writeLog("error", `[sidecar-desktop] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
         app.quit();
@@ -58,8 +75,8 @@ app.whenReady().then(async () => {
 });
 
 app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0 && sidecarUrl) {
-        mainWindow = createMainWindow(sidecarUrl);
+    if (BrowserWindow.getAllWindows().length === 0 && sidecarServer.url) {
+        mainWindow = createMainWindow(sidecarServer.url, { preloadPath, shell });
     }
 });
 
@@ -71,206 +88,13 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", (event) => {
-    if (!sidecarProcess || !sidecarShutdownToken || !sidecarUrl) {
+    if (!sidecarServer.shouldStopOnQuit()) {
         return;
     }
 
     event.preventDefault();
-    void stopSidecarServer().finally(() => app.exit(0));
+    void sidecarServer.stopSidecarServer().finally(() => app.exit(0));
 });
-
-function createMainWindow(url) {
-    const window = new BrowserWindow({
-        width: 1320,
-        height: 860,
-        minWidth: 980,
-        minHeight: 680,
-        title: "STFC Community Mod Companion",
-        backgroundColor: "#050609",
-        show: false,
-        webPreferences: {
-            contextIsolation: true,
-            nodeIntegration: false,
-            preload: path.join(__dirname, "preload.cjs"),
-            sandbox: true,
-        },
-    });
-
-    window.once("ready-to-show", () => window.show());
-    window.webContents.setWindowOpenHandler(({ url: requestedUrl }) => {
-        const requested = new URL(requestedUrl);
-        const current = new URL(url);
-        if (requested.origin !== current.origin) {
-            void shell.openExternal(requestedUrl);
-            return { action: "deny" };
-        }
-
-        return { action: "allow" };
-    });
-
-    void window.loadURL(url);
-    return window;
-}
-
-async function ensureSidecarServer() {
-    const requestedPort = Number.parseInt(process.env.STFC_SIDECAR_PORT ?? String(DEFAULT_PORT), 10);
-    const firstPort = Number.isFinite(requestedPort) ? requestedPort : DEFAULT_PORT;
-
-    for (let offset = 0; offset < 10; offset += 1) {
-        const port = firstPort + offset;
-        const url = `http://127.0.0.1:${port}`;
-        const existing = await fetchHealth(url, 800);
-        if (!existing?.ok) {
-            return startSidecarServer(url);
-        }
-
-        if (existing.desktop === true) {
-            writeLog("log", `[sidecar-desktop] using existing desktop sidecar server at ${url}`);
-            return { url, owned: false };
-        }
-
-        writeLog("warn", `[sidecar-desktop] port ${port} already has a browser-mode sidecar server; trying next port`);
-    }
-
-    throw new Error(`No available sidecar port near ${firstPort}; stop browser-mode viewer servers or set STFC_SIDECAR_PORT.`);
-}
-
-async function startSidecarServer(url) {
-    const paths = resolveRuntimePaths();
-    const gameDirectory = await validatedDesktopGameDirectoryForStartup();
-    sidecarShutdownToken = randomUUID();
-    sidecarSyncToken = process.env.STFC_SIDECAR_SYNC_TOKEN?.trim() || randomUUID();
-    sidecarModToken = process.env.STFC_SIDECAR_MOD_TOKEN?.trim() || randomUUID();
-    writeLog(
-        "log",
-        `[sidecar-desktop] starting server cwd=${paths.cwd} serverScript=${paths.serverScript} gameDirectory=${gameDirectory || "default"} mode=${companionMode()} serverExists=${fs.existsSync(paths.serverScript)}`,
-    );
-
-    const args = [paths.serverScript, "--port", new URL(url).port];
-    if (gameDirectory) {
-        args.push("--game-dir", gameDirectory);
-    }
-
-    sidecarProcess = spawn(process.execPath, args, {
-        cwd: paths.cwd,
-        stdio: ["ignore", "pipe", "pipe"],
-        env: {
-            ...process.env,
-            ELECTRON_RUN_AS_NODE: "1",
-            STFC_SIDECAR_DESKTOP: "1",
-            STFC_SIDECAR_DEVELOPER_MODE: desktopSettings.developerMode ? "1" : "0",
-            STFC_SIDECAR_MOD_PROFILE: desktopSettings.modProfile,
-            STFC_SIDECAR_CACHE_DIR: path.join(app.getPath("userData"), "cache"),
-            ...releaseEnvironment(),
-            STFC_SIDECAR_SHUTDOWN_TOKEN: sidecarShutdownToken,
-            STFC_SIDECAR_SYNC_TOKEN: sidecarSyncToken,
-            STFC_SIDECAR_MOD_TOKEN: sidecarModToken,
-            STFC_SIDECAR_ENABLE_MOD_INSTALL_EXECUTION: "1",
-            STFC_SIDECAR_ENABLE_MOD_UNINSTALL_EXECUTION: "1",
-        },
-    });
-
-    sidecarProcess.stdout?.on("data", (chunk) => writeLog("log", `[sidecar-server] ${chunk.toString().trimEnd()}`));
-    sidecarProcess.stderr?.on("data", (chunk) => writeLog("error", `[sidecar-server] ${chunk.toString().trimEnd()}`));
-    sidecarProcess.on("exit", (code, signal) => {
-        writeLog("log", `[sidecar-desktop] sidecar server exited code=${code ?? "null"} signal=${signal ?? "null"}`);
-        sidecarProcess = null;
-    });
-
-    await waitForHealth(url, READY_TIMEOUT_MS);
-    writeLog("log", `[sidecar-desktop] started sidecar server at ${url}`);
-    return { url, owned: true };
-}
-
-function resolveRuntimePaths() {
-    if (app.isPackaged) {
-        return {
-            cwd: process.resourcesPath,
-            serverScript: path.join(process.resourcesPath, "viewer", "server.mjs"),
-        };
-    }
-
-    const repoRoot = path.resolve(__dirname, "..", "..", "..");
-    return {
-        cwd: repoRoot,
-        serverScript: path.join(repoRoot, "packages", "viewer", "server.mjs"),
-    };
-}
-
-async function waitForHealth(url, timeoutMs) {
-    const deadline = Date.now() + timeoutMs;
-    let lastError = null;
-
-    while (Date.now() < deadline) {
-        try {
-            const health = await fetchHealth(url, 800);
-            if (health?.ok) {
-                return health;
-            }
-        } catch (error) {
-            lastError = error;
-        }
-
-        await delay(250);
-    }
-
-    throw new Error(`sidecar server did not become ready at ${url}${lastError ? `: ${lastError.message}` : ""}`);
-}
-
-async function fetchHealth(url, timeoutMs) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-        const response = await fetch(`${url}/api/health`, { signal: controller.signal });
-        if (!response.ok) {
-            return null;
-        }
-
-        return response.json();
-    } catch {
-        return null;
-    } finally {
-        clearTimeout(timeout);
-    }
-}
-
-async function stopSidecarServer() {
-    const processToStop = sidecarProcess;
-    if (!processToStop || !sidecarUrl || !sidecarShutdownToken) {
-        return;
-    }
-
-    try {
-        await fetch(`${sidecarUrl}/api/admin/shutdown`, {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${sidecarShutdownToken}`,
-            },
-        });
-        await waitForExit(processToStop, SHUTDOWN_TIMEOUT_MS);
-    } catch (error) {
-        writeLog("warn", `[sidecar-desktop] graceful shutdown failed: ${error instanceof Error ? error.message : String(error)}`);
-        processToStop.kill();
-    } finally {
-        sidecarProcess = null;
-        sidecarShutdownToken = "";
-        sidecarSyncToken = "";
-    }
-}
-
-function waitForExit(child, timeoutMs) {
-    return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error("timed out waiting for sidecar server exit")), timeoutMs);
-        child.once("exit", () => {
-            clearTimeout(timer);
-            resolve();
-        });
-    });
-}
-
-function delay(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 function writeLog(level, message) {
     const line = `${new Date().toISOString()} ${message}\n`;
@@ -293,113 +117,13 @@ function writeLog(level, message) {
     }
 }
 
-function registerDesktopIpc() {
-    ipcMain.handle("sidecar-bootstrap:get", () => bootstrapSnapshot());
-    ipcMain.handle("sidecar-companion-uninstall:get-status", () => companionAppUninstallStatus());
-    ipcMain.handle("sidecar-companion-uninstall:open-windows-settings", () => openWindowsUninstallSettings());
-    ipcMain.handle("sidecar-companion-uninstall:show-install-folder", () => showCompanionInstallFolder());
-    ipcMain.handle("sidecar-companion-uninstall:run", () => runCompanionUninstaller());
-    ipcMain.handle("sidecar-bootstrap:set-developer-mode", async (_event, enabled) => {
-        const developerMode = Boolean(enabled);
-        if (desktopSettings.developerMode === developerMode) {
-            return bootstrapSnapshot();
-        }
-
-        desktopSettings = normalizeDesktopSettings({
-            ...desktopSettings,
-            developerMode,
-        });
-        saveDesktopSettings(desktopSettings);
-        await restartSidecarServer();
-        return bootstrapSnapshot();
-    });
-    ipcMain.handle("sidecar-bootstrap:set-mod-profile", async (_event, profile) => {
-        const modProfile = normalizeModProfile(profile);
-        if (desktopSettings.modProfile === modProfile) {
-            return bootstrapSnapshot();
-        }
-
-        desktopSettings = normalizeDesktopSettings({
-            ...desktopSettings,
-            modProfile,
-        });
-        saveDesktopSettings(desktopSettings);
-        await restartSidecarServer();
-        return bootstrapSnapshot();
-    });
-    ipcMain.handle("sidecar-devtools:get-status", () => {
-        if (!desktopSettings.developerMode) {
-            return {
-                ok: false,
-                code: "developer_mode_required",
-                error: "Developer Tools are disabled.",
-                developerMode: false,
-                companionMode: "standard",
-            };
-        }
-
-        return {
-            ok: true,
-            developerMode: true,
-            companionMode: "developer",
-        };
-    });
-    ipcMain.handle("sidecar-bootstrap:select-game-directory", async () => {
-        const result = await dialog.showOpenDialog(mainWindow ?? undefined, {
-            title: "Select STFC game directory",
-            buttonLabel: "Use Directory",
-            properties: ["openDirectory"],
-        });
-
-        if (result.canceled || result.filePaths.length === 0) {
-            return bootstrapSnapshot();
-        }
-
-        const validation = await validateStfcGameDirectory(result.filePaths[0]);
-        if (!validation.ok) {
-            writeLog("warn", `[sidecar-desktop] rejected game directory reason=${validation.code} path=${sanitizeLogValue(result.filePaths[0])}`);
-            return bootstrapSnapshot({ ok: false, error: validation.error });
-        }
-
-        desktopSettings = {
-            ...desktopSettings,
-            gameDirectory: validation.gameDirectory,
-            profileGameDirectories: {
-                ...desktopSettings.profileGameDirectories,
-                [desktopSettings.modProfile]: validation.gameDirectory,
-            },
-        };
-        bootstrapWarning = "";
-        saveDesktopSettings(desktopSettings);
-        await restartSidecarServer();
-        return bootstrapSnapshot();
-    });
-    ipcMain.handle("sidecar-bootstrap:open-game-directory", async () => {
-        const gameDirectory = activeProfileGameDirectory();
-        if (!gameDirectory) {
-            return { ok: false, error: "No game directory is selected." };
-        }
-
-        const validation = await validateStfcGameDirectory(gameDirectory);
-        if (!validation.ok) {
-            return { ok: false, error: validation.error };
-        }
-
-        const error = await shell.openPath(validation.gameDirectory);
-        return error ? { ok: false, error } : { ok: true };
-    });
-}
-
 async function restartSidecarServer() {
     const previousPath = currentWindowPath("/settings/");
-    if (sidecarProcess) {
-        await stopSidecarServer();
+    if (sidecarServer.isRunning()) {
+        await sidecarServer.stopSidecarServer();
     }
 
-    const port = Number.parseInt(process.env.STFC_SIDECAR_PORT ?? String(DEFAULT_PORT), 10);
-    const url = `http://127.0.0.1:${Number.isFinite(port) ? port : DEFAULT_PORT}`;
-    const server = await startSidecarServer(url);
-    sidecarUrl = server.url;
+    const server = await sidecarServer.startSidecarServer(sidecarServer.defaultUrl());
     if (mainWindow) {
         await mainWindow.loadURL(`${server.url}${currentWindowPath(previousPath)}`);
     }
@@ -415,7 +139,7 @@ function currentWindowPath(fallback) {
 }
 
 async function bootstrapSnapshot(options = {}) {
-    const health = sidecarUrl ? await fetchHealth(sidecarUrl, 800) : null;
+    const health = sidecarServer.url ? await sidecarServer.fetchHealth(sidecarServer.url, 800) : null;
     const selectedGameDirectory = activeProfileGameDirectory() || health?.gameDir || "";
     const selectedPaths = resolveSelectedGamePaths(selectedGameDirectory);
     return {
@@ -426,7 +150,7 @@ async function bootstrapSnapshot(options = {}) {
         profileGameDirectories: desktopSettings.profileGameDirectories ?? {},
         feedPath: health?.feedPath ?? selectedPaths.feedPath,
         settingsPath: health?.settingsPath ?? selectedPaths.settingsPath,
-        serverUrl: sidecarUrl,
+        serverUrl: sidecarServer.url,
         healthOk: Boolean(health?.ok),
         logPath,
         developerMode: Boolean(desktopSettings.developerMode),
@@ -439,98 +163,12 @@ async function bootstrapSnapshot(options = {}) {
         variantGate: health?.variantGate ?? null,
         communityModInstall: health?.communityModInstall ?? null,
         release: desktopReleaseInfo(health?.release),
-        modOperationToken: sidecarModToken,
-        companionAppUninstall: companionAppUninstallStatus(),
+        modOperationToken: sidecarServer.modToken,
+        companionAppUninstall: buildDesktopCompanionAppUninstallStatus({ app, process }),
         error: options.error ?? bootstrapWarning,
         requiredExecutable: STFC_GAME_EXECUTABLE,
         securityMotto: SECURITY_MOTTO,
     };
-}
-
-function companionAppUninstallStatus() {
-    return buildCompanionAppUninstallStatus({
-        platform: process.platform,
-        packaged: app.isPackaged,
-        productName: app.getName(),
-        executablePath: process.execPath,
-        env: process.env,
-        userDataPath: app.getPath("userData"),
-        pathExists: fs.existsSync,
-    });
-}
-
-async function openWindowsUninstallSettings() {
-    if (process.platform !== "win32") {
-        return { ok: false, error: "Windows Apps & Features is available only on Windows." };
-    }
-
-    await shell.openExternal(WINDOWS_APPS_FEATURES_URI);
-    return { ok: true, opened: WINDOWS_APPS_FEATURES_URI };
-}
-
-async function showCompanionInstallFolder() {
-    const status = companionAppUninstallStatus();
-    if (!status.installDirectory) {
-        return { ok: false, error: "No Companion install folder is available for this run." };
-    }
-
-    const error = await shell.openPath(status.installDirectory);
-    return error ? { ok: false, error } : { ok: true, path: status.installDirectory };
-}
-
-async function runCompanionUninstaller() {
-    const status = companionAppUninstallStatus();
-    if (!status.canRunUninstaller || !status.uninstallerPath) {
-        return {
-            ok: false,
-            status: status.mode,
-            error: "This Companion run does not expose an installed app uninstaller.",
-            companionAppUninstall: status,
-        };
-    }
-
-    if (!isDirectChildPath(status.installDirectory, status.uninstallerPath)) {
-        return {
-            ok: false,
-            status: "unsafe_uninstaller_path",
-            error: "Refusing to launch an uninstaller outside the Companion install folder.",
-            companionAppUninstall: status,
-        };
-    }
-
-    try {
-        const stats = fs.statSync(status.uninstallerPath);
-        if (!stats.isFile()) {
-            return {
-                ok: false,
-                status: "uninstaller_not_file",
-                error: "The detected Companion uninstaller is not a file.",
-                companionAppUninstall: status,
-            };
-        }
-
-        const child = spawn(status.uninstallerPath, [], {
-            cwd: status.installDirectory,
-            detached: true,
-            stdio: "ignore",
-        });
-        child.unref();
-        writeLog("log", `[sidecar-desktop] launched companion uninstaller path=${sanitizeLogValue(status.uninstallerPath)}`);
-        setTimeout(() => app.quit(), 250);
-        return {
-            ok: true,
-            status: "launched_uninstaller",
-            uninstallerPath: status.uninstallerPath,
-            userDataPolicy: status.userDataPolicy,
-        };
-    } catch (error) {
-        return {
-            ok: false,
-            status: "uninstaller_launch_failed",
-            error: error instanceof Error ? error.message : String(error),
-            companionAppUninstall: status,
-        };
-    }
 }
 
 function resolveSelectedGamePaths(gameDirectory) {
@@ -653,22 +291,29 @@ function companionMode() {
     return desktopSettings.developerMode ? "developer" : "standard";
 }
 
-function releaseEnvironment() {
-    const release = desktopReleaseInfo();
-    return {
-        STFC_SIDECAR_APP_VERSION: release.version,
-        STFC_SIDECAR_RELEASE_CHANNEL: release.channel,
-        STFC_SIDECAR_UPDATE_MODE: release.updateMode,
-        STFC_SIDECAR_SIGNATURE_POLICY: release.signaturePolicy,
-    };
-}
-
 function desktopReleaseInfo(serverRelease = {}) {
     return buildReleaseInfo({
-        version: app.getVersion() || serverRelease.version,
+        version: desktopReleaseVersion(serverRelease),
         channel: process.env.STFC_SIDECAR_RELEASE_CHANNEL ?? serverRelease.channel,
         updateMode: process.env.STFC_SIDECAR_UPDATE_MODE ?? serverRelease.updateMode,
         signaturePolicy: process.env.STFC_SIDECAR_SIGNATURE_POLICY ?? serverRelease.signaturePolicy,
         packaged: app.isPackaged,
     });
+}
+
+function desktopReleaseVersion(serverRelease = {}) {
+    if (app.isPackaged) {
+        return app.getVersion() || serverRelease.version;
+    }
+
+    return readDesktopPackageVersion() || serverRelease.version;
+}
+
+function readDesktopPackageVersion() {
+    try {
+        const parsed = JSON.parse(fs.readFileSync(desktopPackageJsonPath, "utf8"));
+        return typeof parsed.version === "string" ? parsed.version : "";
+    } catch {
+        return "";
+    }
 }
