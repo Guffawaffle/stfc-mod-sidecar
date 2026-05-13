@@ -52,6 +52,7 @@ import {
     executeCommunityModUninstall,
 } from "./community-mod-uninstall-execution.mjs";
 import { installBoundedConsoleLogSync } from "./bounded-log-file.mjs";
+import { handleHealthRoutes } from "./server/routes/health-routes.mjs";
 import { resolvePublicAsset, sendFile, sendJson, sendText } from "./server/static-files.mjs";
 
 const DEFAULT_GAME_DIR = "C:\\Games\\Star Trek Fleet Command\\default\\game";
@@ -613,36 +614,30 @@ const server = createServer(async (request, response) => {
         return sendJson(response, detail.ok ? 200 : detail.statusCode ?? 404, detail);
     }
 
-    if (requestUrl.pathname === "/api/health") {
-        const { install: communityModInstall, variantGate } = await refreshCommunityModVariantGate();
-        const storedEvents = await countStoredEvents();
-        return sendJson(response, 200, {
-            ok: true,
-            pid: process.pid,
-            gameDir,
-            feedPath,
-            settingsPath,
-            port,
-            desktop: process.env.STFC_SIDECAR_DESKTOP === "1",
-            defaultLimit,
-            developerMode,
-            companionMode,
-            modProfile: communityModSettingsProfile,
-            settingsProfile: communityModSettingsProfile,
-            capabilities: communityModCapabilities,
-            capabilityBits: variantGate.capabilityBits,
-            variantGate,
-            communityModInstall,
-            release: releaseInfo,
-            eventStoreBackend: eventStore?.backend ?? "none",
-            storedEvents,
-            cloudTelemetry: cloudTelemetryBridge.status(),
-            startedAt: startedAt.toISOString(),
-            uptimeMs: Date.now() - startedAt.getTime(),
-            shuttingDown: shutdownRequested,
-            pollHintMs: POLL_HINT_MS,
-            generatedAt: new Date().toISOString(),
-        });
+    if (await handleHealthRoutes(request, response, requestUrl, {
+        cloudTelemetryBridge,
+        companionMode,
+        communityModSettingsProfile,
+        countStoredEvents,
+        defaultLimit,
+        developerMode,
+        feedPath,
+        gameDir,
+        getCommunityModCapabilities: () => communityModCapabilities,
+        getEventStoreBackend: () => eventStore?.backend ?? "none",
+        isAuthorizedShutdownRequest,
+        isShutdownRequested: () => shutdownRequested,
+        pollHintMs: POLL_HINT_MS,
+        port,
+        process,
+        refreshCommunityModVariantGate,
+        releaseInfo,
+        settingsPath,
+        shutdownServer,
+        shutdownToken,
+        startedAt,
+    })) {
+        return;
     }
 
     if (requestUrl.pathname === "/api/dev/status") {
@@ -665,30 +660,6 @@ const server = createServer(async (request, response) => {
             cloudTelemetry: cloudTelemetryBridge.status(),
             generatedAt: new Date().toISOString(),
         });
-    }
-
-    if (requestUrl.pathname === "/api/admin/shutdown") {
-        if (request.method !== "POST") {
-            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
-        }
-
-        if (!shutdownToken) {
-            return sendJson(response, 403, { ok: false, error: "Shutdown control is disabled for this process" });
-        }
-
-        if (!isAuthorizedShutdownRequest(request)) {
-            return sendJson(response, 401, { ok: false, error: "Unauthorized shutdown request" });
-        }
-
-        sendJson(response, 202, {
-            ok: true,
-            pid: process.pid,
-            shuttingDown: true,
-        });
-        setImmediate(() => {
-            void shutdownServer("admin_request");
-        });
-        return;
     }
 
     if (isDeveloperOnlyPublicPath(requestUrl.pathname) && !developerMode) {

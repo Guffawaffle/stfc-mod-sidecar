@@ -13,9 +13,11 @@ This is a modularization plan for shrinking the largest Companion entrypoints wi
 - Current `packages/desktop/src/desktop-ipc.mjs` role: desktop bridge IPC channel registration, Developer Tools/profile handlers, game-directory selection/open handlers, and companion app uninstall handoff handlers.
 - Completed: Viewer Slice 1 extracted static file resolution and response helpers to `packages/viewer/server/static-files.mjs`.
 - Current `packages/viewer/server/static-files.mjs` role: public asset path resolution, static content types, file sends, JSON sends, and text sends.
-- Last validation run after Viewer Slice 1: `node --check packages/viewer/server.mjs`, `node --check packages/viewer/server/static-files.mjs`, `npm test --workspace @stfc-mod-sidecar/desktop`, `npm run ax -- check`, and `git diff --check`.
+- Completed: Viewer Slice 2 extracted health and shutdown routes to `packages/viewer/server/routes/health-routes.mjs`.
+- Current `packages/viewer/server/routes/health-routes.mjs` role: `/api/health` payload construction and `/api/admin/shutdown` method/token/auth handling.
+- Last validation run after Viewer Slice 2: `node --check packages/viewer/server.mjs`, `node --check packages/viewer/server/static-files.mjs`, `node --check packages/viewer/server/routes/health-routes.mjs`, `npm test --workspace @stfc-mod-sidecar/desktop`, `npm run ax -- check`, and `git diff --check`.
 - Manual smoke not run yet: `npm run desktop:dev`.
-- Next recommended slice: extract `/api/health` and `/api/admin/shutdown` behind `packages/viewer/server/routes/health-routes.mjs`.
+- Next recommended slice: extract settings routes behind `packages/viewer/server/routes/settings-routes.mjs`.
 - Still recommended before release: run manual `npm run desktop:dev` smoke.
 
 ## Current Monoliths
@@ -83,11 +85,11 @@ Plan a separate PR for `packages/viewer/server.mjs` now that desktop `main.mjs` 
    Move `resolvePublicAsset`, `publicPathCandidates`, `isWithinPublicDir`, `contentTypeForPath`, `sendFile`, `sendJson`, and `sendText` into a small static/response module. Keep cache headers, content types, URL decoding, and public-dir path boundary checks unchanged.
    Validation: `npm test --workspace @stfc-mod-sidecar/desktop`, `npm run ax -- check`.
 
-2. Next: health and shutdown routes:
+2. Done: health and shutdown routes:
    Move `/api/health` response construction and `/api/admin/shutdown` handling behind `health-routes.mjs`. Keep shutdown token auth, desktop capability fields, release payload, mode fields, and game/settings/feed path fields unchanged.
    Validation: add or extend route-level tests if a harness exists; otherwise run full desktop tests and `npm run ax -- check`.
 
-3. Settings routes:
+3. Next: settings routes:
    Move `/api/settings/hotkeys`, `/api/settings/notifications`, and `/api/settings/diagnostics`. Keep Developer Tools gating for diagnostics, settings-token requirements, save modes, payload parsing limits, and TOML patch behavior unchanged.
    Validation: existing settings tests plus `npm run ax -- check`.
 
