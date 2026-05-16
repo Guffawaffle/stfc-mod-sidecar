@@ -43,7 +43,7 @@ export function createSidecarServerProcess(options) {
             for (let offset = 0; offset < 10; offset += 1) {
                 const port = firstPort + offset;
                 const url = `http://127.0.0.1:${port}`;
-                const existing = await fetchHealth(url, 800);
+                const existing = await fetchReadiness(url, 800);
                 if (!existing?.ok) {
                     const server = await startSidecarServer(url);
                     sidecarUrl = server.url;
@@ -100,6 +100,7 @@ export function createSidecarServerProcess(options) {
             process: runtimeProcess,
         });
         const gameDirectory = await options.getGameDirectoryForStartup();
+        const userDataPath = options.app.getPath("userData");
         sidecarShutdownToken = randomUUID();
         sidecarSyncToken = runtimeEnv.STFC_SIDECAR_SYNC_TOKEN?.trim() || randomUUID();
         sidecarModToken = runtimeEnv.STFC_SIDECAR_MOD_TOKEN?.trim() || randomUUID();
@@ -123,7 +124,9 @@ export function createSidecarServerProcess(options) {
                 STFC_SIDECAR_DESKTOP: "1",
                 STFC_SIDECAR_DEVELOPER_MODE: desktopSettings.developerMode ? "1" : "0",
                 STFC_SIDECAR_MOD_PROFILE: desktopSettings.modProfile,
-                STFC_SIDECAR_CACHE_DIR: path.join(options.app.getPath("userData"), "cache"),
+                STFC_SIDECAR_CACHE_DIR: path.join(userDataPath, "cache"),
+                STFC_SIDECAR_STORE_CONNECTION: runtimeEnv.STFC_SIDECAR_STORE_CONNECTION?.trim()
+                    || path.join(userDataPath, "sidecar-events.sqlite"),
                 ...releaseEnvironment(options.getReleaseInfo()),
                 STFC_SIDECAR_SHUTDOWN_TOKEN: sidecarShutdownToken,
                 STFC_SIDECAR_SYNC_TOKEN: sidecarSyncToken,
@@ -172,7 +175,7 @@ async function waitForHealth(url, timeoutMs) {
 
     while (Date.now() < deadline) {
         try {
-            const health = await fetchHealth(url, 800);
+            const health = await fetchReadiness(url, 800);
             if (health?.ok) {
                 return health;
             }
@@ -187,10 +190,18 @@ async function waitForHealth(url, timeoutMs) {
 }
 
 async function fetchHealth(url, timeoutMs) {
+    return fetchJson(`${url}/api/health`, Math.max(timeoutMs, 2000));
+}
+
+async function fetchReadiness(url, timeoutMs) {
+    return await fetchJson(`${url}/api/health/ready`, timeoutMs) ?? await fetchHealth(url, timeoutMs);
+}
+
+async function fetchJson(url, timeoutMs) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
-        const response = await fetch(`${url}/api/health`, { signal: controller.signal });
+        const response = await fetch(url, { signal: controller.signal });
         if (!response.ok) {
             return null;
         }

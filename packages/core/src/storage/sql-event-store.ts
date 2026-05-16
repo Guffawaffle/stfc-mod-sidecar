@@ -41,7 +41,9 @@ export interface SidecarEventStore {
     readonly backend: SqlSidecarStoreBackend;
     append(events: readonly SidecarEvent[]): Promise<SidecarEventStoreAppendResult>;
     count(): Promise<number>;
+    countByTypes(eventTypes: readonly string[]): Promise<number>;
     listRecent(limit: number): Promise<SidecarStoredEvent[]>;
+    listRecentByTypes(eventTypes: readonly string[], limit: number): Promise<SidecarStoredEvent[]>;
     getBySequenceId(sequenceId: number): Promise<SidecarStoredEvent | null>;
     close(): Promise<void>;
 }
@@ -79,8 +81,11 @@ interface SqlDialect {
     schemaStatements(tableName: string): string[];
     insertStatement(tableName: string): string;
     listRecentStatement(tableName: string): string;
+    listRecentByTypesStatement(tableName: string, eventTypePlaceholders: string, limitPlaceholder: string): string;
     getBySequenceIdStatement(tableName: string): string;
     countStatement(tableName: string): string;
+    countByTypesStatement(tableName: string, eventTypePlaceholders: string): string;
+    placeholder(index: number): string;
     params(record: SerializedSidecarEventRecord): readonly SqlParameter[];
 }
 
@@ -142,8 +147,37 @@ class SqlSidecarEventStore implements SidecarEventStore {
         return Number(result.rows[0]?.event_count ?? 0);
     }
 
+    async countByTypes(eventTypes: readonly string[]): Promise<number> {
+        const normalizedTypes = normalizeEventTypes(eventTypes);
+        if (normalizedTypes.length === 0) {
+            return 0;
+        }
+
+        const eventTypePlaceholders = normalizedTypes.map((_type, index) => this.dialect.placeholder(index + 1)).join(", ");
+        const result = await this.executor.query(
+            this.dialect.countByTypesStatement(this.tableName, eventTypePlaceholders),
+            normalizedTypes,
+        );
+        return Number(result.rows[0]?.event_count ?? 0);
+    }
+
     async listRecent(limit: number): Promise<SidecarStoredEvent[]> {
         const result = await this.executor.query(this.dialect.listRecentStatement(this.tableName), [limit]);
+        return result.rows.map(deserializeStoredEventRow);
+    }
+
+    async listRecentByTypes(eventTypes: readonly string[], limit: number): Promise<SidecarStoredEvent[]> {
+        const normalizedTypes = normalizeEventTypes(eventTypes);
+        if (normalizedTypes.length === 0) {
+            return [];
+        }
+
+        const eventTypePlaceholders = normalizedTypes.map((_type, index) => this.dialect.placeholder(index + 1)).join(", ");
+        const limitPlaceholder = this.dialect.placeholder(normalizedTypes.length + 1);
+        const result = await this.executor.query(
+            this.dialect.listRecentByTypesStatement(this.tableName, eventTypePlaceholders, limitPlaceholder),
+            [...normalizedTypes, limit],
+        );
         return result.rows.map(deserializeStoredEventRow);
     }
 
@@ -238,11 +272,20 @@ const sqliteDialect: SqlDialect = {
     listRecentStatement(tableName) {
         return `SELECT sequence_id, event_key, payload_json AS raw_json FROM ${tableName} ORDER BY sequence_id DESC LIMIT ?1`;
     },
+    listRecentByTypesStatement(tableName, eventTypePlaceholders, limitPlaceholder) {
+        return `SELECT sequence_id, event_key, payload_json AS raw_json FROM ${tableName} WHERE event_type IN (${eventTypePlaceholders}) ORDER BY sequence_id DESC LIMIT ${limitPlaceholder}`;
+    },
     getBySequenceIdStatement(tableName) {
         return `SELECT sequence_id, event_key, payload_json AS raw_json FROM ${tableName} WHERE sequence_id = ?1`;
     },
     countStatement(tableName) {
         return `SELECT COUNT(*) AS event_count FROM ${tableName}`;
+    },
+    countByTypesStatement(tableName, eventTypePlaceholders) {
+        return `SELECT COUNT(*) AS event_count FROM ${tableName} WHERE event_type IN (${eventTypePlaceholders})`;
+    },
+    placeholder(index) {
+        return `?${index}`;
     },
     params(record) {
         return [
@@ -279,11 +322,20 @@ const postgresDialect: SqlDialect = {
     listRecentStatement(tableName) {
         return `SELECT sequence_id, event_key, payload_json::text AS raw_json FROM ${tableName} ORDER BY sequence_id DESC LIMIT $1`;
     },
+    listRecentByTypesStatement(tableName, eventTypePlaceholders, limitPlaceholder) {
+        return `SELECT sequence_id, event_key, payload_json::text AS raw_json FROM ${tableName} WHERE event_type IN (${eventTypePlaceholders}) ORDER BY sequence_id DESC LIMIT ${limitPlaceholder}`;
+    },
     getBySequenceIdStatement(tableName) {
         return `SELECT sequence_id, event_key, payload_json::text AS raw_json FROM ${tableName} WHERE sequence_id = $1`;
     },
     countStatement(tableName) {
         return `SELECT COUNT(*) AS event_count FROM ${tableName}`;
+    },
+    countByTypesStatement(tableName, eventTypePlaceholders) {
+        return `SELECT COUNT(*) AS event_count FROM ${tableName} WHERE event_type IN (${eventTypePlaceholders})`;
+    },
+    placeholder(index) {
+        return `$${index}`;
     },
     params(record) {
         return [
@@ -341,6 +393,10 @@ function deserializeStoredEventRow(row: Record<string, unknown>): SidecarStoredE
         rawJson,
         event: parsed,
     };
+}
+
+function normalizeEventTypes(eventTypes: readonly string[]): string[] {
+    return [...new Set(eventTypes.map((value) => value.trim()).filter(Boolean))];
 }
 
 function getOptionalString(value: object, key: string): string | null {

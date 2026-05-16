@@ -4,6 +4,8 @@ STFC Mod Sidecar is a local diagnostic console and integration bridge that lives
 
 The community mod should stay focused on observing game/mod state and emitting structured events. The sidecar should own display, parsing, local storage, diagnostics, and integrations.
 
+The detailed producer/consumer and security boundary lives in [docs/22-producer-consumer-security-contract.md](22-producer-consumer-security-contract.md). Treat that contract as the architecture source of truth before adding AX, UI, storage, or integration features.
+
 The first useful version should be boring:
 
 - Read JSONL events from a known path.

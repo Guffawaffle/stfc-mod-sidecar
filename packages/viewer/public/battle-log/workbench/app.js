@@ -1,3 +1,7 @@
+import { createBridgeStatus } from "../../shared/bridge-status.js";
+
+const FALLBACK_REFRESH_MS = 15000;
+
 const state = {
     snapshot: null,
     battleGroups: [],
@@ -5,6 +9,7 @@ const state = {
     selectedCombatantKey: null,
     detailsByLine: new Map(),
     refreshTimer: null,
+    eventSource: null,
     lastReportHtml: "",
     lastBattleSelectKey: null,
 };
@@ -21,8 +26,10 @@ const elements = {
     reportView: document.querySelector("#report-view"),
 };
 
-elements.refreshButton.addEventListener("click", () => void refreshSnapshot());
-elements.lineLimit.addEventListener("change", () => void refreshSnapshot());
+const bridgeStatus = createBridgeStatus(elements.viewerStatus);
+
+elements.refreshButton.addEventListener("click", () => void refreshSnapshot({ activityLabel: "Refreshing" }));
+elements.lineLimit.addEventListener("change", () => void refreshSnapshot({ activityLabel: "Refreshing" }));
 elements.autoRefresh.addEventListener("change", updateRefreshLoop);
 elements.battleSelect.addEventListener("change", () => {
     state.selectedBattleKey = elements.battleSelect.value;
@@ -30,11 +37,11 @@ elements.battleSelect.addEventListener("change", () => {
     void renderReport();
 });
 
-await refreshSnapshot();
+await refreshSnapshot({ activityLabel: "Refreshing" });
 updateRefreshLoop();
 
-async function refreshSnapshot() {
-    setStatus("Refreshing…");
+async function refreshSnapshot(options = {}) {
+    bridgeStatus.begin(options.activityLabel ?? "Writing");
 
     try {
         const limit = Number.parseInt(elements.lineLimit.value, 10) || 200;
@@ -52,8 +59,14 @@ async function refreshSnapshot() {
         renderStatus(snapshot);
         renderBattleSelect();
         void renderReport();
+
+        if (snapshot.ok) {
+            bridgeStatus.finish({ paused: !elements.autoRefresh.checked });
+        } else {
+            bridgeStatus.disconnected(snapshot.error ?? "Unavailable");
+        }
     } catch (error) {
-        setStatus("Unavailable");
+        bridgeStatus.disconnected();
         elements.reportView.innerHTML = `<div class="empty-state">${escapeHtml(error instanceof Error ? error.message : "Unable to load battle feed.")}</div>`;
     }
 }
@@ -64,24 +77,67 @@ function updateRefreshLoop() {
         state.refreshTimer = null;
     }
 
+    if (state.eventSource) {
+        state.eventSource.close();
+        state.eventSource = null;
+    }
+
     if (!elements.autoRefresh.checked) {
+        bridgeStatus.off();
+        return;
+    }
+
+    if (window.EventSource) {
+        bridgeStatus.off("Opening");
+        state.eventSource = new EventSource("/api/events/stream");
+        state.eventSource.addEventListener("open", () => markLiveUpdatesConnected());
+        state.eventSource.addEventListener("ready", () => markLiveUpdatesConnected());
+        state.eventSource.addEventListener("events-updated", () => void refreshSnapshot({ activityLabel: "Writing" }));
+        state.eventSource.addEventListener("error", () => {
+            bridgeStatus.disconnected();
+            ensureFallbackRefresh();
+        });
+        return;
+    }
+
+    ensureFallbackRefresh();
+}
+
+function markLiveUpdatesConnected() {
+    if (state.refreshTimer) {
+        window.clearInterval(state.refreshTimer);
+        state.refreshTimer = null;
+    }
+
+    bridgeStatus.open();
+}
+
+function ensureFallbackRefresh() {
+    if (state.refreshTimer || !elements.autoRefresh.checked) {
         return;
     }
 
     state.refreshTimer = window.setInterval(() => {
-        void refreshSnapshot();
-    }, 2500);
+        void refreshSnapshot({ activityLabel: "Checking" });
+    }, FALLBACK_REFRESH_MS);
 }
 
 function renderStatus(snapshot) {
-    elements.feedPath.textContent = snapshot.feedPath ?? "Unknown";
+    elements.feedPath.textContent = dataSourceLabel(snapshot);
     elements.eventCount.textContent = `${snapshot.returnedLines ?? 0} / ${snapshot.totalLines ?? 0}`;
     elements.battleCount.textContent = `${state.battleGroups.length}`;
-    setStatus(snapshot.ok ? "Live" : snapshot.error ?? "Unavailable");
 }
 
-function setStatus(text) {
-    elements.viewerStatus.textContent = text;
+function dataSourceLabel(snapshot) {
+    if (snapshot?.source === "store") {
+        return `${snapshot.storageBackend ?? "local"} event store`;
+    }
+
+    if (snapshot?.feedPath) {
+        return snapshot.feedPath;
+    }
+
+    return "Local sidecar data layer";
 }
 
 function buildBattleGroups(snapshot) {

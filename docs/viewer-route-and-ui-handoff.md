@@ -1,6 +1,6 @@
 # Viewer Route And UI Handoff
 
-This handoff tracks only the remaining modularization work after the desktop main split and the first viewer route slices.
+This handoff tracks the remaining UI modularization work after the desktop main split and viewer server route slices.
 
 ## Current State
 
@@ -8,18 +8,21 @@ This handoff tracks only the remaining modularization work after the desktop mai
   - `packages/desktop/src/main-window.mjs`
   - `packages/desktop/src/sidecar-server-process.mjs`
   - `packages/desktop/src/desktop-ipc.mjs`
-- Viewer route extraction is partially done:
+- Viewer server route extraction is done for the route and feed-watcher slices:
   - `packages/viewer/server/static-files.mjs`
   - `packages/viewer/server/routes/health-routes.mjs`
   - `packages/viewer/server/routes/settings-routes.mjs`
-- `packages/viewer/server.mjs` still owns the main HTTP dispatch, mod install/uninstall route bodies, diagnostics bundle route, event/fleet routes, feed watcher/indexing state, and shutdown lifecycle.
+  - `packages/viewer/server/routes/mod-install-routes.mjs`
+  - `packages/viewer/server/routes/mod-uninstall-routes.mjs`
+  - `packages/viewer/server/routes/diagnostics-routes.mjs`
+  - `packages/viewer/server/routes/event-routes.mjs`
+  - `packages/viewer/server/feed-watcher.mjs`
+- `packages/viewer/server.mjs` still owns main HTTP dispatch, release/dev/status routes, shutdown lifecycle, stream clients, settings update helpers, and event-store fallback behavior.
 - Manual smoke still recommended before release: `npm run desktop:dev`.
 
-## Remaining Order
+## Completed Server Slices
 
 1. Mod install routes:
-   Create `packages/viewer/server/routes/mod-install-routes.mjs`.
-   Move dispatch for:
    - `/api/mod/release-catalog`
    - `/api/mod/install-plan`
    - `/api/mod/verify-artifact`
@@ -29,30 +32,31 @@ This handoff tracks only the remaining modularization work after the desktop mai
    - `/api/mod/install-execution`
 
 2. Mod uninstall routes:
-   Create `packages/viewer/server/routes/mod-uninstall-routes.mjs`.
-   Move dispatch for:
    - `/api/mod/uninstall-plan`
    - `/api/mod/uninstall-confirmation`
    - `/api/mod/uninstall-execution`
 
 3. Diagnostics bundle route:
-   Create `packages/viewer/server/routes/diagnostics-routes.mjs`.
-   Move dispatch for:
    - `/api/diagnostics/bundle`
 
 4. Event and fleet routes:
-   Create `packages/viewer/server/routes/event-routes.mjs`.
-   Move dispatch for:
    - `/api/events`
    - `/api/events/stream`
    - `/api/events/:lineNumber`
    - `/api/fleet/sync`
 
 5. Feed watcher extraction:
-   Create `packages/viewer/server/feed-watcher.mjs`.
-   Move watcher setup, debounce, close behavior, and feed index state only after event routes are separated.
+   - watcher setup
+   - debounce and close behavior
+   - feed index and detail-cache state
 
-6. Later UI splits:
+## Remaining Order
+
+1. Split `packages/viewer/public/about/app.js`:
+   Good first split: Community Mod install/update/uninstall state and actions.
+
+2. Split `packages/viewer/public/settings/app.js`:
+   Good first split: keyboard capture/binding helpers, then notifications and diagnostics panels.
    Split `packages/viewer/public/about/app.js`.
    Split `packages/viewer/public/settings/app.js`.
 
@@ -83,6 +87,11 @@ Add focused route tests under `packages/desktop/test/` matching the existing pat
 - `viewer-health-routes.test.mjs`
 - `viewer-settings-routes.test.mjs`
 - `viewer-static-files.test.mjs`
+- `viewer-mod-install-routes.test.mjs`
+- `viewer-mod-uninstall-routes.test.mjs`
+- `viewer-diagnostics-routes.test.mjs`
+- `viewer-event-routes.test.mjs`
+- `viewer-feed-watcher.test.mjs`
 
 ## UI Split Notes
 

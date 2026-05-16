@@ -28,3 +28,5 @@ The sidecar exists for diagnostics and read-only integration. It must not become
 ## Design Boundary
 
 The sidecar may read files, parse text, display diagnostics, and send user-approved exports to external services. It must not reach into the game process, patch memory, synthesize input, or expose a command channel that changes gameplay state.
+
+The sidecar is the consumer, not part of the mod's gameplay path. Producer/consumer pressure valves, key ownership, and local-vs-remote routing rules are defined in [docs/22-producer-consumer-security-contract.md](22-producer-consumer-security-contract.md).

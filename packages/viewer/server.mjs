@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
-import { existsSync, readFileSync, watch } from "node:fs";
-import { copyFile, mkdir, open, readFile, stat, writeFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -52,7 +52,12 @@ import {
     executeCommunityModUninstall,
 } from "./community-mod-uninstall-execution.mjs";
 import { installBoundedConsoleLogSync } from "./bounded-log-file.mjs";
+import { createFeedWatcher } from "./server/feed-watcher.mjs";
+import { handleDiagnosticsRoutes } from "./server/routes/diagnostics-routes.mjs";
+import { handleEventRoutes } from "./server/routes/event-routes.mjs";
 import { handleHealthRoutes } from "./server/routes/health-routes.mjs";
+import { handleModInstallRoutes } from "./server/routes/mod-install-routes.mjs";
+import { handleModUninstallRoutes } from "./server/routes/mod-uninstall-routes.mjs";
 import { handleSettingsRoutes } from "./server/routes/settings-routes.mjs";
 import { resolvePublicAsset, sendFile, sendJson, sendText } from "./server/static-files.mjs";
 
@@ -62,7 +67,6 @@ const DEFAULT_FEED_PATH = path.join(DEFAULT_GAME_DIR, DEFAULT_FEED_FILE);
 const DEFAULT_SETTINGS_FILE = "community_patch_settings.toml";
 const DEFAULT_PORT = 43127;
 const DEFAULT_LIMIT = 150;
-const DETAIL_CACHE_LIMIT = 128;
 const DEFAULT_STORE_PATH = "./.sidecar/sidecar-events.sqlite";
 const SETTINGS_SAVE_MODE_LOCAL_TRUSTED = "local_trusted";
 const SETTINGS_SAVE_MODE_REMOTE_PROTECTED = "remote_protected";
@@ -70,6 +74,10 @@ const MAX_EVENT_INGEST_BYTES = 5 * 1024 * 1024;
 const POLL_HINT_MS = 2000;
 const STREAM_KEEPALIVE_MS = 30000;
 const SHUTDOWN_GRACE_MS = 5000;
+const BATTLE_EVENT_TYPES = Object.freeze(["battle.event", "battle.capture", "battle.analytics", "battle.report", "catalog.snapshot"]);
+const DEVELOPER_EVENT_TYPE_LIST = Object.freeze(["debug.event", "hook.event", "session.event", "integration.event"]);
+const ALL_EVENT_TYPES = Object.freeze([...BATTLE_EVENT_TYPES, ...DEVELOPER_EVENT_TYPE_LIST]);
+const DEVELOPER_EVENT_TYPES = new Set(DEVELOPER_EVENT_TYPE_LIST);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -100,10 +108,6 @@ const cloudTelemetryBridge = createCloudTelemetryBridge({
     sidecarVersion: releaseInfo.version,
     logger: console,
 });
-let feedIndex = createEmptyFeedIndex();
-let feedWatcher = null;
-let feedWatcherPath = "";
-let feedWatcherDebounce = null;
 const eventStreamClients = new Set();
 const communityModOperationLocks = new Map();
 
@@ -138,6 +142,14 @@ try {
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
 }
+
+const battleFeed = createFeedWatcher({
+    feedPath,
+    normalizeLine,
+    onFeedChanged: () => broadcastEventUpdate("feed-changed"),
+    pollHintMs: POLL_HINT_MS,
+    summarizeLine,
+});
 
 const communityModSettingsProfile = normalizeCommunityModSettingsProfile(process.env.STFC_SIDECAR_MOD_PROFILE);
 let communityModInstallStatus = await readCommunityModInstallStatus();
@@ -177,37 +189,17 @@ const server = createServer(async (request, response) => {
         });
     }
 
-    if (requestUrl.pathname === "/api/events") {
-        if (request.method === "POST") {
-            return handleEventIngest(request, response);
-        }
-
-        if (request.method && request.method !== "GET") {
-            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
-        }
-
-        const limitValue = Number.parseInt(requestUrl.searchParams.get("limit") ?? `${defaultLimit}`, 10);
-        const detailMode = requestUrl.searchParams.get("detail") ?? "full";
-        const snapshot = await readEventsSnapshot(Number.isFinite(limitValue) ? limitValue : defaultLimit, {
-            includeDetails: detailMode !== "summary",
-        });
-        return sendJson(response, 200, snapshot);
-    }
-
-    if (requestUrl.pathname === "/api/events/stream") {
-        if (request.method && request.method !== "GET") {
-            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
-        }
-
-        return handleEventStream(request, response);
-    }
-
-    if (requestUrl.pathname === "/api/fleet/sync") {
-        if (request.method === "POST") {
-            return handleFleetSyncIngest(request, response);
-        }
-
-        return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+    if (await handleEventRoutes(request, response, requestUrl, {
+        defaultLimit,
+        developerMode,
+        developerModeRequiredPayload,
+        handleEventIngest,
+        handleEventStream,
+        handleFleetSyncIngest,
+        readEventDetail,
+        readEventsSnapshot,
+    })) {
+        return;
     }
 
     if (await handleSettingsRoutes(request, response, requestUrl, {
@@ -223,17 +215,11 @@ const server = createServer(async (request, response) => {
         return;
     }
 
-    if (requestUrl.pathname === "/api/diagnostics/bundle") {
-        if (request.method && request.method !== "GET") {
-            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
-        }
-
-        const bundle = await readDiagnosticsBundle();
-        if (requestUrl.searchParams.get("format") === "markdown") {
-            return sendText(response, 200, buildDiagnosticsMarkdown(bundle), "text/markdown; charset=utf-8");
-        }
-
-        return sendJson(response, 200, bundle);
+    if (await handleDiagnosticsRoutes(request, response, requestUrl, {
+        buildDiagnosticsMarkdown,
+        readDiagnosticsBundle,
+    })) {
+        return;
     }
 
     if (requestUrl.pathname === "/api/release/check") {
@@ -257,335 +243,46 @@ const server = createServer(async (request, response) => {
         }
     }
 
-    if (requestUrl.pathname === "/api/mod/release-catalog") {
-        if (request.method && request.method !== "GET") {
-            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
-        }
-
-        try {
-            return sendJson(response, 200, await fetchCommunityModReleaseCatalog({
-                profile: normalizeCommunityModReleaseProfile(
-                    requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
-                ),
-            }));
-        } catch (error) {
-            return sendJson(response, 502, {
-                ok: false,
-                status: "error",
-                error: error instanceof Error ? error.message : String(error),
-                checkedAt: new Date().toISOString(),
-            });
-        }
+    if (await handleModInstallRoutes(request, response, requestUrl, {
+        buildCommunityModInstallExecutionBlocked,
+        buildCommunityModInstallExecutionRequest,
+        buildCommunityModInstallPlan,
+        buildCommunityModInstallPreflight,
+        buildCurrentCommunityModInstallConfirmation,
+        communityModSettingsProfile,
+        defaultArtifactCacheDir: DEFAULT_ARTIFACT_CACHE_DIR,
+        detectStfcGameProcess,
+        executeCommunityModInstall,
+        fetchCommunityModReleaseCatalog,
+        gameDir,
+        normalizeCommunityModReleaseProfile,
+        process,
+        readCommunityModInstallStatus,
+        readJsonBody,
+        refreshCommunityModVariantGate,
+        stageCommunityModArtifact,
+        verifyCommunityModArtifact,
+        withCommunityModOperationLock,
+    })) {
+        return;
     }
 
-    if (requestUrl.pathname === "/api/mod/install-plan") {
-        if (request.method && request.method !== "GET") {
-            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
-        }
-
-        try {
-            const profile = normalizeCommunityModReleaseProfile(
-                requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
-            );
-            const [install, catalog] = await Promise.all([
-                readCommunityModInstallStatus(),
-                fetchCommunityModReleaseCatalog({ profile }),
-            ]);
-            return sendJson(response, 200, buildCommunityModInstallPlan({ profile, install, catalog }));
-        } catch (error) {
-            return sendJson(response, 502, {
-                ok: false,
-                status: "error",
-                error: error instanceof Error ? error.message : String(error),
-                checkedAt: new Date().toISOString(),
-            });
-        }
-    }
-
-    if (requestUrl.pathname === "/api/mod/uninstall-plan") {
-        if (request.method && request.method !== "GET") {
-            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
-        }
-
-        try {
-            return sendJson(response, 200, buildCommunityModUninstallPlan({
-                install: await readCommunityModInstallStatus(),
-            }));
-        } catch (error) {
-            return sendJson(response, 502, {
-                ok: false,
-                status: "error",
-                error: error instanceof Error ? error.message : String(error),
-                checkedAt: new Date().toISOString(),
-            });
-        }
-    }
-
-    if (requestUrl.pathname === "/api/mod/uninstall-confirmation") {
-        if (request.method !== "POST") {
-            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
-        }
-
-        let payload;
-        try {
-            payload = await readOptionalJsonBody(request);
-        } catch (error) {
-            return sendJson(response, 400, {
-                ok: false,
-                status: "invalid_request",
-                error: error instanceof Error ? error.message : String(error),
-                checkedAt: new Date().toISOString(),
-            });
-        }
-
-        try {
-            return sendJson(response, 200, await buildCurrentCommunityModUninstallConfirmation({
-                deleteSettingsAndLogs: payload.deleteSettingsAndLogs === true,
-            }));
-        } catch (error) {
-            return sendJson(response, 502, {
-                ok: false,
-                status: "error",
-                error: error instanceof Error ? error.message : String(error),
-                checkedAt: new Date().toISOString(),
-            });
-        }
-    }
-
-    if (requestUrl.pathname === "/api/mod/uninstall-execution") {
-        if (request.method !== "POST") {
-            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
-        }
-
-        let payload;
-        try {
-            payload = await readJsonBody(request);
-        } catch (error) {
-            return sendJson(response, 400, {
-                ok: false,
-                status: "invalid_request",
-                error: error instanceof Error ? error.message : String(error),
-                checkedAt: new Date().toISOString(),
-            });
-        }
-
-        try {
-            return await withCommunityModOperationLock(response, "uninstall", async () => {
-                const confirmation = await buildCurrentCommunityModUninstallConfirmation({
-                    deleteSettingsAndLogs: payload.deleteSettingsAndLogs === true,
-                });
-                if (confirmation.status !== "ready_for_confirmation") {
-                    return sendJson(response, 200, buildCommunityModUninstallExecutionBlocked({
-                        confirmation,
-                        executionRequest: {
-                            ok: true,
-                            status: confirmation.status,
-                            summary: confirmation.summary,
-                            warnings: ["Uninstall execution is blocked by confirmation preflight."],
-                        },
-                    }));
-                }
-
-                const executionRequest = buildCommunityModUninstallExecutionRequest({
-                    payload,
-                    confirmation,
-                    env: process.env,
-                });
-                if (executionRequest.status !== "ready") {
-                    return sendJson(response, 200, buildCommunityModUninstallExecutionBlocked({ confirmation, executionRequest }));
-                }
-
-                const result = await executeCommunityModUninstall({
-                    confirmation,
-                    gameProcess: await detectStfcGameProcess({ gameDirectory: gameDir }),
-                    enableExecution: true,
-                });
-                await refreshCommunityModVariantGate();
-                return sendJson(response, 200, result);
-            });
-        } catch (error) {
-            return sendJson(response, 502, {
-                ok: false,
-                status: "error",
-                error: error instanceof Error ? error.message : String(error),
-                checkedAt: new Date().toISOString(),
-            });
-        }
-    }
-
-    if (requestUrl.pathname === "/api/mod/verify-artifact") {
-        if (request.method !== "POST") {
-            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
-        }
-
-        try {
-            const profile = normalizeCommunityModReleaseProfile(
-                requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
-            );
-            const catalog = await fetchCommunityModReleaseCatalog({ profile });
-            return sendJson(response, 200, await verifyCommunityModArtifact({
-                catalog,
-                cacheDir: process.env.STFC_SIDECAR_CACHE_DIR || DEFAULT_ARTIFACT_CACHE_DIR,
-            }));
-        } catch (error) {
-            return sendJson(response, 502, {
-                ok: false,
-                status: "error",
-                error: error instanceof Error ? error.message : String(error),
-                checkedAt: new Date().toISOString(),
-            });
-        }
-    }
-
-    if (requestUrl.pathname === "/api/mod/install-preflight") {
-        if (request.method !== "POST") {
-            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
-        }
-
-        try {
-            const profile = normalizeCommunityModReleaseProfile(
-                requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
-            );
-            const [install, catalog] = await Promise.all([
-                readCommunityModInstallStatus(),
-                fetchCommunityModReleaseCatalog({ profile }),
-            ]);
-            const installPlan = buildCommunityModInstallPlan({ profile, install, catalog });
-            const gameProcess = await detectStfcGameProcess({ gameDirectory: gameDir });
-            let preflight = buildCommunityModInstallPreflight({ installPlan, gameProcess });
-            if (preflight.status === "artifact_not_verified") {
-                const artifactVerification = await verifyCommunityModArtifact({
-                    catalog,
-                    cacheDir: process.env.STFC_SIDECAR_CACHE_DIR || DEFAULT_ARTIFACT_CACHE_DIR,
-                });
-                preflight = buildCommunityModInstallPreflight({ installPlan, artifactVerification, gameProcess });
-            }
-
-            return sendJson(response, 200, preflight);
-        } catch (error) {
-            return sendJson(response, 502, {
-                ok: false,
-                status: "error",
-                error: error instanceof Error ? error.message : String(error),
-                checkedAt: new Date().toISOString(),
-            });
-        }
-    }
-
-    if (requestUrl.pathname === "/api/mod/stage-artifact") {
-        if (request.method !== "POST") {
-            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
-        }
-
-        try {
-            const profile = normalizeCommunityModReleaseProfile(
-                requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
-            );
-            const catalog = await fetchCommunityModReleaseCatalog({ profile });
-            const cacheDir = process.env.STFC_SIDECAR_CACHE_DIR || DEFAULT_ARTIFACT_CACHE_DIR;
-            const verification = await verifyCommunityModArtifact({ catalog, cacheDir });
-            return sendJson(response, 200, await stageCommunityModArtifact({ catalog, verification, cacheDir }));
-        } catch (error) {
-            return sendJson(response, 502, {
-                ok: false,
-                status: "error",
-                error: error instanceof Error ? error.message : String(error),
-                checkedAt: new Date().toISOString(),
-            });
-        }
-    }
-
-    if (requestUrl.pathname === "/api/mod/install-confirmation") {
-        if (request.method !== "POST") {
-            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
-        }
-
-        try {
-            const profile = normalizeCommunityModReleaseProfile(
-                requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
-            );
-            return sendJson(response, 200, await buildCurrentCommunityModInstallConfirmation(profile));
-        } catch (error) {
-            return sendJson(response, 502, {
-                ok: false,
-                status: "error",
-                error: error instanceof Error ? error.message : String(error),
-                checkedAt: new Date().toISOString(),
-            });
-        }
-    }
-
-    if (requestUrl.pathname === "/api/mod/install-execution") {
-        if (request.method !== "POST") {
-            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
-        }
-
-        let payload;
-        try {
-            payload = await readJsonBody(request);
-        } catch (error) {
-            return sendJson(response, 400, {
-                ok: false,
-                status: "invalid_request",
-                error: error instanceof Error ? error.message : String(error),
-                checkedAt: new Date().toISOString(),
-            });
-        }
-
-        try {
-            return await withCommunityModOperationLock(response, "install", async () => {
-                const profile = normalizeCommunityModReleaseProfile(
-                    requestUrl.searchParams.get("profile") ?? communityModSettingsProfile,
-                );
-                const confirmation = await buildCurrentCommunityModInstallConfirmation(profile);
-                if (confirmation.status !== "ready_for_confirmation") {
-                    return sendJson(response, 200, buildCommunityModInstallExecutionBlocked({
-                        confirmation,
-                        executionRequest: {
-                            ok: true,
-                            status: confirmation.status,
-                            summary: confirmation.summary,
-                            warnings: ["Install execution is blocked by confirmation preflight."],
-                        },
-                    }));
-                }
-
-                const executionRequest = buildCommunityModInstallExecutionRequest({
-                    payload,
-                    confirmation,
-                    env: process.env,
-                });
-                if (executionRequest.status !== "ready") {
-                    return sendJson(response, 200, buildCommunityModInstallExecutionBlocked({ confirmation, executionRequest }));
-                }
-
-                const result = await executeCommunityModInstall({
-                    confirmation,
-                    gameProcess: await detectStfcGameProcess({ gameDirectory: gameDir }),
-                    enableExecution: true,
-                });
-                await refreshCommunityModVariantGate();
-                return sendJson(response, 200, result);
-            });
-        } catch (error) {
-            return sendJson(response, 502, {
-                ok: false,
-                status: "error",
-                error: error instanceof Error ? error.message : String(error),
-                checkedAt: new Date().toISOString(),
-            });
-        }
-    }
-
-    const eventLineMatch = /^\/api\/events\/([0-9]+)$/.exec(requestUrl.pathname);
-    if (eventLineMatch) {
-        if (request.method && request.method !== "GET") {
-            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
-        }
-
-        const lineNumber = Number.parseInt(eventLineMatch[1], 10);
-        const detail = await readEventDetail(lineNumber);
-        return sendJson(response, detail.ok ? 200 : detail.statusCode ?? 404, detail);
+    if (await handleModUninstallRoutes(request, response, requestUrl, {
+        buildCommunityModUninstallExecutionBlocked,
+        buildCommunityModUninstallExecutionRequest,
+        buildCommunityModUninstallPlan,
+        buildCurrentCommunityModUninstallConfirmation,
+        detectStfcGameProcess,
+        executeCommunityModUninstall,
+        gameDir,
+        process,
+        readCommunityModInstallStatus,
+        readJsonBody,
+        readOptionalJsonBody,
+        refreshCommunityModVariantGate,
+        withCommunityModOperationLock,
+    })) {
+        return;
     }
 
     if (await handleHealthRoutes(request, response, requestUrl, {
@@ -612,6 +309,14 @@ const server = createServer(async (request, response) => {
         startedAt,
     })) {
         return;
+    }
+
+    if (requestUrl.pathname === "/api/dev/ax") {
+        if (request.method && request.method !== "GET") {
+            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        }
+
+        return sendJson(response, 200, await readAxPackage(requestUrl));
     }
 
     if (requestUrl.pathname === "/api/dev/status") {
@@ -672,7 +377,7 @@ server.listen(port, "127.0.0.1", () => {
     console.log(`[sidecar-viewer] listening on http://127.0.0.1:${port}`);
     if (communityModCapabilities.battleLog) {
         console.log(`[sidecar-viewer] feed path: ${feedPath}`);
-        ensureFeedWatcher();
+        battleFeed.ensure();
     } else {
         console.log(`[sidecar-viewer] battle log surfaces disabled for profile ${communityModSettingsProfile}`);
     }
@@ -855,10 +560,10 @@ async function reconcileRuntimeSurfacesWithVariantGate() {
     }
 
     if (communityModCapabilities.battleLog) {
-        ensureFeedWatcher();
+        battleFeed.ensure();
     } else {
-        closeFeedWatcher();
-        feedIndex = createEmptyFeedIndex(feedPath);
+        battleFeed.close();
+        battleFeed.resetIndex(feedPath);
     }
 }
 
@@ -1055,6 +760,220 @@ async function readDiagnosticsBundle() {
         feed,
         settings,
     });
+}
+
+async function readAxPackage(requestUrl) {
+    const generatedAt = new Date().toISOString();
+    const limit = parseBoundedInteger(requestUrl.searchParams.get("limit"), 10, 10, 100);
+    const battleLimit = parseAxScopeLimit(requestUrl.searchParams.get("battleLimit"), limit);
+    const debugLimit = parseAxScopeLimit(requestUrl.searchParams.get("debugLimit"), limit);
+
+    const [eventStoreSummary, battleSnapshot, debugSnapshot] = await Promise.all([
+        readAxEventStoreSummary(),
+        battleLimit > 0
+            ? readEventsSnapshot(battleLimit, { includeDetails: false, eventTypes: BATTLE_EVENT_TYPES })
+            : emptyEventsSnapshot({ includeDetails: false }),
+        debugLimit > 0
+            ? readEventsSnapshot(debugLimit, { includeDetails: false, eventTypes: DEVELOPER_EVENT_TYPE_LIST })
+            : emptyEventsSnapshot({ includeDetails: false }),
+    ]);
+
+    return {
+        ok: true,
+        packageType: "stfc.sidecar.ax.package.v0",
+        generatedAt,
+        sidecar: {
+            pid: process.pid,
+            port,
+            startedAt: startedAt.toISOString(),
+            uptimeMs: Date.now() - startedAt.getTime(),
+            developerMode,
+            companionMode,
+            modProfile: communityModSettingsProfile,
+            settingsProfile: communityModSettingsProfile,
+            release: releaseInfo,
+        },
+        capabilities: {
+            effective: communityModCapabilities,
+            capabilityBits: communityModVariantGate.capabilityBits,
+            variantGate: communityModVariantGate,
+        },
+        paths: {
+            gameDir,
+            feedPath,
+            settingsPath,
+        },
+        eventStore: eventStoreSummary,
+        contract: buildAxContractSummary(),
+        scopes: {
+            battle: buildAxScopePackage("battle", battleSnapshot, BATTLE_EVENT_TYPES),
+            debug: buildAxScopePackage("debug", debugSnapshot, DEVELOPER_EVENT_TYPE_LIST),
+        },
+        endpoints: buildAxEndpointCatalog({ limit, battleLimit, debugLimit }),
+        notes: buildAxPackageNotes(eventStoreSummary),
+    };
+}
+
+async function readAxEventStoreSummary() {
+    const store = eventStore;
+    const storeRevision = eventStoreRevision;
+    if (!store) {
+        return {
+            available: false,
+            backend: "none",
+            totalEvents: 0,
+            scopes: {
+                all: { totalEvents: 0 },
+                battle: { totalEvents: 0, eventTypes: BATTLE_EVENT_TYPES },
+                debug: { totalEvents: 0, eventTypes: DEVELOPER_EVENT_TYPE_LIST },
+            },
+            eventTypes: {},
+        };
+    }
+
+    try {
+        const [totalEvents, ...typeCounts] = await Promise.all([
+            store.count(),
+            ...ALL_EVENT_TYPES.map((eventType) => store.countByTypes([eventType])),
+        ]);
+        if (store !== eventStore || storeRevision !== eventStoreRevision) {
+            return readAxEventStoreSummary();
+        }
+
+        const eventTypes = Object.fromEntries(ALL_EVENT_TYPES.map((eventType, index) => [eventType, typeCounts[index] ?? 0]));
+        const battleTotal = BATTLE_EVENT_TYPES.reduce((sum, eventType) => sum + (eventTypes[eventType] ?? 0), 0);
+        const debugTotal = DEVELOPER_EVENT_TYPE_LIST.reduce((sum, eventType) => sum + (eventTypes[eventType] ?? 0), 0);
+        return {
+            available: true,
+            backend: store.backend,
+            totalEvents,
+            scopes: {
+                all: { totalEvents },
+                battle: { totalEvents: battleTotal, eventTypes: BATTLE_EVENT_TYPES },
+                debug: { totalEvents: debugTotal, eventTypes: DEVELOPER_EVENT_TYPE_LIST },
+            },
+            eventTypes,
+        };
+    } catch (error) {
+        return {
+            available: false,
+            backend: store.backend,
+            totalEvents: 0,
+            scopes: {
+                all: { totalEvents: 0 },
+                battle: { totalEvents: 0, eventTypes: BATTLE_EVENT_TYPES },
+                debug: { totalEvents: 0, eventTypes: DEVELOPER_EVENT_TYPE_LIST },
+            },
+            eventTypes: {},
+            error: error instanceof Error ? error.message : String(error),
+        };
+    }
+}
+
+function buildAxContractSummary() {
+    return {
+        contractVersion: "stfc.sidecar.producer-consumer-security.v0",
+        contractDoc: "docs/22-producer-consumer-security-contract.md",
+        priorityOrder: ["privacy-security", "producer-cost", "AX", "UI"],
+        producer: "community-mod",
+        consumer: "sidecar-core",
+        dataPlane: {
+            direction: "producer-to-consumer",
+            eventPayloadsContainSecrets: false,
+            bestEffortProducer: true,
+            backpressureRule: "drop-sample-degrade-or-disable-optional-export-before-blocking-gameplay",
+        },
+        keyClasses: {
+            localSync: "sidecar-generated local ingest key; never a provider credential",
+            remoteSync: "remote-generated or user-provisioned target key; never reuse local sidecar sync key",
+            localCapability: "sidecar-generated privileged local API key",
+            providerCredential: "sidecar-owned provider/profile secret stored out-of-band",
+            gameSessionSecret: "mod-only Scopely/game secret; never emitted to sidecar events",
+        },
+        forbidden: [
+            "sidecar-to-mod-gameplay-commands",
+            "secrets-in-event-payloads",
+            "remote-egress-without-explicit-target-or-user-action",
+            "sidecar-availability-as-mod-startup-requirement",
+            "loopback-as-authorization",
+        ],
+    };
+}
+
+function buildAxScopePackage(scope, snapshot, eventTypes) {
+    const events = Array.isArray(snapshot.events) ? snapshot.events.map(axEventSummary) : [];
+    return {
+        ok: snapshot.ok === true,
+        scope,
+        source: snapshot.source ?? "unknown",
+        storageBackend: snapshot.storageBackend ?? null,
+        exists: snapshot.exists === true,
+        detail: snapshot.detail ?? "summary",
+        eventTypes: [...eventTypes],
+        totalLines: Number(snapshot.totalLines ?? 0),
+        returnedLines: Number(snapshot.returnedLines ?? events.length),
+        generatedAt: snapshot.generatedAt ?? null,
+        events,
+        error: snapshot.error ?? null,
+    };
+}
+
+function axEventSummary(entry) {
+    return {
+        lineNumber: entry.lineNumber ?? null,
+        eventType: entry.eventType ?? entry.event?.type ?? null,
+        timestamp: entry.timestamp ?? entry.event?.timestamp ?? null,
+        source: entry.source ?? entry.event?.source ?? null,
+        level: entry.level ?? entry.event?.level ?? null,
+        sessionId: entry.sessionId ?? entry.event?.sessionId ?? null,
+        battleId: entry.battleId ?? entry.event?.battleId ?? null,
+        journalId: entry.journalId ?? entry.event?.journalId ?? null,
+        battleType: entry.battleType ?? entry.event?.battleType ?? null,
+        summary: entry.summary ?? null,
+    };
+}
+
+function buildAxEndpointCatalog({ limit, battleLimit, debugLimit }) {
+    return {
+        ready: "/api/health/ready",
+        health: "/api/health",
+        axPackage: `/api/dev/ax?limit=${limit}`,
+        events: {
+            battle: `/api/events?scope=battle&detail=summary&limit=${battleLimit}`,
+            debug: `/api/events?scope=debug&detail=summary&limit=${debugLimit}`,
+            all: `/api/events?scope=all&detail=summary&limit=${limit}`,
+            detailTemplate: "/api/events/{lineNumber}?scope=battle|debug|all",
+            stream: "/api/events/stream",
+            ingest: "POST /api/events",
+        },
+    };
+}
+
+function buildAxPackageNotes(eventStoreSummary) {
+    const notes = [];
+    if (!eventStoreSummary.available) {
+        notes.push("Event store is unavailable; debug/runtime event history will be limited or absent.");
+    }
+
+    if ((eventStoreSummary.scopes?.debug?.totalEvents ?? 0) === 0) {
+        notes.push("No runtime diagnostic events are currently stored. Use AX sidecar-export with -Post while developer mode is enabled to seed this surface.");
+    }
+
+    return notes;
+}
+
+function parseBoundedInteger(value, fallback, min, max) {
+    const parsed = Number.parseInt(value ?? "", 10);
+    if (!Number.isFinite(parsed)) {
+        return fallback;
+    }
+
+    return Math.min(Math.max(parsed, min), max);
+}
+
+function parseAxScopeLimit(value, fallback) {
+    const parsed = parseBoundedInteger(value, fallback, 0, 100);
+    return parsed > 0 ? Math.max(parsed, 10) : 0;
 }
 
 async function countStoredEvents() {
@@ -1319,18 +1238,6 @@ function parseInteger(value, fallback) {
     return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function createEmptyFeedIndex(selectedFeedPath = "") {
-    return {
-        feedPath: selectedFeedPath,
-        fileSize: 0,
-        lastModifiedMs: 0,
-        entries: [],
-        pendingBuffer: Buffer.alloc(0),
-        pendingStartOffset: 0,
-        detailCache: new Map(),
-    };
-}
-
 async function handleEventIngest(request, response) {
     const store = eventStore;
     const storeRevision = eventStoreRevision;
@@ -1345,6 +1252,13 @@ async function handleEventIngest(request, response) {
     try {
         const payload = await readJsonBody(request);
         const events = normalizeIncomingEvents(payload);
+        if (!developerMode && events.some(isDeveloperEvent)) {
+            return sendJson(response, 403, {
+                ...developerModeRequiredPayload(),
+                error: "Developer mode is required to ingest runtime diagnostic events.",
+            });
+        }
+
         if (store !== eventStore || storeRevision !== eventStoreRevision) {
             return sendEventStoreUnavailable(response);
         }
@@ -1430,71 +1344,6 @@ function sendEventStreamMessage(client, eventName, payload) {
     client.response.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
-function ensureFeedWatcher() {
-    const target = watcherTargetForFeed(feedPath);
-    if (!target || target === feedWatcherPath) {
-        return;
-    }
-
-    closeFeedWatcher();
-    try {
-        feedWatcher = watch(target, { persistent: false }, (_eventType, filename) => {
-            if (filename && !isFeedWatcherFilename(filename)) {
-                return;
-            }
-
-            scheduleFeedWatcherUpdate();
-        });
-        feedWatcherPath = target;
-        feedWatcher.on("error", (error) => {
-            console.warn(`[sidecar-viewer] feed watcher failed: ${error instanceof Error ? error.message : String(error)}`);
-            closeFeedWatcher();
-        });
-        console.log(`[sidecar-viewer] watching feed updates at ${target}`);
-    } catch (error) {
-        console.warn(`[sidecar-viewer] unable to watch feed updates: ${error instanceof Error ? error.message : String(error)}`);
-    }
-}
-
-function closeFeedWatcher() {
-    if (feedWatcherDebounce) {
-        clearTimeout(feedWatcherDebounce);
-        feedWatcherDebounce = null;
-    }
-
-    if (feedWatcher) {
-        feedWatcher.close();
-        feedWatcher = null;
-        feedWatcherPath = "";
-    }
-}
-
-function watcherTargetForFeed(selectedFeedPath) {
-    if (existsSync(selectedFeedPath)) {
-        return selectedFeedPath;
-    }
-
-    const directory = path.dirname(selectedFeedPath);
-    return existsSync(directory) ? directory : "";
-}
-
-function isFeedWatcherFilename(filename) {
-    return path.basename(String(filename)) === path.basename(feedPath);
-}
-
-function scheduleFeedWatcherUpdate() {
-    if (feedWatcherDebounce) {
-        clearTimeout(feedWatcherDebounce);
-    }
-
-    feedWatcherDebounce = setTimeout(() => {
-        feedWatcherDebounce = null;
-        ensureFeedWatcher();
-        broadcastEventUpdate("feed-changed");
-    }, 250);
-    feedWatcherDebounce.unref?.();
-}
-
 async function readEventsSnapshot(limit, options = {}) {
     const store = eventStore;
     const storeRevision = eventStoreRevision;
@@ -1509,24 +1358,46 @@ async function readEventsSnapshot(limit, options = {}) {
         }
     }
 
-    return readFeedSnapshot(feedPath, limit, options);
+    if (eventTypesAllowBattleFeed(options.eventTypes)) {
+        return battleFeed.readFeedSnapshot(limit, options);
+    }
+
+    return emptyEventsSnapshot(options);
 }
 
-async function readEventDetail(lineNumber) {
+async function readEventDetail(lineNumber, options = {}) {
     const store = eventStore;
     const storeRevision = eventStoreRevision;
     if (store) {
         try {
-            const detail = await readStoredEvent(store, storeRevision, lineNumber);
+            const detail = await readStoredEvent(store, storeRevision, lineNumber, options);
             if (detail) {
                 return detail;
             }
+
+            return {
+                ok: false,
+                source: "store",
+                storageBackend: store.backend,
+                exists: true,
+                statusCode: 404,
+                error: "Event not available in the local event store",
+            };
         } catch (error) {
             console.warn(`[sidecar-viewer] stored event detail unavailable: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 
-    return readFeedLine(feedPath, lineNumber);
+    if (eventTypesAllowBattleFeed(options.eventTypes)) {
+        return battleFeed.readFeedLine(lineNumber);
+    }
+
+    return {
+        ok: false,
+        source: "store",
+        statusCode: 404,
+        error: "Event not available in this scope",
+    };
 }
 
 async function readStoredSnapshot(store, storeRevision, limit, options = {}) {
@@ -1537,17 +1408,34 @@ async function readStoredSnapshot(store, storeRevision, limit, options = {}) {
     const generatedAt = new Date().toISOString();
     const resolvedLimit = Math.min(Math.max(limit, 10), 500);
     const includeDetails = options.includeDetails !== false;
-    const [totalLines, storedEvents] = await Promise.all([
-        store.count(),
-        store.listRecent(resolvedLimit),
-    ]);
+    const eventTypes = normalizeEventTypeFilter(options.eventTypes);
+    const [totalLines, storedEvents] = eventTypes
+        ? await Promise.all([
+            store.countByTypes(eventTypes),
+            store.listRecentByTypes(eventTypes, resolvedLimit),
+        ])
+        : await Promise.all([
+            store.count(),
+            store.listRecent(resolvedLimit),
+        ]);
 
     if (store !== eventStore || storeRevision !== eventStoreRevision) {
         return null;
     }
 
     if (storedEvents.length === 0) {
-        return null;
+        return {
+            ok: true,
+            source: "store",
+            storageBackend: store.backend,
+            exists: true,
+            detail: includeDetails ? "full" : "summary",
+            generatedAt,
+            pollHintMs: POLL_HINT_MS,
+            totalLines,
+            returnedLines: 0,
+            events: [],
+        };
     }
 
     const events = storedEvents.map((entry) => includeDetails
@@ -1568,7 +1456,7 @@ async function readStoredSnapshot(store, storeRevision, limit, options = {}) {
     };
 }
 
-async function readStoredEvent(store, storeRevision, lineNumber) {
+async function readStoredEvent(store, storeRevision, lineNumber, options = {}) {
     if (!store) {
         return null;
     }
@@ -1583,7 +1471,19 @@ async function readStoredEvent(store, storeRevision, lineNumber) {
         return null;
     }
 
-    const totalLines = await store.count();
+    const eventTypes = normalizeEventTypeFilter(options.eventTypes);
+    if (eventTypes && !eventTypes.includes(storedEvent.event.type)) {
+        return {
+            ok: false,
+            source: "store",
+            storageBackend: store.backend,
+            exists: true,
+            statusCode: 404,
+            error: "Event not available in this scope",
+        };
+    }
+
+    const totalLines = eventTypes ? await store.countByTypes(eventTypes) : await store.count();
     if (store !== eventStore || storeRevision !== eventStoreRevision) {
         return null;
     }
@@ -1598,6 +1498,38 @@ async function readStoredEvent(store, storeRevision, lineNumber) {
         totalLines,
         event: normalizeLine(storedEvent.rawJson, storedEvent.sequenceId),
     };
+}
+
+function emptyEventsSnapshot(options = {}) {
+    return {
+        ok: true,
+        source: "store",
+        exists: false,
+        detail: options.includeDetails === false ? "summary" : "full",
+        generatedAt: new Date().toISOString(),
+        pollHintMs: POLL_HINT_MS,
+        totalLines: 0,
+        returnedLines: 0,
+        events: [],
+    };
+}
+
+function normalizeEventTypeFilter(eventTypes) {
+    if (!Array.isArray(eventTypes)) {
+        return null;
+    }
+
+    const normalized = [...new Set(eventTypes.map((eventType) => String(eventType).trim()).filter(Boolean))];
+    return normalized.length > 0 ? normalized : null;
+}
+
+function eventTypesAllowBattleFeed(eventTypes) {
+    const normalized = normalizeEventTypeFilter(eventTypes);
+    if (!normalized) {
+        return true;
+    }
+
+    return normalized.some((eventType) => eventType.startsWith("battle.") || eventType === "catalog.snapshot");
 }
 
 function isAuthorizedSyncRequest(request) {
@@ -1692,247 +1624,8 @@ function normalizeIncomingEvents(payload) {
     });
 }
 
-async function readFeedSnapshot(selectedFeedPath, limit, options = {}) {
-    const generatedAt = new Date().toISOString();
-    const resolvedLimit = Math.min(Math.max(limit, 10), 500);
-    const includeDetails = options.includeDetails !== false;
-
-    if (!existsSync(selectedFeedPath)) {
-        return {
-            ok: false,
-            feedPath: selectedFeedPath,
-            exists: false,
-            generatedAt,
-            pollHintMs: POLL_HINT_MS,
-            events: [],
-            error: "Feed file not found. Start the STFC mod feed emitter or point the viewer at another JSONL file.",
-        };
-    }
-
-    const { fileStat, visibleEntries } = await refreshFeedIndex(selectedFeedPath);
-    const selectedEntries = visibleEntries.slice(-resolvedLimit);
-    const events = includeDetails
-        ? (await Promise.all(selectedEntries.map((entry) => hydrateIndexedEntry(selectedFeedPath, fileStat.size, entry)))).reverse()
-        : selectedEntries.map(publicEntry).reverse();
-
-    return {
-        ok: true,
-        feedPath: selectedFeedPath,
-        exists: true,
-        detail: includeDetails ? "full" : "summary",
-        generatedAt,
-        pollHintMs: POLL_HINT_MS,
-        lastModified: fileStat.mtime.toISOString(),
-        totalLines: visibleEntries.length,
-        returnedLines: selectedEntries.length,
-        events,
-    };
-}
-
-async function readFeedLine(selectedFeedPath, lineNumber) {
-    const generatedAt = new Date().toISOString();
-    if (!existsSync(selectedFeedPath)) {
-        return {
-            ok: false,
-            statusCode: 404,
-            feedPath: selectedFeedPath,
-            exists: false,
-            generatedAt,
-            error: "Feed file not found.",
-        };
-    }
-
-    const { fileStat, visibleEntries } = await refreshFeedIndex(selectedFeedPath);
-    const indexedEntry = visibleEntries.find((entry) => entry.lineNumber === lineNumber);
-
-    if (!indexedEntry) {
-        return {
-            ok: false,
-            statusCode: 404,
-            feedPath: selectedFeedPath,
-            exists: true,
-            generatedAt,
-            totalLines: visibleEntries.length,
-            error: `Line ${lineNumber} is not available in the feed.`,
-        };
-    }
-
-    return {
-        ok: true,
-        feedPath: selectedFeedPath,
-        exists: true,
-        detail: "full",
-        generatedAt,
-        lastModified: fileStat.mtime.toISOString(),
-        totalLines: visibleEntries.length,
-        event: await hydrateIndexedEntry(selectedFeedPath, fileStat.size, indexedEntry),
-    };
-}
-
-async function refreshFeedIndex(selectedFeedPath) {
-    const fileStat = await stat(selectedFeedPath);
-    const needsReset = feedIndex.feedPath !== selectedFeedPath
-        || fileStat.size < feedIndex.fileSize
-        || fileStat.mtimeMs < feedIndex.lastModifiedMs;
-
-    if (needsReset) {
-        feedIndex = createEmptyFeedIndex(selectedFeedPath);
-    }
-
-    if (feedIndex.feedPath !== selectedFeedPath) {
-        feedIndex.feedPath = selectedFeedPath;
-    }
-
-    if (fileStat.size > feedIndex.fileSize) {
-        const chunk = await readFeedChunk(selectedFeedPath, feedIndex.fileSize, fileStat.size - feedIndex.fileSize);
-        ingestFeedChunk(feedIndex, chunk, feedIndex.fileSize);
-    }
-
-    feedIndex.fileSize = fileStat.size;
-    feedIndex.lastModifiedMs = fileStat.mtimeMs;
-
-    return {
-        fileStat,
-        visibleEntries: visibleFeedEntries(feedIndex, fileStat.size),
-    };
-}
-
-function ingestFeedChunk(index, chunk, chunkStartOffset) {
-    const hasPending = index.pendingBuffer.length > 0;
-    const combinedBuffer = hasPending ? Buffer.concat([index.pendingBuffer, chunk]) : chunk;
-    const combinedStartOffset = hasPending ? index.pendingStartOffset : chunkStartOffset;
-
-    let lineStart = 0;
-
-    for (let cursor = 0; cursor < combinedBuffer.length; cursor += 1) {
-        if (combinedBuffer[cursor] !== 0x0a) {
-            continue;
-        }
-
-        let contentEnd = cursor;
-        if (contentEnd > lineStart && combinedBuffer[contentEnd - 1] === 0x0d) {
-            contentEnd -= 1;
-        }
-
-        appendIndexedLine(
-            index,
-            combinedBuffer.subarray(lineStart, contentEnd),
-            combinedStartOffset + lineStart,
-            combinedStartOffset + contentEnd,
-        );
-        lineStart = cursor + 1;
-    }
-
-    index.pendingBuffer = combinedBuffer.subarray(lineStart);
-    index.pendingStartOffset = combinedStartOffset + lineStart;
-}
-
-function appendIndexedLine(index, rawLineBuffer, startOffset, endOffset) {
-    const rawLine = rawLineBuffer.toString("utf8");
-    if (rawLine.trim().length === 0) {
-        return;
-    }
-
-    const summaryEntry = summarizeLine(rawLine, index.entries.length + 1);
-    index.entries.push({
-        ...summaryEntry,
-        startOffset,
-        endOffset,
-    });
-}
-
-function visibleFeedEntries(index, fileSize) {
-    const entries = [...index.entries];
-    const pendingEntry = pendingFeedEntry(index, fileSize);
-    if (pendingEntry) {
-        entries.push(pendingEntry);
-    }
-    return entries;
-}
-
-function pendingFeedEntry(index, fileSize) {
-    if (index.pendingBuffer.length === 0) {
-        return null;
-    }
-
-    const rawLine = index.pendingBuffer.toString("utf8");
-    if (rawLine.trim().length === 0) {
-        return null;
-    }
-
-    return {
-        ...summarizeLine(rawLine, index.entries.length + 1),
-        startOffset: index.pendingStartOffset,
-        endOffset: fileSize,
-    };
-}
-
-async function hydrateIndexedEntry(selectedFeedPath, fileSize, entry) {
-    if (!entry.parsed) {
-        const rawLine = await readIndexedRawLine(selectedFeedPath, fileSize, entry);
-        return normalizeLine(rawLine, entry.lineNumber);
-    }
-
-    const cached = feedIndex.detailCache.get(entry.lineNumber);
-    if (cached) {
-        return cached;
-    }
-
-    const rawLine = await readIndexedRawLine(selectedFeedPath, fileSize, entry);
-    const normalizedEntry = normalizeLine(rawLine, entry.lineNumber);
-    rememberDetailEntry(normalizedEntry);
-    return normalizedEntry;
-}
-
-async function readIndexedRawLine(selectedFeedPath, fileSize, entry) {
-    const pendingEntry = pendingFeedEntry(feedIndex, fileSize);
-    if (pendingEntry && pendingEntry.lineNumber === entry.lineNumber) {
-        return feedIndex.pendingBuffer.toString("utf8");
-    }
-
-    const length = Math.max(0, entry.endOffset - entry.startOffset);
-    const lineBuffer = await readFeedChunk(selectedFeedPath, entry.startOffset, length);
-    return lineBuffer.toString("utf8");
-}
-
-async function readFeedChunk(selectedFeedPath, offset, length) {
-    if (length <= 0) {
-        return Buffer.alloc(0);
-    }
-
-    const handle = await open(selectedFeedPath, "r");
-    try {
-        const buffer = Buffer.alloc(length);
-        let totalBytesRead = 0;
-
-        while (totalBytesRead < length) {
-            const { bytesRead } = await handle.read(buffer, totalBytesRead, length - totalBytesRead, offset + totalBytesRead);
-            if (bytesRead === 0) {
-                break;
-            }
-
-            totalBytesRead += bytesRead;
-        }
-
-        return totalBytesRead === buffer.length ? buffer : buffer.subarray(0, totalBytesRead);
-    } finally {
-        await handle.close();
-    }
-}
-
-function rememberDetailEntry(entry) {
-    feedIndex.detailCache.delete(entry.lineNumber);
-    feedIndex.detailCache.set(entry.lineNumber, entry);
-
-    while (feedIndex.detailCache.size > DETAIL_CACHE_LIMIT) {
-        const oldestLineNumber = feedIndex.detailCache.keys().next().value;
-        feedIndex.detailCache.delete(oldestLineNumber);
-    }
-}
-
-function publicEntry(entry) {
-    const { startOffset: _startOffset, endOffset: _endOffset, ...value } = entry;
-    return value;
+function isDeveloperEvent(event) {
+    return DEVELOPER_EVENT_TYPES.has(event.type);
 }
 
 function summarizeLine(rawLine, lineNumber) {
@@ -1990,6 +1683,9 @@ function normalizeLine(rawLine, lineNumber) {
 function eventIndex(event) {
     return {
         eventType: event.type,
+        source: event.source ?? null,
+        level: event.level ?? null,
+        sessionId: event.sessionId ?? null,
         battleId: event.battleId ?? null,
         journalId: event.journalId ?? null,
         battleType: event.battleType ?? null,
@@ -2129,7 +1825,7 @@ async function shutdownServer(reason) {
     }
 
     shutdownRequested = true;
-    closeFeedWatcher();
+    battleFeed.close();
     for (const client of eventStreamClients) {
         clearInterval(client.keepalive);
         client.response.end();

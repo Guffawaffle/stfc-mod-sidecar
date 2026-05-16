@@ -4,6 +4,8 @@ This contract defines the boundary between the production C++ community mod and 
 
 The sidecar must not depend on C++ implementation details. The C++ mod must not depend on sidecar UI internals. Both sides meet at documented local files and event schemas.
 
+The wider architectural boundary is [docs/22-producer-consumer-security-contract.md](22-producer-consumer-security-contract.md): the C++ mod is a best-effort producer and the sidecar is the potentially expensive consumer. This file narrows that contract to the current feed shape.
+
 ## Producer And Consumer
 
 - Producer: STFC Community Mod C++ runtime.
@@ -107,6 +109,9 @@ The C++ mod should:
 - emit `catalog.snapshot` when ID-to-label coverage can be described explicitly
 - keep unknown or unresolved catalog entries explicit instead of guessing
 - prefer additive fields over renames or type changes
+- treat sidecar export as optional and best-effort
+- bound retries, queues, payload size, and JSONL retention
+- drop, sample, or defer optional diagnostics rather than blocking gameplay-critical hooks
 
 ## Security Boundary
 

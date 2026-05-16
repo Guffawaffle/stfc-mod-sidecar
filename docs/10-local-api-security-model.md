@@ -1,5 +1,7 @@
 # Local API Security Model
 
+This model sits under the producer/consumer contract in [docs/22-producer-consumer-security-contract.md](22-producer-consumer-security-contract.md). The contract defines which zone owns a key or data flow; this document defines how localhost routes enforce that ownership.
+
 ## Goal
 
 If sidecar core later exposes a localhost HTTP or WebSocket API, it should support:

@@ -33,6 +33,8 @@ Security rule:
 
 - Event payloads must not contain bearer tokens, API keys, cookies, Scopely session headers, or other secret values. If an event needs to identify which credential was used, emit only safe metadata such as a provider name or profile reference.
 
+The producer/consumer boundary, pressure valves, and key classes for this event stream are defined in [docs/22-producer-consumer-security-contract.md](22-producer-consumer-security-contract.md).
+
 ## `debug.event`
 
 ```json

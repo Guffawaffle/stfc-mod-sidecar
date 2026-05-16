@@ -10,6 +10,8 @@ The main rule is simple:
 
 - data plane and auth plane must stay separate from day one
 
+The producer/consumer boundary, key classes, and pressure-valve rules are consolidated in [docs/22-producer-consumer-security-contract.md](22-producer-consumer-security-contract.md). This document provides the deeper credential model; the producer/consumer contract is the first stop for deciding whether a new route, event family, or target is allowed.
+
 ## Trust Zones
 
 ### 1. Game + Community Mod

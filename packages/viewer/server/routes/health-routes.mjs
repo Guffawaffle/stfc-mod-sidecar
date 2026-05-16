@@ -1,6 +1,26 @@
 import { sendJson } from "../static-files.mjs";
 
 export async function handleHealthRoutes(request, response, requestUrl, context) {
+    if (requestUrl.pathname === "/api/health/ready") {
+        sendJson(response, 200, {
+            ok: true,
+            pid: context.process.pid,
+            port: context.port,
+            desktop: context.process.env.STFC_SIDECAR_DESKTOP === "1",
+            developerMode: context.developerMode,
+            companionMode: context.companionMode,
+            modProfile: context.communityModSettingsProfile,
+            settingsProfile: context.communityModSettingsProfile,
+            eventStoreBackend: context.getEventStoreBackend(),
+            startedAt: context.startedAt.toISOString(),
+            uptimeMs: Date.now() - context.startedAt.getTime(),
+            shuttingDown: context.isShutdownRequested(),
+            pollHintMs: context.pollHintMs,
+            generatedAt: new Date().toISOString(),
+        });
+        return true;
+    }
+
     if (requestUrl.pathname === "/api/health") {
         const { install: communityModInstall, variantGate } = await context.refreshCommunityModVariantGate();
         const storedEvents = await context.countStoredEvents();

@@ -28,6 +28,16 @@ export default function createMainWindow(url, options = {}) {
 
         return { action: "allow" };
     });
+    window.webContents.on("before-input-event", (event, input) => {
+        const key = String(input.key ?? "").toLowerCase();
+        const reloadRequested = key === "f5" || (key === "r" && (input.control || input.meta));
+        if (!reloadRequested) {
+            return;
+        }
+
+        event.preventDefault();
+        window.webContents.reload();
+    });
 
     void window.loadURL(url);
     return window;

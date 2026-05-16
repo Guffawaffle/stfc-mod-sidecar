@@ -1,17 +1,27 @@
+import { createBridgeStatus } from "../shared/bridge-status.js";
+
+const FALLBACK_REFRESH_MS = 15000;
+const READ_STATE_STORAGE_KEY = "stfc-sidecar.battle-log.read-events.v1";
+const READ_STATE_LIMIT = 2000;
+
 const state = {
   snapshot: null,
   selectedLineNumber: null,
-  detailsByLine: new Map(),
+  selectedEventKey: null,
+  selectedSummaryEntry: null,
+  selectedDetailEntry: null,
+  readBaselineInitialized: false,
+  readEventKeys: loadReadEventKeys(),
+  detailsByKey: new Map(),
   refreshTimer: null,
   eventSource: null,
 };
-
-const FALLBACK_REFRESH_MS = 15000;
 
 const elements = {
   feedPath: document.querySelector("#feed-path"),
   lastModified: document.querySelector("#last-modified"),
   eventCount: document.querySelector("#event-count"),
+  unreadCount: document.querySelector("#unread-count"),
   viewerStatus: document.querySelector("#viewer-status"),
   lineLimit: document.querySelector("#line-limit"),
   autoRefresh: document.querySelector("#auto-refresh"),
@@ -20,24 +30,37 @@ const elements = {
   detailView: document.querySelector("#detail-view"),
 };
 
-elements.refreshButton.addEventListener("click", () => void refreshSnapshot());
-elements.lineLimit.addEventListener("change", () => void refreshSnapshot());
+const bridgeStatus = createBridgeStatus(elements.viewerStatus);
+
+elements.refreshButton.addEventListener("click", () => void refreshSnapshot({ announce: true }));
+elements.lineLimit.addEventListener("change", () => void refreshSnapshot({ announce: true }));
 elements.autoRefresh.addEventListener("change", updateRefreshLoop);
 
-await refreshSnapshot();
+await refreshSnapshot({ announce: true });
 updateRefreshLoop();
 
-async function refreshSnapshot() {
-  setStatus("Refreshing…");
+async function refreshSnapshot(options = {}) {
+  beginBridgeActivity(options.activityLabel ?? (options.announce ? "Refreshing" : "Writing"));
 
-  const limit = Number.parseInt(elements.lineLimit.value, 10) || 150;
-  const response = await fetch(`/api/events?limit=${limit}&detail=summary`, { cache: "no-store" });
-  const snapshot = await response.json();
-  state.snapshot = snapshot;
+  try {
+    const limit = Number.parseInt(elements.lineLimit.value, 10) || 150;
+    const response = await fetch(`/api/events?limit=${limit}&detail=summary`, { cache: "no-store" });
+    const snapshot = await response.json();
+    state.snapshot = snapshot;
+    updateReadBaseline(snapshot);
 
-  renderStatus(snapshot);
-  renderEventList(snapshot);
-  void renderSelectedEvent();
+    renderStatus(snapshot);
+    renderEventList(snapshot);
+    void renderSelectedEvent();
+
+    if (snapshot.ok) {
+      finishBridgeActivity();
+    } else {
+      bridgeStatus.disconnected(snapshot.error ?? "Unavailable");
+    }
+  } catch {
+    bridgeStatus.disconnected();
+  }
 }
 
 function updateRefreshLoop() {
@@ -52,17 +75,18 @@ function updateRefreshLoop() {
   }
 
   if (!elements.autoRefresh.checked) {
-    setStatus("Paused");
+    bridgeStatus.off();
     return;
   }
 
   if (window.EventSource) {
+    bridgeStatus.off("Opening");
     state.eventSource = new EventSource("/api/events/stream");
     state.eventSource.addEventListener("open", () => markLiveUpdatesConnected());
     state.eventSource.addEventListener("ready", () => markLiveUpdatesConnected());
-    state.eventSource.addEventListener("events-updated", () => void refreshSnapshot());
+    state.eventSource.addEventListener("events-updated", () => void refreshSnapshot({ announce: false, activityLabel: "Writing" }));
     state.eventSource.addEventListener("error", () => {
-      setStatus("Live updates reconnecting...");
+      bridgeStatus.disconnected();
       ensureFallbackRefresh();
     });
     return;
@@ -77,7 +101,7 @@ function markLiveUpdatesConnected() {
     state.refreshTimer = null;
   }
 
-  setStatus("Live updates connected");
+  bridgeStatus.open();
 }
 
 function ensureFallbackRefresh() {
@@ -86,19 +110,113 @@ function ensureFallbackRefresh() {
   }
 
   state.refreshTimer = window.setInterval(() => {
-    void refreshSnapshot();
+    void refreshSnapshot({ announce: false, activityLabel: "Checking" });
   }, FALLBACK_REFRESH_MS);
 }
 
 function renderStatus(snapshot) {
-  elements.feedPath.textContent = snapshot.feedPath ?? "Unknown";
-  elements.lastModified.textContent = snapshot.lastModified ? formatDateTime(snapshot.lastModified) : "Waiting for feed file";
+  elements.feedPath.textContent = dataSourceLabel(snapshot);
+  elements.lastModified.textContent = snapshot.lastModified
+    ? formatDateTime(snapshot.lastModified)
+    : snapshot.generatedAt
+      ? formatDateTime(snapshot.generatedAt)
+      : "Waiting for events";
   elements.eventCount.textContent = `${snapshot.returnedLines ?? 0} / ${snapshot.totalLines ?? 0}`;
-  setStatus(snapshot.ok ? "Live" : snapshot.error ?? "Unavailable");
+  elements.unreadCount.textContent = `${unreadEntries(snapshot).length}`;
 }
 
-function setStatus(text) {
-  elements.viewerStatus.textContent = text;
+function dataSourceLabel(snapshot) {
+  if (snapshot?.source === "store") {
+    return `${snapshot.storageBackend ?? "local"} event store`;
+  }
+
+  if (snapshot?.feedPath) {
+    return snapshot.feedPath;
+  }
+
+  return "Local sidecar data layer";
+}
+
+function updateReadBaseline(snapshot) {
+  if (!snapshot?.ok || !Array.isArray(snapshot.events)) {
+    return;
+  }
+
+  if (!state.readBaselineInitialized) {
+    for (const entry of snapshot.events) {
+      state.readEventKeys.add(eventKey(entry, snapshot));
+    }
+    state.readBaselineInitialized = true;
+    saveReadEventKeys();
+    return;
+  }
+
+  const selectedEntry = snapshot.events.find((entry) => eventKey(entry, snapshot) === state.selectedEventKey);
+  if (selectedEntry) {
+    markEntryRead(selectedEntry, snapshot);
+  }
+}
+
+function rememberSelectedEntry(entry, snapshot, options = {}) {
+  state.selectedLineNumber = entry.lineNumber;
+  state.selectedEventKey = eventKey(entry, snapshot);
+  state.selectedSummaryEntry = entry;
+
+  if (options.markRead) {
+    markEntryRead(entry, snapshot);
+  }
+}
+
+function markEntryRead(entry, snapshot) {
+  if (!entry || !snapshot) {
+    return;
+  }
+
+  state.readEventKeys.add(eventKey(entry, snapshot));
+  saveReadEventKeys();
+}
+
+function unreadEntries(snapshot) {
+  if (!snapshot?.ok || !Array.isArray(snapshot.events)) {
+    return [];
+  }
+
+  return snapshot.events.filter((entry) => !state.readEventKeys.has(eventKey(entry, snapshot)));
+}
+
+function eventKey(entry, snapshot) {
+  const source = snapshot?.source ?? "unknown";
+  const storage = snapshot?.storageBackend ?? snapshot?.feedPath ?? "default";
+  const eventType = entry?.eventType ?? entry?.event?.type ?? "event";
+  const stableId = entry?.journalId ?? entry?.battleId ?? entry?.eventKey ?? entry?.lineNumber ?? "unknown";
+  return `${source}:${storage}:${eventType}:${stableId}:${entry?.lineNumber ?? "unknown"}`;
+}
+
+function loadReadEventKeys() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(READ_STATE_STORAGE_KEY) ?? "[]");
+    return new Set(Array.isArray(parsed) ? parsed.filter((value) => typeof value === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveReadEventKeys() {
+  try {
+    const values = Array.from(state.readEventKeys).slice(-READ_STATE_LIMIT);
+    state.readEventKeys = new Set(values);
+    localStorage.setItem(READ_STATE_STORAGE_KEY, JSON.stringify(values));
+  } catch {
+    // Read state is convenience UI state; losing it must not affect ingestion.
+  }
+}
+
+function beginBridgeActivity(text) {
+  bridgeStatus.begin(text);
+}
+
+function finishBridgeActivity() {
+  bridgeStatus.finish({ paused: !elements.autoRefresh.checked });
 }
 
 function renderEventList(snapshot) {
@@ -106,24 +224,35 @@ function renderEventList(snapshot) {
 
   if (!snapshot.ok || !Array.isArray(snapshot.events) || snapshot.events.length === 0) {
     elements.eventList.appendChild(renderEmpty(snapshot.error ?? "No events in feed yet."));
-    state.selectedLineNumber = null;
     return;
   }
 
-  if (!snapshot.events.some((entry) => entry.lineNumber === state.selectedLineNumber)) {
-    state.selectedLineNumber = snapshot.events[0].lineNumber;
+  const selectedEntry = snapshot.events.find((entry) => eventKey(entry, snapshot) === state.selectedEventKey)
+    ?? snapshot.events.find((entry) => entry.lineNumber === state.selectedLineNumber);
+  if (selectedEntry) {
+    rememberSelectedEntry(selectedEntry, snapshot, { markRead: true });
+  } else if (!state.selectedEventKey && snapshot.events.length > 0) {
+    rememberSelectedEntry(snapshot.events[0], snapshot, { markRead: true });
   }
 
   for (const entry of snapshot.events) {
+    const key = eventKey(entry, snapshot);
+    const isSelected = key === state.selectedEventKey;
+    const isRead = state.readEventKeys.has(key);
     const button = document.createElement("button");
     button.type = "button";
     button.className = "event-card";
-    if (entry.lineNumber === state.selectedLineNumber) {
+    button.dataset.read = isRead ? "true" : "false";
+    if (isSelected) {
       button.dataset.selected = "true";
     }
 
     const summary = entry.summary ?? { title: "Unknown event", subtitle: "", chips: [] };
-    const chipMarkup = Array.isArray(summary.chips) ? summary.chips.map((chip) => `<span>${escapeHtml(chip)}</span>`).join("") : "";
+    const chips = Array.isArray(summary.chips) ? [...summary.chips] : [];
+    if (!isRead) {
+      chips.unshift("Unread");
+    }
+    const chipMarkup = chips.map((chip) => `<span>${escapeHtml(chip)}</span>`).join("");
 
     button.innerHTML = `
       <div class="event-card__top">
@@ -136,8 +265,9 @@ function renderEventList(snapshot) {
     `;
 
     button.addEventListener("click", () => {
-      state.selectedLineNumber = entry.lineNumber;
+      rememberSelectedEntry(entry, state.snapshot, { markRead: true });
       renderEventList(state.snapshot);
+      renderStatus(state.snapshot);
       void renderSelectedEvent();
     });
 
@@ -153,9 +283,18 @@ async function renderSelectedEvent() {
     return;
   }
 
-  const entry = state.snapshot.events.find((item) => item.lineNumber === state.selectedLineNumber);
+  const entry = state.snapshot.events.find((item) => eventKey(item, state.snapshot) === state.selectedEventKey)
+    ?? state.snapshot.events.find((item) => item.lineNumber === state.selectedLineNumber)
+    ?? state.selectedSummaryEntry;
   if (!entry) {
     elements.detailView.appendChild(renderEmpty("Select a feed event to inspect its payload."));
+    return;
+  }
+
+  const visible = state.snapshot.events.some((item) => eventKey(item, state.snapshot) === state.selectedEventKey);
+
+  if (!visible && state.selectedDetailEntry) {
+    renderDetailEntry(state.selectedDetailEntry, { retained: true });
     return;
   }
 
@@ -171,10 +310,19 @@ async function renderSelectedEvent() {
     return;
   }
 
+  state.selectedDetailEntry = detailEntry;
+  markEntryRead(entry, state.snapshot);
+  renderStatus(state.snapshot);
+
+  renderDetailEntry(detailEntry);
+}
+
+function renderDetailEntry(detailEntry, options = {}) {
+  elements.detailView.textContent = "";
   if (!detailEntry.parsed) {
     elements.detailView.innerHTML = `
       <section class="detail-panel">
-        <h3>Unrecognized JSONL line</h3>
+        <h3>Unrecognized Event Line</h3>
         <p>${escapeHtml(detailEntry.error ?? "Unknown parsing error")}</p>
       </section>
       <section class="detail-panel">
@@ -200,6 +348,7 @@ async function renderSelectedEvent() {
           : "";
 
   elements.detailView.innerHTML = `
+    ${options.retained ? `<section class="detail-panel detail-panel--retained"><h3>Selected Event Retained</h3><p>This event is no longer in the current recent-events window. Refreshes will not move your selection until you choose another event.</p></section>` : ""}
     <section class="detail-panel">
       <h3>Envelope</h3>
       <table class="detail-table">${summaryTable}</table>
@@ -217,7 +366,8 @@ async function loadEntryDetail(entry) {
     return entry;
   }
 
-  const cached = state.detailsByLine.get(entry.lineNumber);
+  const cacheKey = eventKey(entry, state.snapshot);
+  const cached = state.detailsByKey.get(cacheKey);
   if (cached) {
     return cached;
   }
@@ -229,7 +379,7 @@ async function loadEntryDetail(entry) {
     throw new Error(payload.error ?? `Unable to load line ${entry.lineNumber}.`);
   }
 
-  state.detailsByLine.set(entry.lineNumber, payload.event);
+  state.detailsByKey.set(cacheKey, payload.event);
   return payload.event;
 }
 

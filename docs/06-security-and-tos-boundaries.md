@@ -2,6 +2,8 @@
 
 This project must stay read-only with respect to STFC gameplay.
 
+The mod/sidecar producer-consumer contract, including pressure valves and local-vs-remote key ownership, lives in [docs/22-producer-consumer-security-contract.md](22-producer-consumer-security-contract.md). Treat that contract as the first gate before broadening AX, UI, or integration behavior.
+
 ## Hard Rules
 
 - No automation.

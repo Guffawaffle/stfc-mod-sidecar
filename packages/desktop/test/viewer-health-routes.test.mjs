@@ -3,6 +3,42 @@ import { describe, expect, it, vi } from "vitest";
 import { handleHealthRoutes } from "../../viewer/server/routes/health-routes.mjs";
 
 describe("viewer health routes", () => {
+    it("returns a lightweight readiness payload without slow install or store probes", async () => {
+        const response = captureResponse();
+        const startedAt = new Date("2026-05-13T05:00:00.000Z");
+        const refreshCommunityModVariantGate = vi.fn();
+        const countStoredEvents = vi.fn();
+        const handled = await handleHealthRoutes(
+            { method: "GET" },
+            response,
+            new URL("http://127.0.0.1/api/health/ready"),
+            baseContext({
+                countStoredEvents,
+                refreshCommunityModVariantGate,
+                startedAt,
+            }),
+        );
+
+        expect(handled).toBe(true);
+        expect(response.statusCode).toBe(200);
+        expect(JSON.parse(response.body)).toMatchObject({
+            ok: true,
+            pid: 1234,
+            port: 43127,
+            desktop: true,
+            developerMode: false,
+            companionMode: "standard",
+            modProfile: "netniv-basic",
+            settingsProfile: "netniv-basic",
+            eventStoreBackend: "sqlite",
+            startedAt: startedAt.toISOString(),
+            shuttingDown: false,
+            pollHintMs: 2000,
+        });
+        expect(refreshCommunityModVariantGate).not.toHaveBeenCalled();
+        expect(countStoredEvents).not.toHaveBeenCalled();
+    });
+
     it("returns the existing health payload fields", async () => {
         const response = captureResponse();
         const startedAt = new Date("2026-05-13T05:00:00.000Z");

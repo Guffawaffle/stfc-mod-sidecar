@@ -1,18 +1,28 @@
 # Log Viewer
 
-The sidecar now includes a multipage local viewer for the JSONL data emitted by `stfc-mod` when local JSONL fallback capture is explicitly enabled.
+The sidecar includes a multipage local viewer for battle events emitted by `stfc-mod`. The preferred runtime path is HTTP ingest into the sidecar-owned SQL event store. JSONL remains a local fallback/debug source when fallback capture is explicitly enabled.
 
 ## What It Does
 
-- Reads the mod feed file directly from disk.
+- Reads the local sidecar SQL event store first.
+- Uses the mod feed file only when SQL storage is unavailable and JSONL fallback capture is explicitly enabled.
 - Uses `/` as a viewer home page and `/battle-log/` as the dedicated battle-log tool route.
-- Shows the most recent JSONL events in a browser.
+- Shows the most recent battle events in a browser.
 - Highlights `battle.capture`, `battle.report`, `battle.analytics`, and `catalog.snapshot` payloads with focused detail panels plus raw JSON.
+- Tracks read/unread state locally and does not move the selected event during refresh.
 - Stays read-only. It does not send commands to the game or the mod.
 
-## Default Feed Path
+## Durable Store
 
-By default the viewer reads:
+Desktop launches set `STFC_SIDECAR_STORE_CONNECTION` to the Electron `userData` directory, for example:
+
+`%APPDATA%\STFC Community Mod Companion\sidecar-events.sqlite`
+
+The viewer server still supports overriding this with `STFC_SIDECAR_STORE_CONNECTION`, and `STFC_SIDECAR_STORE_BACKEND=postgres` can point at `STFC_SIDECAR_STORE_CONNECTION` or `DATABASE_URL` for shared-store development.
+
+## Fallback Feed Path
+
+When JSONL fallback is enabled, the default feed path is:
 
 `C:\Games\Star Trek Fleet Command\default\game\community_patch_battle_feed.jsonl`
 

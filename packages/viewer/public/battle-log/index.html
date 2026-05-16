@@ -14,7 +14,7 @@
         <div>
           <p class="eyebrow">STFC Mod Sidecar</p>
           <h1>Battle Log Explorer</h1>
-          <p class="hero-copy">Read-only display of JSONL events emitted by the community mod, with direct access to capture tokens, compatibility reports, analytics rows, and catalog coverage.</p>
+          <p class="hero-copy">Read-only display of sidecar battle events, with direct access to capture tokens, compatibility reports, analytics rows, and catalog coverage.</p>
         </div>
         <section class="hero-controls" aria-label="battle log viewer controls">
           <label class="control">
@@ -31,7 +31,7 @@
 
       <section class="status-strip" aria-live="polite">
         <article>
-          <span class="status-label">Feed Path</span>
+          <span class="status-label">Data Source</span>
           <strong id="feed-path">Loading…</strong>
         </article>
         <article>
@@ -43,8 +43,12 @@
           <strong id="event-count">0</strong>
         </article>
         <article>
+          <span class="status-label">Unread</span>
+          <strong id="unread-count">0</strong>
+        </article>
+        <article>
           <span class="status-label">Status</span>
-          <strong id="viewer-status">Starting…</strong>
+          <strong id="viewer-status" class="bridge-status" data-state="off">Starting…</strong>
         </article>
       </section>
 
@@ -52,7 +56,7 @@
         <aside class="feed-column">
           <div class="panel-heading">
             <h2>Recent Events</h2>
-            <p>Latest lines from the configured JSONL feed.</p>
+            <p>Latest battle events from the local sidecar data layer.</p>
           </div>
           <div id="event-list" class="event-list"></div>
         </aside>
