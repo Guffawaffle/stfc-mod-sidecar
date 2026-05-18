@@ -11,6 +11,15 @@ const desktopPackage = JSON.parse(readFileSync(path.join(desktopRoot, "package.j
 const npmCliPath = resolveNpmCliPath();
 const electronBuilderCliPath = path.join(repoRoot, "node_modules", "electron-builder", "cli.js");
 
+const COMMAND_METADATA = new Map([
+    ["status", { description: "Show repository health and git status", sideEffects: "read" }],
+    ["build", { description: "Build all sidecar packages", sideEffects: "write" }],
+    ["test", { description: "Run all sidecar package tests", sideEffects: "write" }],
+    ["check", { description: "Build and test all sidecar packages", sideEffects: "write" }],
+    ["dist:win", { description: "Build Windows desktop distribution artifacts", sideEffects: "write" }],
+    ["ci", { description: "Build, test, and package Windows distribution artifacts", sideEffects: "write" }],
+]);
+
 const COMMANDS = new Map([
     ["status", statusCommand],
     ["build", buildCommand],
@@ -23,13 +32,18 @@ const COMMANDS = new Map([
 const commandName = process.argv[2] ?? "help";
 
 async function main() {
+    if (commandName === "list") {
+        emitInventory();
+        return;
+    }
+
     if (["help", "--help", "-h"].includes(commandName)) {
         emitResult({
             command: "help",
             success: true,
             durationMs: 0,
-            commands: Array.from(COMMANDS.keys()),
-            usage: "npm run ax -- <status|build|test|check|dist:win|ci>",
+            commands: commandInventory(),
+            usage: "npm run ax -- <status|build|test|check|dist:win|ci|list>",
         });
         return;
     }
@@ -50,6 +64,26 @@ async function main() {
     const result = await command();
     emitResult({ command: commandName, durationMs: Date.now() - start, ...result });
     process.exit(result.success ? 0 : 1);
+}
+
+function commandInventory() {
+    return Array.from(COMMANDS.keys()).map((name) => {
+        const metadata = COMMAND_METADATA.get(name) ?? {};
+        return {
+            name,
+            description: metadata.description ?? name,
+            sideEffects: metadata.sideEffects ?? "unknown",
+            parameters: [],
+        };
+    });
+}
+
+function emitInventory() {
+    process.stdout.write(`${JSON.stringify({
+        ok: true,
+        usage: "npm run ax -- <command> [args...]",
+        commands: commandInventory(),
+    }, null, 2)}\n`);
 }
 
 async function statusCommand() {
