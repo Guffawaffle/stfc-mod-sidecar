@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>STFC Sidecar Viewer | Majel</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell site-shell">
+      <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="majel"></nav>
+
+      <header class="hero">
+        <div>
+          <p class="eyebrow">STFC Mod Sidecar</p>
+          <h1>Majel Ingest Monitor</h1>
+          <p class="hero-copy">Local read-only view of Majel-safe envelopes posted by the Community Mod or sidecar broker path.</p>
+        </div>
+        <section class="hero-controls" aria-label="Majel ingest viewer controls">
+          <label class="control">
+            <span>Events</span>
+            <input id="event-limit" type="number" min="10" max="500" step="10" value="150" />
+          </label>
+          <label class="toggle">
+            <input id="auto-refresh" type="checkbox" checked />
+            <span>Live updates</span>
+          </label>
+          <button id="refresh-button" type="button">Refresh now</button>
+        </section>
+      </header>
+
+      <section class="status-strip" aria-live="polite">
+        <article>
+          <span class="status-label">Endpoint</span>
+          <strong id="endpoint">/api/majel/ingest</strong>
+        </article>
+        <article>
+          <span class="status-label">Accepted</span>
+          <strong id="accepted-count">0</strong>
+        </article>
+        <article>
+          <span class="status-label">Stored</span>
+          <strong id="stored-count">0</strong>
+        </article>
+        <article>
+          <span class="status-label">Rejected</span>
+          <strong id="rejected-count">0</strong>
+        </article>
+        <article>
+          <span class="status-label">Status</span>
+          <strong id="viewer-status" class="bridge-status" data-state="off">Starting...</strong>
+        </article>
+      </section>
+
+      <section class="content">
+        <aside class="feed-column">
+          <div class="panel-heading">
+            <h2>Recent Envelopes</h2>
+            <p>Accepted Majel ingest envelopes from the local sidecar window.</p>
+          </div>
+          <div id="event-list" class="event-list"></div>
+        </aside>
+
+        <section class="detail-column">
+          <div class="panel-heading">
+            <h2>Envelope Detail</h2>
+            <p>Contract fields, payload summary, and raw JSON for the selected envelope.</p>
+          </div>
+          <div id="detail-view" class="detail-view">
+            <div class="empty-state">Select a Majel envelope to inspect its payload.</div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="/majel/app.js"></script>
+    <script type="module" src="/shared/shell.js"></script>
+  </body>
+</html>

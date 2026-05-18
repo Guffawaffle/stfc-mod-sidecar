@@ -18,6 +18,12 @@ export const viewerPages = [
         requiresCapability: "battleLog",
     },
     {
+        id: "majel",
+        label: "Majel",
+        href: "/majel/",
+        developerOnly: true,
+    },
+    {
         id: "settings",
         label: "Settings",
         href: "/settings/",

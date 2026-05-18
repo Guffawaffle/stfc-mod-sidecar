@@ -52,10 +52,12 @@ import {
     executeCommunityModUninstall,
 } from "./community-mod-uninstall-execution.mjs";
 import { installBoundedConsoleLogSync } from "./bounded-log-file.mjs";
+import { createMajelIngestStore } from "./majel-ingest-store.mjs";
 import { createFeedWatcher } from "./server/feed-watcher.mjs";
 import { handleDiagnosticsRoutes } from "./server/routes/diagnostics-routes.mjs";
 import { handleEventRoutes } from "./server/routes/event-routes.mjs";
 import { handleHealthRoutes } from "./server/routes/health-routes.mjs";
+import { handleMajelRoutes } from "./server/routes/majel-routes.mjs";
 import { handleModInstallRoutes } from "./server/routes/mod-install-routes.mjs";
 import { handleModUninstallRoutes } from "./server/routes/mod-uninstall-routes.mjs";
 import { handleSettingsRoutes } from "./server/routes/settings-routes.mjs";
@@ -109,6 +111,7 @@ const cloudTelemetryBridge = createCloudTelemetryBridge({
     logger: console,
 });
 const eventStreamClients = new Set();
+const majelStreamClients = new Set();
 const communityModOperationLocks = new Map();
 
 let shutdownRequested = false;
@@ -160,6 +163,7 @@ let communityModVariantGate = buildCommunityModVariantGateContext({
 let communityModCapabilities = communityModVariantGate.capabilities;
 let eventStore = await createConfiguredEventStore();
 let eventStoreRevision = 0;
+const majelIngestStore = createMajelIngestStore();
 
 const server = createServer(async (request, response) => {
     const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? `127.0.0.1:${port}`}`);
@@ -198,6 +202,16 @@ const server = createServer(async (request, response) => {
         handleFleetSyncIngest,
         readEventDetail,
         readEventsSnapshot,
+    })) {
+        return;
+    }
+
+    if (await handleMajelRoutes(request, response, requestUrl, {
+        defaultLimit,
+        handleMajelIngest,
+        handleMajelStream,
+        readMajelDetail,
+        readMajelSnapshot,
     })) {
         return;
     }
@@ -1294,7 +1308,56 @@ async function handleFleetSyncIngest(request, response) {
     }
 }
 
+async function handleMajelIngest(request, response) {
+    if (!isAuthorizedSyncRequest(request)) {
+        return sendJson(response, 401, { ok: false, error: "Unauthorized Majel sync request" });
+    }
+
+    try {
+        const payload = await readJsonBody(request);
+        const result = majelIngestStore.ingest(payload);
+        if (!result.ok) {
+            broadcastMajelUpdate("majel-rejected", { rejected: 1, error: result.error });
+            return sendJson(response, 400, result);
+        }
+
+        broadcastEventUpdate("majel-ingest", { accepted: result.accepted });
+        broadcastMajelUpdate("majel-ingest", { accepted: result.accepted });
+        return sendJson(response, 202, result);
+    } catch (error) {
+        const result = majelIngestStore.recordRejected(error instanceof Error ? error.message : String(error));
+        broadcastMajelUpdate("majel-rejected", { rejected: 1, error: result.error });
+        return sendJson(response, 400, result);
+    }
+}
+
+function readMajelSnapshot(limit) {
+    return majelIngestStore.snapshot(limit);
+}
+
+function readMajelDetail(localId) {
+    const detail = majelIngestStore.detail(localId);
+    if (detail) {
+        return detail;
+    }
+
+    return {
+        ok: false,
+        source: "majel-ingest-memory",
+        statusCode: 404,
+        error: "Majel envelope not available in the recent ingest window",
+    };
+}
+
 function handleEventStream(request, response) {
+    handleStream(request, response, eventStreamClients, "ready");
+}
+
+function handleMajelStream(request, response) {
+    handleStream(request, response, majelStreamClients, "ready");
+}
+
+function handleStream(request, response, clients, readyReason) {
     response.writeHead(200, {
         "content-type": "text/event-stream; charset=utf-8",
         "cache-control": "no-store",
@@ -1310,23 +1373,31 @@ function handleEventStream(request, response) {
         }, STREAM_KEEPALIVE_MS),
     };
     client.keepalive.unref?.();
-    eventStreamClients.add(client);
-    sendEventStreamMessage(client, "ready", streamPayload("ready"));
+    clients.add(client);
+    sendEventStreamMessage(client, "ready", streamPayload(readyReason));
 
     request.on("close", () => {
         clearInterval(client.keepalive);
-        eventStreamClients.delete(client);
+        clients.delete(client);
     });
 }
 
 function broadcastEventUpdate(reason, extra = {}) {
-    if (eventStreamClients.size === 0) {
+    broadcastStreamUpdate(eventStreamClients, "events-updated", reason, extra);
+}
+
+function broadcastMajelUpdate(reason, extra = {}) {
+    broadcastStreamUpdate(majelStreamClients, "majel-updated", reason, extra);
+}
+
+function broadcastStreamUpdate(clients, eventName, reason, extra = {}) {
+    if (clients.size === 0) {
         return;
     }
 
     const payload = streamPayload(reason, extra);
-    for (const client of eventStreamClients) {
-        sendEventStreamMessage(client, "events-updated", payload);
+    for (const client of clients) {
+        sendEventStreamMessage(client, eventName, payload);
     }
 }
 
@@ -1831,6 +1902,11 @@ async function shutdownServer(reason) {
         client.response.end();
     }
     eventStreamClients.clear();
+    for (const client of majelStreamClients) {
+        clearInterval(client.keepalive);
+        client.response.end();
+    }
+    majelStreamClients.clear();
     console.log(`[sidecar-viewer] shutdown requested (${reason})`);
 
     exitTimer = setTimeout(() => {
