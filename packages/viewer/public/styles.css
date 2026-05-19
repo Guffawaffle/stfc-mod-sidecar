@@ -728,6 +728,33 @@ button {
   background: rgba(255, 255, 255, 0.4);
 }
 
+.fleet-panel {
+  margin-top: 18px;
+}
+
+.fleet-status-note {
+  margin-bottom: 14px;
+}
+
+.fleet-table th,
+.fleet-table td {
+  white-space: normal;
+}
+
+.fleet-table .chip-row {
+  margin: 0;
+}
+
+.fleet-table__cell {
+  display: grid;
+  gap: 6px;
+}
+
+.fleet-table__secondary {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .control--wide {
   min-width: min(560px, 100%);
 }

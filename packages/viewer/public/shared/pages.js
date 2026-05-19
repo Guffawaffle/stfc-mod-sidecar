@@ -5,6 +5,11 @@ export const viewerPages = [
         href: "/",
     },
     {
+        id: "fleet",
+        label: "Fleet",
+        href: "/fleet/",
+    },
+    {
         id: "battle-log",
         label: "Battle Log",
         href: "/battle-log/",
@@ -16,6 +21,12 @@ export const viewerPages = [
         href: "/battle-log/workbench/",
         developerOnly: true,
         requiresCapability: "battleLog",
+    },
+    {
+        id: "majel",
+        label: "Majel",
+        href: "/majel/",
+        developerOnly: true,
     },
     {
         id: "settings",

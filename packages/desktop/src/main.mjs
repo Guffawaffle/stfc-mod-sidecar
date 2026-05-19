@@ -1,8 +1,7 @@
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 
 import { DEFAULT_MOD_PROFILE, initialDeveloperModeFromSources, normalizeDesktopSettings } from "./desktop-settings.mjs";
 import { buildDesktopCompanionAppUninstallStatus, registerDesktopIpc } from "./desktop-ipc.mjs";
@@ -19,8 +18,10 @@ const DESKTOP_INITIAL_SETTINGS_FILE = "desktop-initial-settings.json";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const require = createRequire(import.meta.url);
 const desktopPackageJsonPath = path.resolve(__dirname, "..", "package.json");
 const preloadPath = path.join(__dirname, "preload.cjs");
+const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 
 let mainWindow = null;
 let logPath = "";
@@ -34,6 +35,10 @@ const sidecarServer = createSidecarServerProcess({
     getDesktopSettings: () => desktopSettings,
     getGameDirectoryForStartup: validatedDesktopGameDirectoryForStartup,
     getReleaseInfo: desktopReleaseInfo,
+    saveDesktopSettings,
+    setDesktopSettings: (settings) => {
+        desktopSettings = normalizeDesktopSettings(settings);
+    },
     writeLog,
 });
 

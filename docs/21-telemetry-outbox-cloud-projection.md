@@ -98,7 +98,7 @@ Next implementation slice: Phase 1 Majel append persistence and idempotency, fol
 | Area | Current evidence | Architecture impact |
 | --- | --- | --- |
 | Mod sync | `TargetWorker` drains `std::queue` and synchronously posts on a worker thread. The gameplay thread does not wait on the HTTP post, but the queue is not durable. | Reuse the async boundary and delta knowledge, but do not use this as the cloud durability layer. |
-| Sidecar local store | `createSqlSidecarEventStore()` supports SQLite and PostgreSQL; SQLite uses WAL and event-key dedupe. | Extend this pattern for raw log, outbound queue, and projection tables. |
+| Sidecar local store | `createSqlSidecarEventStore()` supports SQLite and PostgreSQL; SQLite uses WAL and event-key dedupe. | Extend this pattern for raw log, outbound queue, and projection tables. SQLite remains the packaged default; PostgreSQL and MySQL/MariaDB are useful shared-store backends for a local version of the Majel append/projection model. |
 | Sidecar integration docs | The preferred path is local HTTP plus SQL storage; JSONL remains an explicit fallback. | Keep localhost HTTP first; only evaluate named pipes after profiling shows heat. |
 | Majel ingest | `POST /api/sidecar/events` is token-gated, rate-limited, POST-only, and append-only. | Reuse auth/rate-limit shape for a separate strict `POST /api/sidecar/telemetry` route. Do not broadly harden the generic route before caller inventory. |
 | Majel store | `sidecar_ingest_events` appends canonical sidecar events with dedupe. | Add projection tables and cheap consumer reads; consumers should not read raw event streams. |
@@ -152,6 +152,13 @@ Transport:
 - Start with localhost HTTP using the existing sync-token pattern and body limits.
 - Keep JSONL as explicit local fallback and replay/debug surface.
 - Do not build a named-pipe replacement until localhost HTTP enqueue and broker ingest are profiled and shown to be measurable game heat.
+
+Storage backends:
+
+- Use SQLite as the bundled single-player default because it ships with the sidecar and works without operator setup.
+- Keep SQL schema and query code backend-aware so PostgreSQL and MySQL/MariaDB can back the same raw feed, outbox, and local fleet projection tables.
+- Treat MySQL/MariaDB as a local Majel-like deployment option: append-only ingest rows, idempotency keys, projection tables, and cheap reads without requiring cloud upload.
+- Do not let database-specific JSON syntax leak into event contracts or UI payloads. Backend differences belong in the SQL dialect layer.
 
 Uploader defaults:
 
@@ -311,7 +318,51 @@ Migration impact:
 
 - New table. Existing event viewer can stay on the raw event log while new status views read projection.
 
-## D. Cloud-Safe Event Contract
+## D. Snapshot-First State Model
+
+Fleet-aware Majel data should distinguish current truth from history. A snapshot is a complete replaceable state, not an
+implicit demand to preserve every prior version forever.
+
+Design rules:
+
+- Treat `fleet.snapshot` and similar full-state events as current-state materialization inputs first.
+- Keep the latest valid snapshot in memory or a compact projection row when that is enough for the UI/assistant path.
+- Use durable append rows only when they are needed for reliability, retry/idempotency, troubleshooting, or user-enabled
+  history.
+- Coalesce pending snapshots by install/session before upload so transient state does not create unnecessary cloud writes.
+- Allow the sidecar and Majel to drop superseded pending snapshots after a newer snapshot for the same coalesce key exists.
+- Keep bounded diagnostic history separately from current state. Default history should be short and cheap; longer history
+  should be opt-in.
+- Prefer server push, ETags, and `sinceVersion` reads over polling. UI clients should react to state changes rather than
+  repeatedly asking whether anything changed.
+
+Reliability balance:
+
+- The player should not lose current state because a single upload failed. Keep the latest local snapshot available while
+  offline and retry only the newest relevant cloud-safe state.
+- Idempotency keys still matter for accepted uploads, but snapshots also need a coalesce key that says which older pending
+  work is safe to supersede.
+- If Majel receives snapshots out of order, it should keep the newest monotonic version and ignore stale versions without
+  treating them as user-visible failures.
+
+Cost and storage balance:
+
+- Current fleet state is expected to be small enough to keep in memory and cheap projection storage.
+- Do not write every unchanged snapshot to cloud storage. Skip no-op states by state hash/version where possible.
+- Avoid high-cardinality per-frame writes. Snapshot cadence should be event-driven plus a conservative heartbeat only when
+  needed for reliability.
+- Keep raw append logs bounded by size/age. Cloud projection consumers should read the current projection, not raw history.
+
+Variant/config flags to consider:
+
+- `snapshot_mode = "current"`: keep only current projection plus minimal idempotency metadata. This should be the default
+  cost-saving mode.
+- `snapshot_mode = "bounded_history"`: keep current projection plus short diagnostic history.
+- `snapshot_mode = "history"`: longer user-enabled history for players who explicitly want timelines.
+- `cloud_upload = false`: local projection still works and can feed the sidecar UI without any Majel writes.
+- `history_retention_hours` and `history_retention_bytes`: explicit caps for any mode that keeps history.
+
+## E. Cloud-Safe Event Contract
 
 Use a separate cloud telemetry protocol version, for example `stfc.telemetry.v1`, so cloud-safe upload is not confused with the broader local sidecar event protocol.
 
@@ -345,7 +396,7 @@ Majel must reject unknown event types and unknown high-risk field names by defau
 
 | Event | Classification | Version | Uploaded by default | Expected frequency | Coalescing |
 | --- | --- | --- | --- | --- | --- |
-| `fleet.snapshot` | `cloud_private` | `stfc.telemetry.fleet-snapshot.v1` | Yes, after explicit cloud enable | On session start and every 30-120 seconds while active | Supersede older pending snapshot per install/session |
+| `fleet.snapshot` | `cloud_private` | `stfc.telemetry.fleet-snapshot.v1` | Yes, after explicit cloud enable | Event-driven on meaningful state change, plus conservative heartbeat only if needed | Supersede older pending snapshot per install/session |
 | `fleet.slot.changed` | `cloud_private` | `stfc.telemetry.fleet-slot-changed.v1` | Yes | Low to moderate; only on observed slot change | Latest pending per slot |
 | `fleet.state.changed` | `cloud_private` | `stfc.telemetry.fleet-state-changed.v1` | Yes | Low to moderate; only state transitions | Latest pending per fleet/slot/state |
 | `battle.summary` | `cloud_private` or `shareable` after explicit review | `stfc.telemetry.battle-summary.v1` | Yes as private summary; shareable only by explicit user action | On completed battle summary | No coalescing; dedupe by battle summary key |
@@ -371,7 +422,10 @@ Dedupe and idempotency:
 
 Retention:
 
-- Majel keeps latest projection and short snapshot history, for example 24-72 hours unless the user opts into longer retention.
+- Majel keeps the latest projection as the primary state. Short snapshot history is optional and bounded, for example
+  24-72 hours only when useful for troubleshooting or user-enabled history.
+- Unchanged snapshots should be skipped by state hash/version when possible. Superseded pending snapshots should not become
+  cloud writes.
 
 ### `fleet.slot.changed`
 
@@ -449,9 +503,20 @@ Retention:
 
 - Keep bounded session summaries and current active-session state.
 
-## E. Majel Ingest And Projection
+## F. Majel Ingest And Projection
 
-Majel should ingest cloud-safe telemetry only for this path. It should append accepted events cheaply, then materialize projections for consumers. Consumers should never need the raw stream.
+Majel should ingest cloud-safe telemetry only for this path. It should append only what is needed for reliability,
+idempotency, troubleshooting, and optional history, then materialize projections for consumers. Consumers should never
+need the raw stream.
+
+Snapshot state should be cheap current state first:
+
+- Full snapshots are allowed to replace previous current state without preserving every intermediate version.
+- The deployed Majel UI should read projection state and subscribe to state-change push where available; it should not poll
+  raw ingest rows as its normal data path.
+- The assistant context layer should receive the latest relevant projection, not a replay of every prior snapshot.
+- If a snapshot produces no projection change, Majel may acknowledge it as duplicate/no-op without writing a new history row.
+- History/debug views should be explicit product choices with retention controls, not a side effect of normal sync.
 
 Recommended endpoint:
 
@@ -467,6 +532,10 @@ Recommended endpoint:
 The existing `POST /api/sidecar/events` route remains broader sidecar ingest for current raw/canonical sidecar experiments. It is explicitly not the cloud projection ingest path. The cloud uploader must target `POST /api/sidecar/telemetry`. A future migration may deprecate or narrow the generic route only after every current caller is inventoried and ready.
 
 Suggested append table:
+
+The append table is for accepted events that must be retained. Snapshot-heavy feeds may skip append storage for no-op or
+superseded states after idempotency/coalescing checks, as long as the current projection remains reliable and auditable
+enough for the selected retention mode.
 
 ```sql
 CREATE TABLE sidecar_cloud_events (
@@ -535,10 +604,14 @@ CREATE TABLE session_projection_state (
 
 Projection rules:
 
-- Every accepted event is appended first.
+- Events that require durability are appended first. No-op or superseded snapshots may be acknowledged without adding
+  durable history when the current projection is already up to date.
 - Projection updates run in the same transaction when cheap; if not, enqueue a server-local projection job that does not call an LLM.
 - `version` is monotonic per `install_id`.
 - Superseding state events update current state and add a bounded delta row.
+- Full snapshots with the same state hash/version are no-ops and should not grow history.
+- Full snapshots with newer versions replace current state. Bounded delta/history rows are optional and controlled by
+  retention mode.
 - Battle summaries upsert by `battle_key`.
 
 Consumer APIs:
@@ -558,7 +631,7 @@ Consumer defaults:
 - Use `sinceVersion` and `If-None-Match`.
 - Do not expose raw event-stream subscriptions until a concrete consumer need and cost profile exist.
 
-## F. Security And Privacy Review
+## G. Security And Privacy Review
 
 | Threat | Risk | Mitigation |
 | --- | --- | --- |
@@ -571,7 +644,7 @@ Consumer defaults:
 | User submits sensitive data | User may export diagnostics or enable upload without understanding payload sensitivity. | Make cloud upload opt-in and obvious to disable. Show classification labels. Keep local-only mode useful. Provide reviewable diagnostics bundles with redaction. |
 | Crash logs contain payloads | Exceptions can include serialized payloads or paths. | Error handling must log event counts, type, key, and reason code, not full payload. Scrub `token`, `cookie`, `authorization`, `headers`, `raw`, `request`, `response` keys recursively before logging. |
 
-## G. Tests And Profiling
+## H. Tests And Profiling
 
 Mod tests and live profiling:
 
@@ -584,6 +657,7 @@ Mod tests and live profiling:
 Sidecar tests:
 
 - SQLite WAL recovery after process crash or forced restart.
+- PostgreSQL and MySQL/MariaDB dialect tests for schema creation, idempotency, JSON payload storage, projection reads, and stale outbox recovery.
 - Duplicate event handling in raw log and outbound queue.
 - Outbound retry, exponential backoff, jitter, and 429/503 handling.
 - Coalescing keeps latest fleet state per coalesce key.
@@ -624,7 +698,7 @@ Profiling gates:
 - Measure localhost HTTP ingest before any named-pipe work.
 - Only consider named pipes if hook-to-broker handoff is a proven measurable cost and not fixable by batching/coalescing.
 
-## H. PR-Sized Build Plan
+## I. PR-Sized Build Plan
 
 1. Architecture doc and inventory
    - Land this document.

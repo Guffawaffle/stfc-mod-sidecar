@@ -54,16 +54,6 @@ export async function handleEventRoutes(request, response, requestUrl, context) 
         return true;
     }
 
-    if (requestUrl.pathname === "/api/fleet/sync") {
-        if (request.method === "POST") {
-            await context.handleFleetSyncIngest(request, response);
-            return true;
-        }
-
-        sendJson(response, 405, { ok: false, error: "Method not allowed" });
-        return true;
-    }
-
     const eventLineMatch = /^\/api\/events\/([0-9]+)$/.exec(requestUrl.pathname);
     if (eventLineMatch) {
         if (request.method && request.method !== "GET") {

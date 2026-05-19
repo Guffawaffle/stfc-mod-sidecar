@@ -4,12 +4,23 @@ import { existsSync, statSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { assertDesktopPackagingPreflight } from "./desktop-packaging-guard.mjs";
+
 const scriptPath = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(scriptPath), "..");
 const desktopRoot = path.join(repoRoot, "packages", "desktop");
 const desktopPackage = JSON.parse(readFileSync(path.join(desktopRoot, "package.json"), "utf8"));
 const npmCliPath = resolveNpmCliPath();
 const electronBuilderCliPath = path.join(repoRoot, "node_modules", "electron-builder", "cli.js");
+
+const COMMAND_METADATA = new Map([
+    ["status", { description: "Show repository health and git status", sideEffects: "read" }],
+    ["build", { description: "Build all sidecar packages", sideEffects: "write" }],
+    ["test", { description: "Run all sidecar package tests", sideEffects: "write" }],
+    ["check", { description: "Build and test all sidecar packages", sideEffects: "write" }],
+    ["dist:win", { description: "Build Windows desktop distribution artifacts", sideEffects: "write" }],
+    ["ci", { description: "Build, test, and package Windows distribution artifacts", sideEffects: "write" }],
+]);
 
 const COMMANDS = new Map([
     ["status", statusCommand],
@@ -23,13 +34,18 @@ const COMMANDS = new Map([
 const commandName = process.argv[2] ?? "help";
 
 async function main() {
+    if (commandName === "list") {
+        emitInventory();
+        return;
+    }
+
     if (["help", "--help", "-h"].includes(commandName)) {
         emitResult({
             command: "help",
             success: true,
             durationMs: 0,
-            commands: Array.from(COMMANDS.keys()),
-            usage: "npm run ax -- <status|build|test|check|dist:win|ci>",
+            commands: commandInventory(),
+            usage: "npm run ax -- <status|build|test|check|dist:win|ci|list>",
         });
         return;
     }
@@ -50,6 +66,26 @@ async function main() {
     const result = await command();
     emitResult({ command: commandName, durationMs: Date.now() - start, ...result });
     process.exit(result.success ? 0 : 1);
+}
+
+function commandInventory() {
+    return Array.from(COMMANDS.keys()).map((name) => {
+        const metadata = COMMAND_METADATA.get(name) ?? {};
+        return {
+            name,
+            description: metadata.description ?? name,
+            sideEffects: metadata.sideEffects ?? "unknown",
+            parameters: [],
+        };
+    });
+}
+
+function emitInventory() {
+    process.stdout.write(`${JSON.stringify({
+        ok: true,
+        usage: "npm run ax -- <command> [args...]",
+        commands: commandInventory(),
+    }, null, 2)}\n`);
 }
 
 async function statusCommand() {
@@ -83,6 +119,7 @@ async function checkCommand() {
 
 async function ciCommand() {
     return sequence([
+        () => desktopDistPreflightStep(),
         () => runNpmStep("build", ["run", "build"], { timeoutMs: 180_000 }),
         () => runNpmStep("test", ["test"], { timeoutMs: 180_000 }),
         () => distWinStep(),
@@ -91,11 +128,49 @@ async function ciCommand() {
 
 async function distWinCommand() {
     return sequence([
+        () => desktopDistPreflightStep(),
         () => runNpmStep("core:build", ["run", "build", "--workspace", "@stfc-mod-sidecar/core"], {
             timeoutMs: 180_000,
         }),
         () => distWinStep(),
     ]);
+}
+
+async function desktopDistPreflightStep() {
+    const startedAt = Date.now();
+    const name = "desktop:dist:preflight";
+    const command = "packaged desktop lock check";
+    process.stderr.write(`[ax] start ${name}: ${command}\n`);
+
+    try {
+        const result = assertDesktopPackagingPreflight({ distDir: path.join(desktopRoot, "dist") });
+        process.stderr.write(`[ax] finish ${name}: ok\n`);
+        return {
+            name,
+            success: true,
+            command,
+            exitCode: 0,
+            signal: null,
+            durationMs: Date.now() - startedAt,
+            timedOut: false,
+            completedByProbe: false,
+            summary: `No running packaged Companion detected under ${result.distDir}`,
+        };
+    } catch (error) {
+        process.stderr.write(`[ax] finish ${name}: failed\n`);
+        return {
+            name,
+            success: false,
+            command,
+            exitCode: 1,
+            signal: null,
+            durationMs: Date.now() - startedAt,
+            timedOut: false,
+            completedByProbe: false,
+            error: error instanceof Error ? error.message : String(error),
+            stderrTail: error instanceof Error ? error.message : String(error),
+        };
+    }
 }
 
 function distWinStep() {

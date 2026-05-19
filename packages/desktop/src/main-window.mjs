@@ -1,4 +1,7 @@
-import { BrowserWindow } from "electron";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const { BrowserWindow } = require("electron");
 
 export default function createMainWindow(url, options = {}) {
     const window = new BrowserWindow({

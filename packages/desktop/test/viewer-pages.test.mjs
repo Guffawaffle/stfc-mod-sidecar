@@ -6,8 +6,11 @@ describe("viewer page visibility", () => {
     test("hides capability-gated pages until the capability is explicitly enabled", () => {
         const pages = visibleViewerPages().map((page) => page.id);
         const dashboard = visibleViewerPages().find((page) => page.id === "home");
+        const fleet = visibleViewerPages().find((page) => page.id === "fleet");
 
         expect(dashboard?.label).toBe("Dashboard");
+        expect(fleet?.label).toBe("Fleet");
+        expect(pages).toContain("fleet");
         expect(pages).not.toContain("battle-log");
         expect(pages).not.toContain("battle-log-workbench");
         expect(pages).toContain("settings");

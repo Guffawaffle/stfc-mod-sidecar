@@ -23,7 +23,10 @@ export async function handleHealthRoutes(request, response, requestUrl, context)
 
     if (requestUrl.pathname === "/api/health") {
         const { install: communityModInstall, variantGate } = await context.refreshCommunityModVariantGate();
-        const storedEvents = await context.countStoredEvents();
+        const [storedEvents, fleetBroker] = await Promise.all([
+            context.countStoredEvents(),
+            context.readFleetBrokerSummary(),
+        ]);
         sendJson(response, 200, {
             ok: true,
             pid: context.process.pid,
@@ -45,6 +48,7 @@ export async function handleHealthRoutes(request, response, requestUrl, context)
             eventStoreBackend: context.getEventStoreBackend(),
             storedEvents,
             cloudTelemetry: context.cloudTelemetryBridge.status(),
+            fleetBroker,
             startedAt: context.startedAt.toISOString(),
             uptimeMs: Date.now() - context.startedAt.getTime(),
             shuttingDown: context.isShutdownRequested(),

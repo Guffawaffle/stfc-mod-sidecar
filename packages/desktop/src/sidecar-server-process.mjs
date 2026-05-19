@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import { prepareLocalSidecarSyncTokenForLaunch } from "./local-sidecar-sync-token.mjs";
+
 export const DEFAULT_SIDECAR_PORT = 43127;
 
 const READY_TIMEOUT_MS = 15000;
@@ -102,8 +104,22 @@ export function createSidecarServerProcess(options) {
         const gameDirectory = await options.getGameDirectoryForStartup();
         const userDataPath = options.app.getPath("userData");
         sidecarShutdownToken = randomUUID();
-        sidecarSyncToken = runtimeEnv.STFC_SIDECAR_SYNC_TOKEN?.trim() || randomUUID();
+        let desktopSettings = options.getDesktopSettings();
+        const localSyncToken = await prepareLocalSidecarSyncTokenForLaunch({
+            env: runtimeEnv,
+            desktopSettings,
+            gameDirectory,
+            generateToken: options.generateLocalSidecarSyncToken,
+            saveDesktopSettings: options.saveDesktopSettings,
+            setDesktopSettings: options.setDesktopSettings,
+        });
+        desktopSettings = localSyncToken.desktopSettings;
+        sidecarSyncToken = localSyncToken.token;
         sidecarModToken = runtimeEnv.STFC_SIDECAR_MOD_TOKEN?.trim() || randomUUID();
+        options.writeLog(
+            "log",
+            `[sidecar-desktop] local sidecar sync token source=${localSyncToken.source} desktopSettings=${localSyncToken.persistedDesktopSettings ? "updated" : "unchanged"} producerConfig=${localSyncToken.propagation.status}${localSyncToken.propagation.reason ? ` reason=${localSyncToken.propagation.reason}` : ""} target=${localSyncToken.propagation.target}`,
+        );
         options.writeLog(
             "log",
             `[sidecar-desktop] starting server cwd=${paths.cwd} serverScript=${paths.serverScript} gameDirectory=${gameDirectory || "default"} mode=${options.getCompanionMode()} serverExists=${fs.existsSync(paths.serverScript)}`,
@@ -114,7 +130,6 @@ export function createSidecarServerProcess(options) {
             args.push("--game-dir", gameDirectory);
         }
 
-        const desktopSettings = options.getDesktopSettings();
         sidecarProcess = spawn(runtimeProcess.execPath, args, {
             cwd: paths.cwd,
             stdio: ["ignore", "pipe", "pipe"],

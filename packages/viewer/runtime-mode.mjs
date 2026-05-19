@@ -1,8 +1,8 @@
 export const COMPANION_MODE_STANDARD = "standard";
 export const COMPANION_MODE_DEVELOPER = "developer";
 
-const DEVELOPER_ONLY_PUBLIC_PREFIXES = ["/battle-log/workbench"];
-const DEVELOPER_ONLY_API_PREFIXES = ["/api/dev"];
+const DEVELOPER_ONLY_PUBLIC_PREFIXES = ["/battle-log/workbench", "/majel"];
+const DEVELOPER_ONLY_API_PREFIXES = ["/api/dev", "/api/majel/events", "/api/majel/stream"];
 
 export function parseDeveloperModeFlag(value) {
     if (typeof value === "boolean") {

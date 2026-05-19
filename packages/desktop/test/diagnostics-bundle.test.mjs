@@ -30,6 +30,7 @@ describe("diagnostics bundle", () => {
             gameDir: "C:\\Users\\Guff\\Games\\Star Trek Fleet Command\\default\\game",
             feedPath: "C:\\Users\\Guff\\Games\\Star Trek Fleet Command\\default\\game\\community_patch_battle_feed.jsonl",
             settingsPath: "C:\\Users\\Guff\\Games\\Star Trek Fleet Command\\default\\game\\community_patch_settings.toml",
+            localSidecarSyncToken: "local-sync-secret",
             feed: { exists: true, totalLines: 12, returnedLines: 5, pollHintMs: 2000 },
             settings: { exists: true, actions: [{ issues: [{ severity: "warning" }] }], hardSettings: [] },
         });
@@ -37,6 +38,7 @@ describe("diagnostics bundle", () => {
         const serialized = JSON.stringify(bundle);
         expect(serialized).not.toContain("Users");
         expect(serialized).not.toContain("Guff");
+        expect(serialized).not.toContain("local-sync-secret");
         expect(serialized).toContain("community_patch_battle_feed.jsonl");
     });
 
