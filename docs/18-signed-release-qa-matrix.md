@@ -40,6 +40,28 @@ This snapshot does not make the product signed-release-ready. Interactive
 installer smoke, signed artifact verification, full uninstall behavior, and the
 remaining release/security roadmap work still need their own release records.
 
+## Fleet Projection Live-Update Status
+
+Current evidence is split between automated proof and packaged-manual proof:
+
+- Automated viewer/runtime coverage exists for the Fleet page SSE path. The
+    Fleet page subscribes to `/api/fleet/stream`, handles
+    `fleet-projection-changed`, and refetches `/api/fleet/projection` without
+    manual refresh.
+- A packaged Companion artifact was built locally during the 2026-05-19
+    closeout pass, and a packaged Companion process was launched during review.
+- A packaged Fleet-page smoke was recorded on 2026-05-19 using the portable
+    Companion on `http://localhost:43127/fleet/`. With the page left open, the
+    visible projection advanced from `v735` to later versions without manual
+    refresh while `/api/fleet/stream` emitted `fleet-projection-changed` and
+    the browser issued repeated fetches to `/api/fleet/projection`.
+
+Known limitations to keep recording when the final smoke is run:
+
+- reconnect behavior after a dropped SSE connection;
+- any stale Fleet page state after missed events;
+- fallback polling only when `EventSource` is unavailable.
+
 ## Manual Smoke Matrix
 
 Record each result as `pass`, `fail`, `not run`, or `blocked`, with a short note.
@@ -65,6 +87,7 @@ Record each result as `pass`, `fail`, `not run`, or `blocked`, with a short note
 | Settings | Save with an invalid/conflicting binding where the UI warns. | Warning remains visible and the saved result matches the user's explicit choice. |
 | Battle Log | Open Battle Log against the live feed. | Existing entries render and detail views open without console/runtime errors. |
 | Battle Log | Wait for new live entries. | Live updates arrive through `/api/events/stream` without the old two-second browser polling loop; record observed delay, reconnect behavior, and any stale state. |
+| Fleet Page | Packaged live-update smoke recorded `pass` on 2026-05-19: keep the packaged Companion Fleet page open while a local fleet projection changes. | Use the packaged Companion (NSIS or portable), not only dev mode. With the Fleet page open, confirm `/api/fleet/stream` emits `fleet-projection-changed`, the page refetches `/api/fleet/projection`, and the visible Fleet page updates without manual refresh. Record latency, reconnect behavior, and any stale-state or fallback-polling weirdness. |
 | Release Info | Open About and run Check for Updates. | Version, release channel, update mode, signing expectation, and manual update result match the artifact being tested. No unsigned asset is downloaded automatically. |
 | Companion Uninstall | Open About from an installed NSIS copy. | Packaging card reports Installed Companion and exposes Uninstall Companion plus Windows Apps handoff. |
 | Companion Uninstall | Click Uninstall Companion. | App launches the NSIS uninstaller and exits. Community Mod files in the selected STFC directory are not touched by app uninstall. |
@@ -101,6 +124,12 @@ Verify Git provenance when a signed tag is used:
 git tag -v v<version>
 git log --show-signature -1 v<version>
 ```
+
+## Recorded Smoke
+
+| Area | Result | Notes |
+| --- | --- | --- |
+| Fleet page live update (packaged) | pass | Portable packaged Companion on `http://localhost:43127/fleet/`. Baseline projection was `v735` with `updatedAt=2026-05-19T11:02:29Z`. While the page remained open, the visible Fleet page advanced automatically through later versions including `v755` and `v766` without manual refresh. A live listener on `/api/fleet/stream` recorded repeated `fleet-projection-changed` events, including the synthetic `stateVersion=736` smoke envelope and later real updates, and browser resource timings showed repeated fetches to `/api/fleet/projection`. Reconnect after a dropped SSE connection and `EventSource`-unavailable fallback polling were not exercised in this smoke. |
 
 ## Release Record Template
 
@@ -142,6 +171,7 @@ Copy this into the release issue, pull request, or release notes draft.
 | Immediate mode toggle navigation | not run | |
 | Settings save | not run | |
 | Battle Log live feed | not run | |
+| Fleet page live update (packaged) | not run | Keep the packaged Companion Fleet page open, trigger a projection change, confirm `/api/fleet/stream` -> `fleet-projection-changed` -> `/api/fleet/projection` refetch, and note any reconnect/stale-state weirdness. |
 | About release info | not run | |
 | Companion uninstall status | not run | |
 | Companion uninstaller handoff | not run | |
