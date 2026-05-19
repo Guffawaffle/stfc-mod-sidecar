@@ -7,6 +7,7 @@ describe("desktop settings", () => {
         expect(normalizeDesktopSettings()).toEqual({
             gameDirectory: "",
             developerMode: false,
+            localSidecarSyncToken: "",
             modProfile: "netniv-basic",
             profileGameDirectories: {},
         });
@@ -16,11 +17,16 @@ describe("desktop settings", () => {
         expect(normalizeDesktopSettings({ gameDirectory: "C:\\Games\\STFC", developerMode: true, modProfile: "netniv-basic" })).toEqual({
             gameDirectory: "C:\\Games\\STFC",
             developerMode: true,
+            localSidecarSyncToken: "",
             modProfile: "netniv-basic",
             profileGameDirectories: {
                 "netniv-basic": "C:\\Games\\STFC",
             },
         });
+    });
+
+    test("preserves the desktop-owned local sidecar sync token", () => {
+        expect(normalizeDesktopSettings({ localSidecarSyncToken: " local-token " }).localSidecarSyncToken).toBe("local-token");
     });
 
     test("uses the active profile directory from profile-scoped settings", () => {
@@ -34,6 +40,7 @@ describe("desktop settings", () => {
         })).toEqual({
             gameDirectory: "D:\\Games\\Guff",
             developerMode: false,
+            localSidecarSyncToken: "",
             modProfile: "waffle-advanced",
             profileGameDirectories: {
                 "netniv-basic": "C:\\Games\\Official",

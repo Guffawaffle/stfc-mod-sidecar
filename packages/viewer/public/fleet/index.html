@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>STFC Sidecar Viewer | Fleet</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell site-shell">
+      <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="fleet"></nav>
+
+      <header class="hero">
+        <div>
+          <p class="eyebrow">STFC Mod Sidecar</p>
+          <h1>Current Fleet Projection</h1>
+          <p class="hero-copy">Text-first read-only view of observed fleet rows from the local projection API. This is not a final dock layout.</p>
+        </div>
+        <section class="hero-controls" aria-label="fleet projection controls">
+          <button id="refresh-button" type="button">Refresh now</button>
+          <button id="toggle-empty-slots-button" class="button-secondary" type="button">Show empty slots</button>
+        </section>
+      </header>
+
+      <section class="status-strip" aria-live="polite">
+        <article>
+          <span class="status-label">Endpoint</span>
+          <strong id="projection-endpoint">/api/fleet/projection</strong>
+        </article>
+        <article>
+          <span class="status-label">Rows</span>
+          <strong id="projection-row-count">0</strong>
+        </article>
+        <article>
+          <span class="status-label">Updated</span>
+          <strong id="projection-updated">Waiting for projection</strong>
+        </article>
+        <article>
+          <span class="status-label">State Version</span>
+          <strong id="projection-version">No projection</strong>
+        </article>
+        <article>
+          <span class="status-label">Status</span>
+          <strong id="projection-status" class="bridge-status" data-state="off">Starting...</strong>
+        </article>
+      </section>
+
+      <section class="detail-column fleet-panel">
+        <div class="panel-heading">
+          <h2>Observed fleet rows</h2>
+          <p>Current row-oriented snapshot from the local broker projection. It shows observed fleet and slot state without claiming a final dock layout.</p>
+        </div>
+        <p id="projection-note" class="detail-note fleet-status-note">Waiting for the local fleet projection.</p>
+        <div id="projection-view" class="detail-view">
+          <div class="empty-state">Loading current fleet projection...</div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/fleet/app.js"></script>
+    <script type="module" src="/shared/shell.js"></script>
+  </body>
+</html>

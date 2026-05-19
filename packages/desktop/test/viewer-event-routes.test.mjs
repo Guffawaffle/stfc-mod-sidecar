@@ -84,7 +84,7 @@ describe("viewer event routes", () => {
         expect(streamResponse.statusCode).toBe(200);
     });
 
-    it("keeps method gates for events, stream, and fleet sync", async () => {
+    it("keeps method gates for events and stream", async () => {
         const eventsResponse = captureResponse();
         await handleEventRoutes(
             { method: "DELETE" },
@@ -102,31 +102,6 @@ describe("viewer event routes", () => {
             baseContext(),
         );
         expect(streamResponse.statusCode).toBe(405);
-
-        const fleetResponse = captureResponse();
-        await handleEventRoutes(
-            { method: "GET" },
-            fleetResponse,
-            new URL("http://127.0.0.1/api/fleet/sync"),
-            baseContext(),
-        );
-        expect(fleetResponse.statusCode).toBe(405);
-        expect(JSON.parse(fleetResponse.body)).toEqual({ ok: false, error: "Method not allowed" });
-    });
-
-    it("delegates fleet sync ingest", async () => {
-        const context = baseContext();
-        const response = captureResponse();
-        const request = { method: "POST" };
-        await expect(handleEventRoutes(
-            request,
-            response,
-            new URL("http://127.0.0.1/api/fleet/sync"),
-            context,
-        )).resolves.toBe(true);
-
-        expect(context.handleFleetSyncIngest).toHaveBeenCalledWith(request, response);
-        expect(response.statusCode).toBe(202);
     });
 
     it("serves event detail by line number", async () => {
@@ -179,10 +154,6 @@ function baseContext(overrides = {}) {
         handleEventStream: vi.fn((_request, response) => {
             response.writeHead(200, {});
             response.end("stream");
-        }),
-        handleFleetSyncIngest: vi.fn(async (_request, response) => {
-            response.writeHead(202, {});
-            response.end("synced");
         }),
         readEventDetail: vi.fn(async () => ({ ok: false, statusCode: 404 })),
         readEventsSnapshot: vi.fn(async () => ({ ok: true, route: "events" })),

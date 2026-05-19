@@ -8,6 +8,7 @@ export const DEFAULT_MOD_PROFILE = DEFAULT_COMMUNITY_MOD_PROFILE;
 export const DEFAULT_DESKTOP_SETTINGS = Object.freeze({
     gameDirectory: "",
     developerMode: false,
+    localSidecarSyncToken: "",
     modProfile: DEFAULT_MOD_PROFILE,
     profileGameDirectories: Object.freeze({}),
 });
@@ -26,6 +27,7 @@ export function normalizeDesktopSettings(input = {}, options = {}) {
         developerMode: typeof parsed.developerMode === "boolean"
             ? parsed.developerMode
             : parseDeveloperModeValue(options.initialDeveloperMode),
+        localSidecarSyncToken: typeof parsed.localSidecarSyncToken === "string" ? parsed.localSidecarSyncToken.trim() : "",
         modProfile,
         profileGameDirectories,
     };

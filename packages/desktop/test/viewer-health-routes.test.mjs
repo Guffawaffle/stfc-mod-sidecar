@@ -8,12 +8,14 @@ describe("viewer health routes", () => {
         const startedAt = new Date("2026-05-13T05:00:00.000Z");
         const refreshCommunityModVariantGate = vi.fn();
         const countStoredEvents = vi.fn();
+        const readFleetBrokerSummary = vi.fn();
         const handled = await handleHealthRoutes(
             { method: "GET" },
             response,
             new URL("http://127.0.0.1/api/health/ready"),
             baseContext({
                 countStoredEvents,
+                readFleetBrokerSummary,
                 refreshCommunityModVariantGate,
                 startedAt,
             }),
@@ -37,6 +39,7 @@ describe("viewer health routes", () => {
         });
         expect(refreshCommunityModVariantGate).not.toHaveBeenCalled();
         expect(countStoredEvents).not.toHaveBeenCalled();
+        expect(readFleetBrokerSummary).not.toHaveBeenCalled();
     });
 
     it("returns the existing health payload fields", async () => {
@@ -82,10 +85,19 @@ describe("viewer health routes", () => {
             eventStoreBackend: "sqlite",
             storedEvents: 42,
             cloudTelemetry: { ok: true },
+            fleetBroker: {
+                available: true,
+                backend: "sqlite",
+                cloudUploadEnabled: false,
+                rawEventCount: 2,
+                pendingOutboxCount: 1,
+                projectionCount: 1,
+            },
             startedAt: startedAt.toISOString(),
             shuttingDown: false,
             pollHintMs: 2000,
         });
+        expect(response.body).not.toContain("local-sync-secret");
     });
 
     it("keeps shutdown method, token, and auth gates", async () => {
@@ -180,11 +192,25 @@ function baseContext(overrides = {}) {
             install: null,
             variantGate: { capabilityBits: {} },
         }),
+        readFleetBrokerSummary: async () => ({
+            available: true,
+            backend: "sqlite",
+            cloudUploadEnabled: false,
+            rawEventCount: 2,
+            pendingOutboxCount: 1,
+            projectionCount: 1,
+            latestSequence: 2,
+            lastObservedAt: "2026-05-13T05:00:00.000Z",
+            lastProjectedAt: "2026-05-13T05:00:00.000Z",
+            lastError: null,
+            lastErrorAt: null,
+        }),
         releaseInfo: { version: "0.1.0-test" },
         settingsPath: "C:/Games/STFC/game/community_patch_settings.toml",
         shutdownServer: vi.fn(),
         shutdownToken: "token",
         startedAt: new Date("2026-05-13T05:00:00.000Z"),
+        localSidecarSyncToken: "local-sync-secret",
         ...overrides,
     };
 }

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
@@ -53,9 +54,14 @@ import {
 } from "./community-mod-uninstall-execution.mjs";
 import { installBoundedConsoleLogSync } from "./bounded-log-file.mjs";
 import { createMajelIngestStore } from "./majel-ingest-store.mjs";
+import { buildCompatibleFleetSyncSuccessPayload, buildUnavailableFleetBrokerSummary } from "./server/fleet-broker-contract.mjs";
 import { createFeedWatcher } from "./server/feed-watcher.mjs";
+import { fleetProjectionStreamSummary, shouldNotifyFleetProjectionChanged } from "./server/fleet-stream-events.mjs";
+import { ingestAcceptedMajelPayload } from "./server/majel-ingest-bridge.mjs";
+import { handleDevRoutes } from "./server/routes/dev-routes.mjs";
 import { handleDiagnosticsRoutes } from "./server/routes/diagnostics-routes.mjs";
 import { handleEventRoutes } from "./server/routes/event-routes.mjs";
+import { handleFleetRoutes } from "./server/routes/fleet-routes.mjs";
 import { handleHealthRoutes } from "./server/routes/health-routes.mjs";
 import { handleMajelRoutes } from "./server/routes/majel-routes.mjs";
 import { handleModInstallRoutes } from "./server/routes/mod-install-routes.mjs";
@@ -111,6 +117,7 @@ const cloudTelemetryBridge = createCloudTelemetryBridge({
     logger: console,
 });
 const eventStreamClients = new Set();
+const fleetStreamClients = new Set();
 const majelStreamClients = new Set();
 const communityModOperationLocks = new Map();
 
@@ -118,6 +125,10 @@ let shutdownRequested = false;
 let exitTimer;
 
 let createSqlSidecarEventStore;
+let createSqlFleetBrokerStore;
+let countFleetRuntimeMajelEnvelopes;
+let createFleetTelemetryBroker;
+let summarizeFleetBrokerError;
 let applyCommunityModDiagnosticSettingsPatch;
 let applyCommunityModHotkeySettingsPatch;
 let applyCommunityModNotificationSettingsPatch;
@@ -135,7 +146,11 @@ try {
         buildCommunityModDiagnosticSettingsSnapshot,
         buildCommunityModHotkeySettingsSnapshot,
         buildCommunityModNotificationSettingsSnapshot,
+        countFleetRuntimeMajelEnvelopes,
+        createFleetTelemetryBroker,
+        createSqlFleetBrokerStore,
         createSqlSidecarEventStore,
+        summarizeFleetBrokerError,
         isSidecarEvent,
         normalizeCommunityModSettingsProfile,
         parseEventJsonLine,
@@ -155,6 +170,10 @@ const battleFeed = createFeedWatcher({
 });
 
 const communityModSettingsProfile = normalizeCommunityModSettingsProfile(process.env.STFC_SIDECAR_MOD_PROFILE);
+const fleetBrokerInstallId = normalizeBrokerIdentifier(process.env.STFC_SIDECAR_INSTALL_ID)
+    || `sidecar-${shaHex(gameDir).slice(0, 32)}`;
+const fleetBrokerSessionId = normalizeBrokerIdentifier(process.env.STFC_SIDECAR_SESSION_ID)
+    || `session-${Date.now()}`;
 let communityModInstallStatus = await readCommunityModInstallStatus();
 let communityModVariantGate = buildCommunityModVariantGateContext({
     install: communityModInstallStatus,
@@ -163,6 +182,7 @@ let communityModVariantGate = buildCommunityModVariantGateContext({
 let communityModCapabilities = communityModVariantGate.capabilities;
 let eventStore = await createConfiguredEventStore();
 let eventStoreRevision = 0;
+let fleetBroker = await createConfiguredFleetBroker();
 const majelIngestStore = createMajelIngestStore();
 
 const server = createServer(async (request, response) => {
@@ -199,9 +219,16 @@ const server = createServer(async (request, response) => {
         developerModeRequiredPayload,
         handleEventIngest,
         handleEventStream,
-        handleFleetSyncIngest,
         readEventDetail,
         readEventsSnapshot,
+    })) {
+        return;
+    }
+
+    if (await handleFleetRoutes(request, response, requestUrl, {
+        handleFleetSyncIngest,
+        handleFleetStream,
+        readFleetProjection,
     })) {
         return;
     }
@@ -315,6 +342,7 @@ const server = createServer(async (request, response) => {
         pollHintMs: POLL_HINT_MS,
         port,
         process,
+        readFleetBrokerSummary,
         refreshCommunityModVariantGate,
         releaseInfo,
         settingsPath,
@@ -325,34 +353,20 @@ const server = createServer(async (request, response) => {
         return;
     }
 
-    if (requestUrl.pathname === "/api/dev/ax") {
-        if (request.method && request.method !== "GET") {
-            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
-        }
-
-        return sendJson(response, 200, await readAxPackage(requestUrl));
-    }
-
-    if (requestUrl.pathname === "/api/dev/status") {
-        if (request.method && request.method !== "GET") {
-            return sendJson(response, 405, { ok: false, error: "Method not allowed" });
-        }
-
-        return sendJson(response, 200, {
-            ok: true,
-            developerMode,
-            companionMode,
-            modProfile: communityModSettingsProfile,
-            settingsProfile: communityModSettingsProfile,
-            capabilities: communityModCapabilities,
-            capabilityBits: communityModVariantGate.capabilityBits,
-            variantGate: communityModVariantGate,
-            feedPath,
-            settingsPath,
-            eventStoreBackend: eventStore?.backend ?? "none",
-            cloudTelemetry: cloudTelemetryBridge.status(),
-            generatedAt: new Date().toISOString(),
-        });
+    if (await handleDevRoutes(request, response, requestUrl, {
+        cloudTelemetryBridge,
+        companionMode,
+        communityModSettingsProfile,
+        communityModVariantGate,
+        developerMode,
+        feedPath,
+        getCommunityModCapabilities: () => communityModCapabilities,
+        getEventStoreBackend: () => eventStore?.backend ?? "none",
+        readAxPackage,
+        readFleetBrokerSummary,
+        settingsPath,
+    })) {
+        return;
     }
 
     if (isDeveloperOnlyPublicPath(requestUrl.pathname) && !developerMode) {
@@ -435,6 +449,46 @@ async function createConfiguredEventStore() {
     }
 
     throw new Error(`Unsupported STFC_SIDECAR_STORE_BACKEND: ${backend}`);
+}
+
+async function createConfiguredFleetBroker() {
+    const backend = (process.env.STFC_SIDECAR_STORE_BACKEND ?? "sqlite").trim().toLowerCase();
+    if (backend === "none") {
+        return null;
+    }
+
+    if (backend === "sqlite") {
+        return createFleetTelemetryBroker({
+            store: await createSqlFleetBrokerStore({
+                backend: "sqlite",
+                connection: resolveStoreConnection(process.env.STFC_SIDECAR_STORE_CONNECTION ?? DEFAULT_STORE_PATH),
+            }),
+            installId: fleetBrokerInstallId,
+            sessionId: fleetBrokerSessionId,
+            sidecarVersion: releaseInfo.version,
+            cloudUploadEnabled: false,
+        });
+    }
+
+    if (backend === "postgres") {
+        const connection = process.env.STFC_SIDECAR_STORE_CONNECTION ?? process.env.DATABASE_URL ?? "";
+        if (!connection) {
+            throw new Error("STFC_SIDECAR_STORE_CONNECTION or DATABASE_URL is required when STFC_SIDECAR_STORE_BACKEND=postgres");
+        }
+
+        return createFleetTelemetryBroker({
+            store: await createSqlFleetBrokerStore({
+                backend: "postgres",
+                connection,
+            }),
+            installId: fleetBrokerInstallId,
+            sessionId: fleetBrokerSessionId,
+            sidecarVersion: releaseInfo.version,
+            cloudUploadEnabled: false,
+        });
+    }
+
+    throw new Error(`Unsupported STFC_SIDECAR_STORE_BACKEND for fleet broker: ${backend}`);
 }
 
 function isBattleLogApiPath(pathname) {
@@ -1005,6 +1059,31 @@ async function countStoredEvents() {
     }
 }
 
+async function readFleetBrokerSummary() {
+    if (!fleetBroker) {
+        return unavailableFleetBrokerSummary();
+    }
+
+    try {
+        return await fleetBroker.status();
+    } catch (error) {
+        return unavailableFleetBrokerSummary(error);
+    }
+}
+
+async function readFleetBrokerQueueDepth() {
+    if (!fleetBroker) {
+        return 0;
+    }
+
+    try {
+        const summary = await fleetBroker.status();
+        return Number(summary.pendingOutboxCount ?? 0);
+    } catch {
+        return 0;
+    }
+}
+
 async function handleHotkeySettingsUpdate(request, response) {
     if (!settingsPath) {
         return sendJson(response, 400, { ok: false, error: "Select an STFC game directory before editing settings." });
@@ -1297,14 +1376,37 @@ async function handleFleetSyncIngest(request, response) {
         return sendJson(response, 401, { ok: false, error: "Unauthorized sidecar sync request" });
     }
 
+    if (!fleetBroker) {
+        return sendFleetBrokerUnavailable(response);
+    }
+
     try {
         const payload = await readJsonBody(request);
-        return sendJson(response, 202, cloudTelemetryBridge.ingestSyncPayload(payload));
+        const result = await fleetBroker.ingestSyncPayload(payload);
+        await maybeBroadcastFleetProjectionChanged("fleet-sync", result);
+        const queueDepth = await readFleetBrokerQueueDepth();
+        return sendJson(response, 202, buildCompatibleFleetSyncSuccessPayload(result, { queueDepth }));
     } catch (error) {
         return sendJson(response, 400, {
             ok: false,
             error: error instanceof Error ? error.message : String(error),
         });
+    }
+}
+
+async function readFleetProjection() {
+    if (!fleetBroker) {
+        return unavailableFleetProjection();
+    }
+
+    try {
+        return await fleetBroker.readProjection();
+    } catch (error) {
+        return {
+            ok: false,
+            statusCode: 500,
+            error: error instanceof Error ? error.message : String(error),
+        };
     }
 }
 
@@ -1315,15 +1417,28 @@ async function handleMajelIngest(request, response) {
 
     try {
         const payload = await readJsonBody(request);
-        const result = majelIngestStore.ingest(payload);
-        if (!result.ok) {
+        const result = await ingestAcceptedMajelPayload({
+            payload,
+            majelIngestStore,
+            fleetBroker,
+            countFleetRuntimeMajelEnvelopes,
+        });
+        if (!result.majelResult.ok) {
             broadcastMajelUpdate("majel-rejected", { rejected: 1, error: result.error });
-            return sendJson(response, 400, result);
+            return sendJson(response, 400, result.majelResult);
         }
 
-        broadcastEventUpdate("majel-ingest", { accepted: result.accepted });
-        broadcastMajelUpdate("majel-ingest", { accepted: result.accepted });
-        return sendJson(response, 202, result);
+        if (result.bridgeError) {
+            const summary = typeof summarizeFleetBrokerError === "function"
+                ? summarizeFleetBrokerError(result.bridgeError)
+                : (result.bridgeError instanceof Error ? result.bridgeError.message : String(result.bridgeError));
+            console.warn(`[sidecar-viewer] unable to bridge accepted Majel fleet runtime payload into fleet projection: ${summary}`);
+        }
+
+        await maybeBroadcastFleetProjectionChanged("majel-ingest", result.fleetBrokerResult);
+        broadcastEventUpdate("majel-ingest", { accepted: result.majelResult.accepted });
+        broadcastMajelUpdate("majel-ingest", { accepted: result.majelResult.accepted });
+        return sendJson(response, 202, result.majelResult);
     } catch (error) {
         const result = majelIngestStore.recordRejected(error instanceof Error ? error.message : String(error));
         broadcastMajelUpdate("majel-rejected", { rejected: 1, error: result.error });
@@ -1353,6 +1468,10 @@ function handleEventStream(request, response) {
     handleStream(request, response, eventStreamClients, "ready");
 }
 
+function handleFleetStream(request, response) {
+    handleStream(request, response, fleetStreamClients, "ready");
+}
+
 function handleMajelStream(request, response) {
     handleStream(request, response, majelStreamClients, "ready");
 }
@@ -1376,10 +1495,12 @@ function handleStream(request, response, clients, readyReason) {
     clients.add(client);
     sendEventStreamMessage(client, "ready", streamPayload(readyReason));
 
-    request.on("close", () => {
+    const cleanup = () => {
         clearInterval(client.keepalive);
         clients.delete(client);
-    });
+    };
+    request.on("close", cleanup);
+    response.on?.("error", cleanup);
 }
 
 function broadcastEventUpdate(reason, extra = {}) {
@@ -1388,6 +1509,25 @@ function broadcastEventUpdate(reason, extra = {}) {
 
 function broadcastMajelUpdate(reason, extra = {}) {
     broadcastStreamUpdate(majelStreamClients, "majel-updated", reason, extra);
+}
+
+async function maybeBroadcastFleetProjectionChanged(reason, brokerResult) {
+    if (fleetStreamClients.size === 0 || !shouldNotifyFleetProjectionChanged(brokerResult)) {
+        return;
+    }
+
+    const payload = {
+        projection: fleetProjectionStreamSummary(await readFleetProjectionForStream()),
+    };
+    broadcastStreamUpdate(fleetStreamClients, "fleet-projection-changed", reason, payload);
+}
+
+async function readFleetProjectionForStream() {
+    try {
+        return await readFleetProjection();
+    } catch {
+        return null;
+    }
 }
 
 function broadcastStreamUpdate(clients, eventName, reason, extra = {}) {
@@ -1897,11 +2037,23 @@ async function shutdownServer(reason) {
 
     shutdownRequested = true;
     battleFeed.close();
+    if (fleetBroker) {
+        const closingBroker = fleetBroker;
+        fleetBroker = null;
+        await closingBroker.close().catch((error) => {
+            console.warn(`[sidecar-viewer] unable to close fleet broker: ${error instanceof Error ? error.message : String(error)}`);
+        });
+    }
     for (const client of eventStreamClients) {
         clearInterval(client.keepalive);
         client.response.end();
     }
     eventStreamClients.clear();
+    for (const client of fleetStreamClients) {
+        clearInterval(client.keepalive);
+        client.response.end();
+    }
+    fleetStreamClients.clear();
     for (const client of majelStreamClients) {
         clearInterval(client.keepalive);
         client.response.end();
@@ -1931,4 +2083,34 @@ async function shutdownServer(reason) {
         console.log("[sidecar-viewer] shutdown complete");
         process.exit(0);
     });
+}
+
+function sendFleetBrokerUnavailable(response) {
+    return sendJson(response, 503, unavailableFleetProjection());
+}
+
+function unavailableFleetProjection() {
+    return {
+        ok: false,
+        statusCode: 503,
+        error: "Fleet broker is unavailable.",
+        retryAfterSeconds: 5,
+    };
+}
+
+function unavailableFleetBrokerSummary(error) {
+    return buildUnavailableFleetBrokerSummary({
+        error,
+        now: () => new Date(),
+        summarizeError: summarizeFleetBrokerError,
+    });
+}
+
+function normalizeBrokerIdentifier(value) {
+    const candidate = String(value ?? "").trim();
+    return /^[A-Za-z0-9._:-]{1,256}$/.test(candidate) ? candidate : "";
+}
+
+function shaHex(value) {
+    return createHash("sha256").update(String(value)).digest("hex");
 }

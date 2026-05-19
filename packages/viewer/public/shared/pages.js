@@ -5,6 +5,11 @@ export const viewerPages = [
         href: "/",
     },
     {
+        id: "fleet",
+        label: "Fleet",
+        href: "/fleet/",
+    },
+    {
         id: "battle-log",
         label: "Battle Log",
         href: "/battle-log/",
