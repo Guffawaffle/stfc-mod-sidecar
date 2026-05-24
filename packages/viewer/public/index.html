@@ -3,92 +3,104 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>STFC Sidecar Viewer</title>
+    <title>STFC Sidecar Viewer | Watch</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="shell site-shell">
-      <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="home"></nav>
+      <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="watch"></nav>
 
       <header class="hero home-hero">
         <div>
-          <p class="eyebrow">STFC Mod Sidecar</p>
-          <h1>Dashboard</h1>
-          <p class="hero-copy">Local companion controls, settings, and diagnostics for the selected Community Mod profile.</p>
+          <p class="eyebrow">Local Companion</p>
+          <h1>Watch</h1>
+          <p class="hero-copy">Observed fleet state lives here today. Recent Activity, Fleet Watch, and arrival reminders are planned next; raw battle evidence stays easy to reach while that product surface is still taking shape.</p>
         </div>
       </header>
 
       <section class="module-grid" aria-label="viewer modules">
-        <article class="module-card module-card--primary" data-capability="battleLog" hidden>
+        <article class="module-card module-card--primary">
           <p class="eyebrow">Available Now</p>
+          <h2>Observed Fleet State</h2>
+          <p class="page-copy">Open the current read-only watch view of observed fleet rows from the local projection API.</p>
+          <ul class="module-list">
+            <li>Observed fleet and slot state</li>
+            <li>Projection freshness and version</li>
+            <li>Local watch surface foundation</li>
+          </ul>
+          <a class="link-button" href="/fleet/">Open Observed Fleet</a>
+        </article>
+
+        <article class="module-card module-card--primary" data-capability="battleLog" hidden>
+          <p class="eyebrow">Still Easy To Reach</p>
           <h2>Battle Log Explorer</h2>
-          <p class="page-copy">Inspect the live JSONL feed, drill into canonical <code>battle.capture</code> payloads, and review report, analytics, and catalog bundles.</p>
+          <p class="page-copy">Raw battle and activity evidence stays easy to reach while simple Watch summaries are still deferred.</p>
           <ul class="module-list">
             <li>Recent feed events and raw JSON</li>
-            <li>Lossless token stream inspection</li>
-            <li>Participant, reward, analytics, and catalog tables</li>
+            <li>Decoded battle detail and catalog coverage</li>
+            <li>Source data for future recent-activity views</li>
           </ul>
           <a class="link-button" href="/battle-log/">Open Battle Log</a>
         </article>
 
         <article class="module-card" data-developer-only data-capability="battleLog" hidden>
-          <p class="eyebrow">Next Focus</p>
-          <h2>Parser And Analyzer Workbench</h2>
-          <p class="page-copy">Deterministic parse stages and reviewable analytics on top of canonical capture data.</p>
+          <p class="eyebrow">Diagnostics</p>
+          <h2>Battle Workbench</h2>
+          <p class="page-copy">Developer-only evidence-heavy battle diagnostics remain directly reachable during the Watch transition.</p>
           <ul class="module-list">
-            <li>Segment and record boundary validation</li>
-            <li>Round and attack timeline derivation</li>
-            <li>Confidence and provenance surfacing</li>
+            <li>Decoded segments and attack timeline</li>
+            <li>Combatants, rewards, and battle detail</li>
+            <li>Source-token evidence</li>
           </ul>
           <a class="link-button link-button--secondary" href="/battle-log/workbench/">Open Workbench</a>
         </article>
 
-        <article class="module-card" data-capability="notifications" hidden>
-          <p class="eyebrow">Waffle</p>
-          <h2>Notifications And Audio</h2>
-          <p class="page-copy">Tune desktop delivery, event sounds, and notification defaults for Waffle profiles.</p>
+        <article class="module-card">
+          <p class="eyebrow">Remote Assistant</p>
+          <h2>Aria</h2>
+          <p class="page-copy">The sidecar surface for the remote assistant boundary. This slice keeps Aria as a client and context bridge, not a local runtime.</p>
           <ul class="module-list">
-            <li>System notification toggles</li>
-            <li>Per-event audio cues</li>
-            <li>Inline sound previews</li>
+            <li>Remote assistant boundary</li>
+            <li>Explicit local context direction</li>
+            <li>No local LLM runtime implied</li>
           </ul>
-          <a class="link-button link-button--secondary" href="/settings/#notifications">Configure Alerts</a>
-        </article>
-
-        <article class="module-card" data-developer-only hidden>
-          <p class="eyebrow">Developer Tools</p>
-          <h2>Diagnostics Controls</h2>
-          <p class="page-copy">Access runtime trace, replay retention, and local diagnostics capture controls.</p>
-          <ul class="module-list">
-            <li>Runtime trace level</li>
-            <li>Replay window settings</li>
-            <li>Diagnostics bundle context</li>
-          </ul>
-          <a class="link-button link-button--secondary" href="/settings/#diagnostics">Open Diagnostics</a>
+          <a class="link-button link-button--secondary" href="/aria/">Open Aria</a>
         </article>
 
         <article class="module-card">
-          <p class="eyebrow">New</p>
-          <h2>Settings</h2>
-          <p class="page-copy">Review and edit community mod hotkeys, startup behavior, desktop notifications, and audio cues.</p>
+          <p class="eyebrow">Configuration</p>
+          <h2>Setup</h2>
+          <p class="page-copy">Install, configure, and support the selected Community Mod profile without mixing those flows into Watch or Diagnostics.</p>
           <ul class="module-list">
-            <li>Notification and audio cue controls</li>
-            <li>Two binding slots per action</li>
-            <li>Conflict and single-key visibility</li>
+            <li>Settings and keybindings</li>
+            <li>Install and update workflows</li>
+            <li>Support, diagnostics bundle, and legal</li>
           </ul>
-          <a class="link-button link-button--secondary" href="/settings/">Open Settings</a>
+          <a class="link-button link-button--secondary" href="/setup/">Open Setup</a>
+        </article>
+
+        <article class="module-card" data-capability="notifications" hidden>
+          <p class="eyebrow">Setup</p>
+          <h2>Notification Preferences</h2>
+          <p class="page-copy">Desktop delivery and audio cues stay under Setup while Watch-specific reminder behavior is intentionally deferred.</p>
+          <ul class="module-list">
+            <li>Desktop notification toggles</li>
+            <li>Per-event audio cues</li>
+            <li>Inline sound previews</li>
+          </ul>
+          <a class="link-button link-button--secondary" href="/settings/#notifications">Open Notification Preferences</a>
         </article>
 
         <article class="module-card module-card--accent">
-          <p class="eyebrow">Companion Shell</p>
-          <h2>About And Credits</h2>
-          <p class="page-copy">Project boundaries, local-first security posture, and visual attribution for the sidecar companion interface.</p>
+          <p class="eyebrow">Advanced Surface</p>
+          <h2>Diagnostics</h2>
+          <p class="page-copy">Open raw battle tools, cloud sync monitors, projection internals, and diagnostics bundle paths.</p>
           <ul class="module-list">
-            <li>Read-only gameplay boundary</li>
-            <li>Local companion app direction</li>
-            <li>LCARS-inspired visual credit</li>
+            <li>Battle Log Explorer</li>
+            <li>Workbench and envelope monitor</li>
+            <li>Diagnostics bundle and developer tooling</li>
           </ul>
-          <a class="link-button link-button--secondary" href="/about/">Open About</a>
+          <a class="link-button link-button--secondary" href="/diagnostics/">Open Diagnostics</a>
         </article>
       </section>
     </main>

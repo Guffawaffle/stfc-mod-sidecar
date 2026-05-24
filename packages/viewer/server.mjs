@@ -381,9 +381,9 @@ const server = createServer(async (request, response) => {
             message: "Battle Log surfaces are currently blocked by the active Community Mod variant gate.",
             details: variantGateCapabilityDetails("battleLog", reasons),
             primaryHref: "/",
-            primaryLabel: "Open Home",
-            secondaryHref: "/settings/",
-            secondaryLabel: "Open Settings",
+            primaryLabel: "Open Watch",
+            secondaryHref: "/setup/",
+            secondaryLabel: "Open Setup",
         }), "text/html; charset=utf-8");
     }
 

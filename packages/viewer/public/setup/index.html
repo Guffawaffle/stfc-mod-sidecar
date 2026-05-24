@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>STFC Sidecar Viewer | Setup</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell site-shell">
+      <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="setup"></nav>
+
+      <header class="hero home-hero">
+        <div>
+          <p class="eyebrow">Local Companion</p>
+          <h1>Setup</h1>
+          <p class="hero-copy">Install, configure, and support the local companion and selected Community Mod profile without mixing those flows into Watch or Diagnostics.</p>
+        </div>
+      </header>
+
+      <section class="module-grid" aria-label="setup surfaces">
+        <article class="module-card module-card--primary">
+          <p class="eyebrow">Configuration</p>
+          <h2>Companion Settings</h2>
+          <p class="page-copy">Configure profile, game directory, keybindings, notification preferences, and developer-only diagnostics controls.</p>
+          <ul class="module-list">
+            <li>Profile and game directory</li>
+            <li>Keybindings and hard settings</li>
+            <li>Notification preferences</li>
+          </ul>
+          <a class="link-button" href="/settings/">Open Settings</a>
+        </article>
+
+        <article class="module-card module-card--accent">
+          <p class="eyebrow">Install And Update</p>
+          <h2>Setup And Support</h2>
+          <p class="page-copy">Review Community Mod install status, companion release status, recovery actions, support context, and legal boundaries.</p>
+          <ul class="module-list">
+            <li>Install, update, and uninstall workflows</li>
+            <li>Companion release and support context</li>
+            <li>Diagnostics bundle and legal copy</li>
+          </ul>
+          <a class="link-button link-button--secondary" href="/about/">Open Setup And Support</a>
+        </article>
+
+        <article class="module-card" data-capability="notifications" hidden>
+          <p class="eyebrow">Preferences</p>
+          <h2>Notifications</h2>
+          <p class="page-copy">Desktop delivery and audio cue preferences remain part of Setup while Watch-specific reminder behavior is intentionally deferred.</p>
+          <ul class="module-list">
+            <li>Desktop notification toggles</li>
+            <li>Per-event audio cues</li>
+            <li>Inline sound previews</li>
+          </ul>
+          <a class="link-button link-button--secondary" href="/settings/#notifications">Open Notification Preferences</a>
+        </article>
+      </section>
+    </main>
+    <script type="module" src="/shared/shell.js"></script>
+  </body>
+</html>

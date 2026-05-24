@@ -1,42 +1,23 @@
 export const viewerPages = [
     {
-        id: "home",
-        label: "Dashboard",
+        id: "watch",
+        label: "Watch",
         href: "/",
     },
     {
-        id: "fleet",
-        label: "Fleet",
-        href: "/fleet/",
+        id: "aria",
+        label: "Aria",
+        href: "/aria/",
     },
     {
-        id: "battle-log",
-        label: "Battle Log",
-        href: "/battle-log/",
-        requiresCapability: "battleLog",
+        id: "setup",
+        label: "Setup",
+        href: "/setup/",
     },
     {
-        id: "battle-log-workbench",
-        label: "Workbench",
-        href: "/battle-log/workbench/",
-        developerOnly: true,
-        requiresCapability: "battleLog",
-    },
-    {
-        id: "majel",
-        label: "Majel",
-        href: "/majel/",
-        developerOnly: true,
-    },
-    {
-        id: "settings",
-        label: "Settings",
-        href: "/settings/",
-    },
-    {
-        id: "about",
-        label: "About",
-        href: "/about/",
+        id: "diagnostics",
+        label: "Diagnostics",
+        href: "/diagnostics/",
     },
 ];
 

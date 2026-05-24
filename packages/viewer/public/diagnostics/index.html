@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>STFC Sidecar Viewer | Diagnostics</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell site-shell">
+      <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="diagnostics"></nav>
+
+      <header class="hero home-hero">
+        <div>
+          <p class="eyebrow">Advanced Surface</p>
+          <h1>Diagnostics</h1>
+          <p class="hero-copy">Raw evidence, transport monitors, and advanced companion tooling. Battle Log stays easy to reach here while Watch summaries are still deferred.</p>
+        </div>
+      </header>
+
+      <section class="module-grid" aria-label="diagnostics surfaces">
+        <article class="module-card module-card--primary" data-capability="battleLog" hidden>
+          <p class="eyebrow">Available Now</p>
+          <h2>Battle Log Explorer</h2>
+          <p class="page-copy">Inspect recent raw battle and activity events from the local sidecar data layer.</p>
+          <ul class="module-list">
+            <li>Raw event feed and JSON</li>
+            <li>Decoded battle detail</li>
+            <li>Catalog coverage and analytics evidence</li>
+          </ul>
+          <a class="link-button" href="/battle-log/">Open Battle Log</a>
+        </article>
+
+        <article class="module-card" data-developer-only data-capability="battleLog" hidden>
+          <p class="eyebrow">Developer Tools</p>
+          <h2>Battle Workbench</h2>
+          <p class="page-copy">Evidence-heavy battle diagnostics on top of canonical capture data.</p>
+          <ul class="module-list">
+            <li>Combatant and reward breakdowns</li>
+            <li>Decoded segments and derived timeline</li>
+            <li>Source-token evidence</li>
+          </ul>
+          <a class="link-button link-button--secondary" href="/battle-log/workbench/">Open Workbench</a>
+        </article>
+
+        <article class="module-card" data-developer-only hidden>
+          <p class="eyebrow">Cloud Boundary</p>
+          <h2>Cloud Sync Monitor</h2>
+          <p class="page-copy">Monitor accepted cloud-safe envelopes from the local companion window without relabeling transport/debug state as the assistant.</p>
+          <ul class="module-list">
+            <li>Accepted and rejected envelope counts</li>
+            <li>Endpoint and payload detail</li>
+            <li>Developer-only sync monitor</li>
+          </ul>
+          <a class="link-button link-button--secondary" href="/majel/">Open Cloud Sync Monitor</a>
+        </article>
+
+        <article class="module-card module-card--accent">
+          <p class="eyebrow">Support</p>
+          <h2>Diagnostics Bundle</h2>
+          <p class="page-copy">Use Setup and Support for bundle preview, copy/download workflows, and troubleshooting context.</p>
+          <ul class="module-list">
+            <li>Bundle preview and export</li>
+            <li>Settings troubleshooting prompt</li>
+            <li>Support and recovery context</li>
+          </ul>
+          <a class="link-button link-button--secondary" href="/about/">Open Setup And Support</a>
+        </article>
+
+        <article class="module-card" data-developer-only hidden>
+          <p class="eyebrow">Controls</p>
+          <h2>Developer Diagnostics Controls</h2>
+          <p class="page-copy">Trace and local capture controls remain in the settings route for now, but they are classified under Diagnostics.</p>
+          <ul class="module-list">
+            <li>Trace level</li>
+            <li>Replay retention</li>
+            <li>Capture configuration</li>
+          </ul>
+          <a class="link-button link-button--secondary" href="/settings/#diagnostics">Open Controls</a>
+        </article>
+      </section>
+    </main>
+    <script type="module" src="/shared/shell.js"></script>
+  </body>
+</html>

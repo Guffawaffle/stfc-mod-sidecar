@@ -9,14 +9,18 @@ const __dirname = path.dirname(__filename);
 const homeHtml = readFileSync(path.resolve(__dirname, "../../viewer/public/index.html"), "utf8");
 
 describe("viewer home markup", () => {
-    test("gates Battle Log module links by capability before developer mode", () => {
+    test("keeps Battle Log directly reachable while gating the raw surfaces", () => {
         expect(homeHtml).toMatch(/module-card module-card--primary[^>]+data-capability="battleLog"/);
         expect(homeHtml).toMatch(/module-card[^>]+data-developer-only[^>]+data-capability="battleLog"/);
+        expect(homeHtml).toContain('href="/battle-log/"');
     });
 
-    test("surfaces Waffle and Developer Tools dashboard modules", () => {
-        expect(homeHtml).toContain("<h1>Dashboard</h1>");
+    test("surfaces the Watch landing plus setup and diagnostics transition modules", () => {
+        expect(homeHtml).toContain("<h1>Watch</h1>");
         expect(homeHtml).toMatch(/module-card[^>]+data-capability="notifications"/);
-        expect(homeHtml).toMatch(/module-card[^>]+data-developer-only hidden/);
+        expect(homeHtml).toMatch(/module-card[^>]+data-developer-only[^>]+hidden/);
+        expect(homeHtml).toContain('href="/aria/"');
+        expect(homeHtml).toContain('href="/setup/"');
+        expect(homeHtml).toContain('href="/diagnostics/"');
     });
 });

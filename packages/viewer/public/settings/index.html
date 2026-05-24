@@ -3,18 +3,18 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>STFC Sidecar Viewer | Settings</title>
+    <title>STFC Sidecar Viewer | Companion Settings</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="shell site-shell settings-shell">
-      <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="settings"></nav>
+      <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="setup"></nav>
 
       <header class="hero settings-hero">
         <div>
-          <p class="eyebrow">STFC Mod Sidecar</p>
-          <h1>Settings</h1>
-          <p class="hero-copy">Community Mod configuration for hotkeys, desktop notifications, audio cues, and diagnostics.</p>
+          <p class="eyebrow">Setup</p>
+          <h1>Companion Settings</h1>
+          <p class="hero-copy">Configure the selected Community Mod profile, local companion behavior, notification preferences, and developer diagnostics.</p>
         </div>
       </header>
 
@@ -23,7 +23,7 @@
           <button id="settings-tab-general" class="settings-tab" type="button" role="tab" aria-selected="true" aria-controls="settings-panel-general" data-settings-tab="general">General</button>
           <button id="settings-tab-hard-settings" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-panel-hard-settings" data-settings-tab="hard-settings">Hard Settings</button>
           <button id="settings-tab-keybindings" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-panel-keybindings" data-settings-tab="keybindings">Keybindings</button>
-          <button id="settings-tab-diagnostics" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-panel-diagnostics" data-settings-tab="diagnostics">Diagnostics</button>
+          <button id="settings-tab-diagnostics" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-panel-diagnostics" data-settings-tab="diagnostics">Developer Diagnostics</button>
           <button id="settings-tab-notifications" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="notification-settings" data-settings-tab="notifications">Notifications</button>
         </div>
 
@@ -127,7 +127,7 @@
 
         <section id="settings-panel-diagnostics" class="settings-panel settings-tab-panel" role="tabpanel" aria-labelledby="settings-tab-diagnostics" data-settings-panel="diagnostics" hidden>
           <div class="panel-heading">
-            <h2>Diagnostics</h2>
+            <h2>Developer Diagnostics</h2>
             <p>Developer-only realtime trace and local capture controls for runtime investigation.</p>
           </div>
           <p class="page-copy">Every local diagnostics or capture setting can affect performance and disk churn. Prefer sidecar or ingress export for durable review. Local replay is cyclic by default; unlimited append-only capture requires explicit settings.</p>

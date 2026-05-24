@@ -10,9 +10,9 @@ const fleetHtml = readFileSync(path.resolve(__dirname, "../../viewer/public/flee
 const fleetApp = readFileSync(path.resolve(__dirname, "../../viewer/public/fleet/app.js"), "utf8");
 
 describe("viewer fleet markup", () => {
-    test("adds a normal navigation page with a dedicated Fleet script entry", () => {
-        expect(fleetHtml).toContain('data-current-page="fleet"');
-        expect(fleetHtml).toContain("<h1>Current Fleet Projection</h1>");
+    test("adds a watch-surface navigation page with a dedicated Fleet script entry", () => {
+        expect(fleetHtml).toContain('data-current-page="watch"');
+        expect(fleetHtml).toContain("<h1>Observed Fleet State</h1>");
         expect(fleetHtml).toContain("Observed fleet rows");
         expect(fleetHtml).toContain("Show empty slots");
         expect(fleetHtml).toContain('/fleet/app.js');

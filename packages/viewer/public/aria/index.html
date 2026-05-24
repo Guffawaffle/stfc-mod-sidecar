@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>STFC Sidecar Viewer | Aria</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell site-shell">
+      <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="aria"></nav>
+
+      <header class="hero home-hero">
+        <div>
+          <p class="eyebrow">Remote Assistant</p>
+          <h1>Aria</h1>
+          <p class="hero-copy">Aria in the sidecar is a client and context bridge to the remote assistant. This slice does not add local inference, background upload, or new assistant behavior.</p>
+        </div>
+      </header>
+
+      <section class="module-grid" aria-label="Aria surface overview">
+        <article class="module-card module-card--primary">
+          <p class="eyebrow">Current Boundary</p>
+          <h2>Remote Assistant, Local Bridge</h2>
+          <p class="page-copy">Aria belongs to the remote advisor stack. The companion keeps local context explicit instead of implying a second assistant runtime inside the desktop app.</p>
+          <ul class="module-list">
+            <li>Remote advisor and API-backed intelligence</li>
+            <li>Explicit local context direction</li>
+            <li>No local LLM runtime implied</li>
+          </ul>
+        </article>
+
+        <article class="module-card">
+          <p class="eyebrow">What Stays Local</p>
+          <h2>Watch And Setup Stay Separate</h2>
+          <p class="page-copy">Observed fleet state, companion setup, and diagnostics stay in their own surfaces until the user explicitly chooses to share safe local context.</p>
+          <ul class="module-list">
+            <li>Observed fleet state stays under Watch</li>
+            <li>Install and configuration stay under Setup</li>
+            <li>Raw evidence stays under Diagnostics</li>
+          </ul>
+          <a class="link-button link-button--secondary" href="/">Open Watch</a>
+        </article>
+
+        <article class="module-card">
+          <p class="eyebrow">Next Surface</p>
+          <h2>Bridge Work Is Intentionally Deferred</h2>
+          <p class="page-copy">Connection status, explicit local context preview, and member or API status belong here later, but they are intentionally not implemented in this nav-and-copy slice.</p>
+          <ul class="module-list">
+            <li>Connection state</li>
+            <li>Context preview and send</li>
+            <li>Member or API-backed status</li>
+          </ul>
+          <a class="link-button link-button--secondary" href="/setup/">Open Setup</a>
+        </article>
+
+        <article class="module-card module-card--accent">
+          <p class="eyebrow">Keep Boundaries Honest</p>
+          <h2>Diagnostics Are Not Aria</h2>
+          <p class="page-copy">Cloud sync monitors, raw battle evidence, and transport internals stay under Diagnostics even when they support future assistant workflows.</p>
+          <ul class="module-list">
+            <li>Battle Log Explorer</li>
+            <li>Cloud Sync Monitor</li>
+            <li>Diagnostics bundle and developer tools</li>
+          </ul>
+          <a class="link-button link-button--secondary" href="/diagnostics/">Open Diagnostics</a>
+        </article>
+      </section>
+    </main>
+    <script type="module" src="/shared/shell.js"></script>
+  </body>
+</html>

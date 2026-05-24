@@ -7,9 +7,9 @@ export function buildCapabilityUnavailablePage(options = {}) {
     ? options.details.map((detail) => stringOr(detail, "")).filter(Boolean)
     : [];
   const primaryHref = stringOr(options.primaryHref, "/");
-  const primaryLabel = stringOr(options.primaryLabel, "Go home");
-  const secondaryHref = stringOr(options.secondaryHref, "/settings/");
-  const secondaryLabel = stringOr(options.secondaryLabel, "Open Settings");
+  const primaryLabel = stringOr(options.primaryLabel, "Open Watch");
+  const secondaryHref = stringOr(options.secondaryHref, "/setup/");
+  const secondaryLabel = stringOr(options.secondaryLabel, "Open Setup");
 
   return `<!doctype html>
 <html lang="en">
