@@ -28,6 +28,7 @@ import { createCloudTelemetryBridge } from "./cloud-telemetry.mjs";
 import { buildCapabilityUnavailablePage } from "./public-page-responses.mjs";
 import { buildCommunityModVariantGateContext } from "./community-mod-variant-gates.mjs";
 import { detectCommunityModInstall } from "./community-mod-install.mjs";
+import { readLocalSidecarConfig } from "./local-sidecar-config.mjs";
 import { verifyCommunityModArtifact } from "./community-mod-artifact-verification.mjs";
 import { stageCommunityModArtifact } from "./community-mod-artifact-staging.mjs";
 import { buildCommunityModInstallConfirmation } from "./community-mod-install-confirmation.mjs";
@@ -175,9 +176,12 @@ const fleetBrokerInstallId = normalizeBrokerIdentifier(process.env.STFC_SIDECAR_
 const fleetBrokerSessionId = normalizeBrokerIdentifier(process.env.STFC_SIDECAR_SESSION_ID)
     || `session-${Date.now()}`;
 let communityModInstallStatus = await readCommunityModInstallStatus();
+let localSidecarConfig = await readLocalSidecarConfig(gameDir);
 let communityModVariantGate = buildCommunityModVariantGateContext({
     install: communityModInstallStatus,
     selectedProfile: communityModSettingsProfile,
+    unsafeAllowUnrecognizedInstalledDll: localSidecarConfig.unsafeAllowUnrecognizedInstalledDll,
+    unsafeOverrideConfigPath: localSidecarConfig.path,
 });
 let communityModCapabilities = communityModVariantGate.capabilities;
 let eventStore = await createConfiguredEventStore();
@@ -600,9 +604,12 @@ function variantGateLabel(value) {
 
 async function refreshCommunityModVariantGate() {
     communityModInstallStatus = await readCommunityModInstallStatus();
+    localSidecarConfig = await readLocalSidecarConfig(gameDir);
     communityModVariantGate = buildCommunityModVariantGateContext({
         install: communityModInstallStatus,
         selectedProfile: communityModSettingsProfile,
+        unsafeAllowUnrecognizedInstalledDll: localSidecarConfig.unsafeAllowUnrecognizedInstalledDll,
+        unsafeOverrideConfigPath: localSidecarConfig.path,
     });
     communityModCapabilities = communityModVariantGate.capabilities;
     await reconcileRuntimeSurfacesWithVariantGate();

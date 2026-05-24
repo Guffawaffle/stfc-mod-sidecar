@@ -12,7 +12,12 @@ export function buildCommunityModVariantGateContext(options = {}) {
     const selectedProfile = normalizeCommunityModProfile(options.selectedProfile);
     const installed = normalizeInstalledProfile(options.install);
     const selectedCapabilities = buildCommunityModProfileCapabilities(selectedProfile);
-    const installedCapabilities = buildInstalledCapabilities(installed);
+    const unsafeAllowUnrecognizedInstalledDll = Boolean(options.unsafeAllowUnrecognizedInstalledDll);
+    const unsafeOverrideActive = unsafeAllowUnrecognizedInstalledDll && installed.profile === "unknown" && installed.state === "installed";
+    const installedCapabilities = buildInstalledCapabilities(installed, {
+        selectedProfile,
+        unsafeOverrideActive,
+    });
     const mismatchKind = mismatchKindFor(installed, selectedProfile);
     const capabilityReasons = Object.fromEntries(CAPABILITY_NAMES.map((capability) => [capability, []]));
     const capabilityBits = {};
@@ -39,6 +44,11 @@ export function buildCommunityModVariantGateContext(options = {}) {
         installedConfidence: installed.confidence,
         mismatchKind,
         mismatchAction: mismatchActionFor(mismatchKind),
+        unsafeOverrides: {
+            allowUnrecognizedInstalledDll: unsafeAllowUnrecognizedInstalledDll,
+            active: unsafeOverrideActive,
+            configPath: options.unsafeOverrideConfigPath ?? "",
+        },
         capabilities: Object.fromEntries(
             CAPABILITY_NAMES.map((capability) => [capability, capabilityBits[capability] === 1]),
         ),
@@ -75,7 +85,11 @@ function normalizeInstalledProfile(install) {
     };
 }
 
-function buildInstalledCapabilities(installed) {
+function buildInstalledCapabilities(installed, options = {}) {
+    if (installed.profile === "unknown" && options.unsafeOverrideActive) {
+        return buildCommunityModProfileCapabilities(options.selectedProfile);
+    }
+
     if (!isKnownCommunityModProfile(installed.profile)) {
         return {
             settings: true,

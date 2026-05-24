@@ -25,6 +25,24 @@ describe("community mod variant gates", () => {
         expect(unknown.capabilityReasons.battleLog).toContain("installed_dll_unknown");
     });
 
+    test("allows advanced runtime surfaces only when the unsafe unknown-DLL override is enabled", () => {
+        const blocked = gate({ classification: "unknown" }, "waffle-advanced");
+        const allowed = gate({ classification: "unknown" }, "waffle-advanced", {
+            unsafeAllowUnrecognizedInstalledDll: true,
+            unsafeOverrideConfigPath: "C:/Games/STFC/game/.stfc-sidecar/sidecar-local-config.json",
+        });
+
+        expect(blocked.capabilityBits.battleLog).toBe(0);
+        expect(allowed.capabilityBits.battleLog).toBe(1);
+        expect(allowed.capabilityBits.eventStore).toBe(1);
+        expect(allowed.mismatchKind).toBe("unknown_installed");
+        expect(allowed.unsafeOverrides).toEqual({
+            allowUnrecognizedInstalledDll: true,
+            active: true,
+            configPath: "C:/Games/STFC/game/.stfc-sidecar/sidecar-local-config.json",
+        });
+    });
+
     test("keeps settings and install status available across DLL states", () => {
         const unknown = gate({ classification: "unknown" }, "waffle-advanced");
 
@@ -35,7 +53,7 @@ describe("community mod variant gates", () => {
     });
 });
 
-function gate(install, selectedProfile) {
+function gate(install, selectedProfile, overrides = {}) {
     return buildCommunityModVariantGateContext({
         install: {
             ok: true,
@@ -46,5 +64,6 @@ function gate(install, selectedProfile) {
             matchedRelease: install.matchedRelease ?? null,
         },
         selectedProfile,
+        ...overrides,
     });
 }
