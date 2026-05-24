@@ -4,20 +4,22 @@ import {
     normalizeCommunityModProfile,
     profileFamiliesMatch,
 } from "./community-mod-profiles.mjs";
+import { resolveInstalledCommunityModDllStatus } from "./community-mod-dll-classification.mjs";
 
 const CAPABILITY_NAMES = Object.freeze(["settings", "installStatus", "notifications", "battleLog", "eventStore"]);
 const RUNTIME_CAPABILITY_NAMES = Object.freeze(["battleLog", "eventStore"]);
 
 export function buildCommunityModVariantGateContext(options = {}) {
     const selectedProfile = normalizeCommunityModProfile(options.selectedProfile);
-    const installed = normalizeInstalledProfile(options.install);
+    const installed = resolveInstalledCommunityModDllStatus({
+        install: options.install,
+        selectedProfile,
+        unsafeAllowUnrecognizedInstalledDll: options.unsafeAllowUnrecognizedInstalledDll,
+        unsafeOverrideConfigPath: options.unsafeOverrideConfigPath,
+    });
     const selectedCapabilities = buildCommunityModProfileCapabilities(selectedProfile);
     const unsafeAllowUnrecognizedInstalledDll = Boolean(options.unsafeAllowUnrecognizedInstalledDll);
-    const unsafeOverrideActive = unsafeAllowUnrecognizedInstalledDll && installed.profile === "unknown" && installed.state === "installed";
-    const installedCapabilities = buildInstalledCapabilities(installed, {
-        selectedProfile,
-        unsafeOverrideActive,
-    });
+    const installedCapabilities = buildInstalledCapabilities(installed);
     const mismatchKind = mismatchKindFor(installed, selectedProfile);
     const capabilityReasons = Object.fromEntries(CAPABILITY_NAMES.map((capability) => [capability, []]));
     const capabilityBits = {};
@@ -40,13 +42,16 @@ export function buildCommunityModVariantGateContext(options = {}) {
         ok: true,
         selectedProfile,
         installedProfile: installed.profile,
+        installedEffectiveProfile: installed.effectiveProfile,
         installedState: installed.state,
         installedConfidence: installed.confidence,
+        installedDllStatus: installed.status,
+        installedDllMatchSource: installed.matchSource,
         mismatchKind,
         mismatchAction: mismatchActionFor(mismatchKind),
         unsafeOverrides: {
             allowUnrecognizedInstalledDll: unsafeAllowUnrecognizedInstalledDll,
-            active: unsafeOverrideActive,
+            active: installed.unsafeOverrideActive,
             configPath: options.unsafeOverrideConfigPath ?? "",
         },
         capabilities: Object.fromEntries(
@@ -57,40 +62,8 @@ export function buildCommunityModVariantGateContext(options = {}) {
     };
 }
 
-function normalizeInstalledProfile(install) {
-    if (!install || install.ok === false) {
-        return { state: "unavailable", profile: "unknown", confidence: "low" };
-    }
-
-    if (["unselected", "none", "unsupported_platform"].includes(install.state)) {
-        return { state: install.state, profile: "none", confidence: "high" };
-    }
-
-    if (install.state !== "installed") {
-        return { state: String(install.state ?? "unavailable"), profile: "unknown", confidence: "low" };
-    }
-
-    const classification = String(install.classification ?? "").trim().toLowerCase();
-    const profile = ["none", "unknown"].includes(classification)
-        ? classification
-        : normalizeCommunityModProfile(classification, { fallback: null }) ?? "unknown";
-    if (profile === "unknown") {
-        return { state: "installed", profile, confidence: "low" };
-    }
-
-    return {
-        state: "installed",
-        profile,
-        confidence: install.manifest?.profile === profile || install.matchedRelease ? "high" : "medium",
-    };
-}
-
-function buildInstalledCapabilities(installed, options = {}) {
-    if (installed.profile === "unknown" && options.unsafeOverrideActive) {
-        return buildCommunityModProfileCapabilities(options.selectedProfile);
-    }
-
-    if (!isKnownCommunityModProfile(installed.profile)) {
+function buildInstalledCapabilities(installed) {
+    if (!isKnownCommunityModProfile(installed.effectiveProfile)) {
         return {
             settings: true,
             installStatus: true,
@@ -99,11 +72,11 @@ function buildInstalledCapabilities(installed, options = {}) {
         };
     }
 
-    if (profileFamiliesMatch(installed.profile, "waffle-advanced")) {
+    if (profileFamiliesMatch(installed.effectiveProfile, "waffle-advanced")) {
         return buildCommunityModProfileCapabilities("waffle-advanced");
     }
 
-    return buildCommunityModProfileCapabilities(installed.profile);
+    return buildCommunityModProfileCapabilities(installed.effectiveProfile);
 }
 
 function capabilityEnabled(capability, selectedCapabilities, installedCapabilities) {
@@ -123,6 +96,8 @@ function disabledCapabilityReasons(options) {
     if (RUNTIME_CAPABILITY_NAMES.includes(options.capability)) {
         if (options.installed.profile === "none") {
             reasons.push("installed_dll_missing");
+        } else if (options.installed.status === "hash_unavailable") {
+            reasons.push("installed_dll_hash_unavailable");
         } else if (options.installed.profile === "unknown") {
             reasons.push("installed_dll_unknown");
         } else if (!options.installedCapabilities[options.capability]) {

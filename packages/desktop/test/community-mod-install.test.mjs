@@ -73,6 +73,11 @@ describe("community mod install detection", () => {
             state: "installed",
             classification: "netniv-basic",
             profile: "netniv-basic",
+            dllMatch: {
+                status: "known_match",
+                profile: "netniv-basic",
+                matchSource: "release_fingerprint",
+            },
             dll: {
                 exists: true,
                 sha256: dllSha256,
@@ -105,10 +110,48 @@ describe("community mod install detection", () => {
         expect(result).toMatchObject({
             classification: "waffle-advanced",
             profile: "waffle-advanced",
+            dllMatch: {
+                status: "known_match",
+                profile: "waffle-advanced",
+                matchSource: "manifest",
+            },
             manifest: {
                 exists: true,
                 profile: "waffle-advanced",
                 tag: "v-test-alpha",
+            },
+        });
+    });
+
+    test("accepts a configured local DLL hash override as a real match source", async () => {
+        const gameDirectory = await makeTempGameDirectory();
+        const dllContents = Buffer.from("local ax cycle dll");
+        const dllSha256 = sha256(dllContents);
+        await fs.writeFile(path.join(gameDirectory, COMMUNITY_MOD_DLL_FILE), dllContents);
+        await writeManifest(gameDirectory, {
+            schemaVersion: 1,
+            distribution: "advanced-alpha",
+            dllSha256: sha256(Buffer.from("old dll")),
+        });
+
+        const result = await detectCommunityModInstall(gameDirectory, {
+            releaseFingerprints: [],
+            localConfig: {
+                path: path.join(gameDirectory, ".stfc-sidecar", "sidecar-local-config.json"),
+                recognizedInstalledDlls: [{ dllSha256, profile: "waffle-advanced", label: "local-ax-cycle" }],
+            },
+            readVersionInfo: async () => null,
+        });
+
+        expect(result).toMatchObject({
+            state: "installed",
+            classification: "waffle-advanced",
+            profile: "waffle-advanced",
+            dllMatch: {
+                status: "config_override_match",
+                profile: "waffle-advanced",
+                matchSource: "config_override",
+                configOverrideLabel: "local-ax-cycle",
             },
         });
     });
@@ -123,6 +166,10 @@ describe("community mod install detection", () => {
             state: "installed",
             classification: "unknown",
             profile: "unknown",
+            dllMatch: {
+                status: "unknown_hash",
+                profile: "unknown",
+            },
             matchedRelease: null,
         });
     });
@@ -139,6 +186,7 @@ describe("community mod install detection", () => {
         const result = await detectCommunityModInstall(gameDirectory, { releaseFingerprints: [], readVersionInfo: async () => null });
 
         expect(result.classification).toBe("unknown");
+        expect(result.dllMatch.status).toBe("unknown_hash");
         expect(result.manifest.profile).toBe("netniv-basic");
     });
 

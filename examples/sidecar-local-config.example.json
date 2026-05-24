@@ -1,3 +1,4 @@
 {
-  "unsafeAllowUnrecognizedInstalledDll": false
+  "unsafeAllowUnrecognizedInstalledDll": false,
+  "recognizedInstalledDlls": []
 }

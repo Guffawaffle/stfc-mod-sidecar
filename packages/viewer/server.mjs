@@ -178,8 +178,8 @@ const fleetBrokerInstallId = normalizeBrokerIdentifier(process.env.STFC_SIDECAR_
     || `sidecar-${shaHex(gameDir).slice(0, 32)}`;
 const fleetBrokerSessionId = normalizeBrokerIdentifier(process.env.STFC_SIDECAR_SESSION_ID)
     || `session-${Date.now()}`;
-let communityModInstallStatus = await readCommunityModInstallStatus();
 let localSidecarConfig = await readLocalSidecarConfig(gameDir);
+let communityModInstallStatus = await readCommunityModInstallStatus(localSidecarConfig);
 let communityModVariantGate = buildCommunityModVariantGateContext({
     install: communityModInstallStatus,
     selectedProfile: communityModSettingsProfile,
@@ -588,6 +588,8 @@ function variantGateReasonLabel(capability, reason) {
                 return "Installed Basic DLL does not include Battle Log.";
             case "installed_dll_unknown":
                 return "Installed DLL is unknown.";
+            case "installed_dll_hash_unavailable":
+                return "Installed DLL hash is unavailable.";
             case "installed_dll_missing":
                 return "No Community Mod DLL is installed.";
             default:
@@ -609,8 +611,8 @@ function variantGateLabel(value) {
 }
 
 async function refreshCommunityModVariantGate() {
-    communityModInstallStatus = await readCommunityModInstallStatus();
     localSidecarConfig = await readLocalSidecarConfig(gameDir);
+    communityModInstallStatus = await readCommunityModInstallStatus(localSidecarConfig);
     communityModVariantGate = buildCommunityModVariantGateContext({
         install: communityModInstallStatus,
         selectedProfile: communityModSettingsProfile,
@@ -679,15 +681,27 @@ async function withCommunityModOperationLock(response, operation, handler) {
     }
 }
 
-async function readCommunityModInstallStatus() {
+async function readCommunityModInstallStatus(localConfig = localSidecarConfig) {
     try {
-        return await detectCommunityModInstall(gameDir);
+        return await detectCommunityModInstall(gameDir, { localConfig });
     } catch (error) {
         return {
             ok: false,
             state: "error",
             classification: "unknown",
             profile: "unknown",
+            dllMatch: {
+                state: "error",
+                status: "hash_unavailable",
+                profile: "unknown",
+                effectiveProfile: "unknown",
+                confidence: "low",
+                matchSource: "error",
+                dllSha256: "",
+                configOverrideLabel: "",
+                configOverrideConfigPath: localConfig?.path ?? "",
+                unsafeOverrideActive: false,
+            },
             error: error instanceof Error ? error.message : String(error),
             generatedAt: new Date().toISOString(),
         };

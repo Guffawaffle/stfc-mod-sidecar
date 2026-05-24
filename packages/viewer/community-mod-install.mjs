@@ -4,6 +4,7 @@ import { constants as fsConstants } from "node:fs";
 import { access, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
+import { classifyInstalledCommunityModDll } from "./community-mod-dll-classification.mjs";
 import { buildCommunityModInstallPlatformCapability } from "./community-mod-install-platform.mjs";
 import { communityModProfileFromDistribution } from "./community-mod-profiles.mjs";
 
@@ -42,6 +43,7 @@ export async function detectCommunityModInstall(gameDirectory, options = {}) {
             state: "unselected",
             classification: "none",
             profile: "none",
+            dllMatch: classifyInstalledCommunityModDll({ installState: "unselected", dllExists: false }),
             platform,
             generatedAt,
         };
@@ -54,6 +56,7 @@ export async function detectCommunityModInstall(gameDirectory, options = {}) {
             state: "unsupported_platform",
             classification: "none",
             profile: "none",
+            dllMatch: classifyInstalledCommunityModDll({ installState: "unsupported_platform", dllExists: false }),
             gameDirectory: resolvedGameDirectory,
             platform,
             summary: platform.unsupportedReason,
@@ -71,6 +74,7 @@ export async function detectCommunityModInstall(gameDirectory, options = {}) {
             state: "none",
             classification: "none",
             profile: "none",
+            dllMatch: classifyInstalledCommunityModDll({ installState: "none", dllExists: false }),
             gameDirectory: resolvedGameDirectory,
             dll: {
                 exists: false,
@@ -83,18 +87,26 @@ export async function detectCommunityModInstall(gameDirectory, options = {}) {
 
     const [dllStat, dllSha256, versionInfo] = await Promise.all([
         stat(dllPath),
-        sha256File(dllPath),
+        sha256File(dllPath).catch(() => ""),
         readVersionInfo(dllPath, options),
     ]);
     const matchedRelease = findReleaseFingerprint(dllSha256, options.releaseFingerprints ?? DEFAULT_COMMUNITY_MOD_RELEASE_FINGERPRINTS);
-    const manifestProfile = profileFromManifest(manifest, dllSha256);
-    const classification = manifestProfile ?? matchedRelease?.profile ?? "unknown";
+    const dllMatch = classifyInstalledCommunityModDll({
+        installState: "installed",
+        dllExists: true,
+        dllSha256,
+        manifest,
+        matchedRelease,
+        localConfig: options.localConfig,
+    });
+    const classification = dllMatch.profile;
 
     return {
         ok: true,
         state: "installed",
         classification,
         profile: classification,
+        dllMatch,
         gameDirectory: resolvedGameDirectory,
         dll: {
             exists: true,
