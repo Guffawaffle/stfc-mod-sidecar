@@ -290,6 +290,10 @@ Evaluate future work in this order:
 - Should `Setup` remain one route with multiple panels first, or should install/support split later after the IA rename is stable?
 - What is the minimum local context bundle that `Aria` can preview and send without confusing users about privacy or automation boundaries?
 
+## Parking Lot
+
+- Future settings/config work may include a small TOML editor or live TOML preview that shows what pending or applied settings would write. This is provisional and intentionally outside the Battle Report and Fleet Watch activity scope.
+
 ## Recommended First Implementation PR
 
 The first implementation PR should be a nav-and-copy-only IA cleanup.
