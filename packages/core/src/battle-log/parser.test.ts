@@ -107,6 +107,53 @@ describe("battle-log parser", () => {
     }
   });
 
+  it("accepts and preserves battle report exact identifier fields alongside compatibility numerics", () => {
+    const line = [
+      '{"protocolVersion":"stfc.sidecar.events.v0"',
+      '"type":"battle.report"',
+      '"schemaVersion":"stfc.sidecar.battle-report.v0"',
+      `"timestamp":"${timestamp}"`,
+      '"source":"stfc-community-mod"',
+      '"journalId":"2709118446356718841"',
+      '"battleId":"2709118446356718841"',
+      '"battleType":8',
+      '"report":{"summary":{"outcome":"initiator_victory"}',
+      '"rewards":[]',
+      '"fleets":[{"side":"initiator","fleet_id":2644013931949275600,"fleet_id_exact":"2644013931949275600","ship_ids":[2682548280591992300],"ship_ids_exact":["2682548280591992155"]}]',
+      '"events":[{"ship_ids":[2682548280591992300],"ship_ids_exact":["2682548280591992155"]}]',
+      '"attackRows":[{"attackerShipId":2682548280591992300,"attackerShipIdExact":"2682548280591992155","targetShipId":2679690622826530000,"targetShipIdExact":"2679690622826529803","attacker":{"shipId":2682548280591992300,"shipIdExact":"2682548280591992155","fleetId":2644013931949275600,"fleetIdExact":"2644013931949275600"}}]',
+      '"decode":{"status":"decoded_segments_with_attack_rows"}',
+      '"parity":{"reference":"stfc_client_csv_export"}}}',
+    ].join(",");
+
+    const parsed = parseEventJsonLine(line);
+
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.event.type).toBe("battle.report");
+
+      const fleet = (parsed.event.report.fleets[0] ?? {}) as Record<string, unknown>;
+      const event = (parsed.event.report.events[0] ?? {}) as Record<string, unknown>;
+      const attackRow = ((parsed.event.report.attackRows ?? [])[0] ?? {}) as Record<string, unknown>;
+      const attacker = (attackRow["attacker"] ?? {}) as Record<string, unknown>;
+
+      expect(String(fleet["fleet_id"])).toBe("2644013931949275600");
+      expect(fleet["fleet_id_exact"]).toBe("2644013931949275600");
+      expect(fleet["ship_ids"]).toEqual([2682548280591992300]);
+      expect(fleet["ship_ids_exact"]).toEqual(["2682548280591992155"]);
+      expect(event["ship_ids_exact"]).toEqual(["2682548280591992155"]);
+      expect(String(attackRow["attackerShipId"])).toBe("2682548280591992300");
+      expect(attackRow["attackerShipIdExact"]).toBe("2682548280591992155");
+      expect(String(attackRow["targetShipId"])).toBe("2679690622826530000");
+      expect(attackRow["targetShipIdExact"]).toBe("2679690622826529803");
+      expect(String(attacker["shipId"])).toBe("2682548280591992300");
+      expect(attacker["shipIdExact"]).toBe("2682548280591992155");
+      expect(String(attacker["fleetId"])).toBe("2644013931949275600");
+      expect(attacker["fleetIdExact"]).toBe("2644013931949275600");
+      expect(attacker["shipIdExact"]).not.toBe(String(attackRow["attackerShipId"]));
+    }
+  });
+
   it("accepts mod-emitted battle analytics feed events with CSV parity rows", () => {
     const line = JSON.stringify({
       protocolVersion: "stfc.sidecar.events.v0",
