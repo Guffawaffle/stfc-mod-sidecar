@@ -7,7 +7,7 @@ import {
 } from "./fleet-telemetry.js";
 
 describe("fleet runtime telemetry conversion", () => {
-  it("converts allowlisted runtime snapshot fields into a broker snapshot", () => {
+  it("accepts runtime snapshots with no hullSpecId", () => {
     const payload = runtimeEnvelope({
       payload: {
         type: "fleet.runtime",
@@ -18,8 +18,7 @@ describe("fleet runtime telemetry conversion", () => {
         selectedIndex: 2,
         slots: [
           { slotIndex: 0, present: true, fleetId: 4001, currentStateName: "Docked", hullName: "Enterprise" },
-          { slotIndex: 1, present: true, fleetId: 4002, currentStateName: "Mining", hullName: "North Star", token: "nope" },
-          { slotIndex: 2, present: false, coordinates: { x: 4, y: 7 } },
+          { slotIndex: 1, present: false, coordinates: { x: 4, y: 7 } },
         ],
       },
     });
@@ -39,15 +38,79 @@ describe("fleet runtime telemetry conversion", () => {
       sessionId: "mod-session-1",
       snapshotVersion: 17,
       observedAt: "2026-05-18T12:05:00.000Z",
-      fleetCount: 2,
+      fleetCount: 1,
     });
     expect(events[0].slots).toEqual([
       expect.objectContaining({ slotKey: "slot-0", assignmentKind: "player_ship", state: "docked", shipType: "hull:Enterprise" }),
-      expect.objectContaining({ slotKey: "slot-1", assignmentKind: "player_ship", state: "mining", shipType: "hull:North Star" }),
-      expect.objectContaining({ slotKey: "slot-2", assignmentKind: "slot", state: "empty" }),
+      expect.objectContaining({ slotKey: "slot-1", assignmentKind: "slot", state: "empty" }),
     ]);
-    expect(events[0].slots[1]).not.toHaveProperty("token");
-    expect(events[0].slots[2]).not.toHaveProperty("coordinates");
+    expect(events[0].slots[0]).not.toHaveProperty("hullSpecId");
+    expect(events[0].slots[1]).not.toHaveProperty("coordinates");
+  });
+
+  it("preserves numeric hullSpecId from runtime snapshots", () => {
+    const payload = runtimeEnvelope({
+      payload: {
+        type: "fleet.runtime",
+        schemaVersion: "stfc.fleet.runtime_snapshot.v1",
+        source: "deployment-battle-end-event",
+        observedAtMs: 1747569900000,
+        fleetBarTracked: true,
+        selectedIndex: 2,
+        slots: [
+          { slotIndex: 0, present: true, fleetId: 4001, currentStateName: "Docked", hullName: "USS Reliant", hullSpecId: 1328894295, token: "nope" },
+        ],
+      },
+    });
+
+    const envelopes = extractFleetRuntimeMajelEnvelopes(payload);
+    const events = buildFleetRuntimeTelemetryEvents(envelopes, {
+      installId: "install-test",
+      sidecarVersion: "0.1.0-test",
+    });
+
+    expect(events[0].slots).toEqual([
+      expect.objectContaining({
+        slotKey: "slot-0",
+        assignmentKind: "player_ship",
+        state: "docked",
+        shipType: "hull:USS Reliant",
+        hullSpecId: 1328894295,
+      }),
+    ]);
+    expect(events[0].slots[0]).not.toHaveProperty("token");
+  });
+
+  it("normalizes invalid hullSpecId values away", () => {
+    const payload = runtimeEnvelope({
+      payload: {
+        type: "fleet.runtime",
+        schemaVersion: "stfc.fleet.runtime_snapshot.v1",
+        source: "deployment-battle-end-event",
+        observedAtMs: 1747569900000,
+        fleetBarTracked: true,
+        selectedIndex: 2,
+        slots: [
+          { slotIndex: 0, present: true, fleetId: 4001, currentStateName: "Docked", hullName: "USS Reliant", hullSpecId: "1328894295x" },
+        ],
+      },
+    });
+
+    const envelopes = extractFleetRuntimeMajelEnvelopes(payload);
+    const events = buildFleetRuntimeTelemetryEvents(envelopes, {
+      installId: "install-test",
+      sidecarVersion: "0.1.0-test",
+    });
+
+    expect(events[0].slots).toEqual([
+      expect.objectContaining({
+        slotKey: "slot-0",
+        assignmentKind: "player_ship",
+        state: "docked",
+        shipType: "hull:USS Reliant",
+      }),
+    ]);
+    expect(events[0].slots[0]).not.toHaveProperty("hullSpecId");
   });
 });
 

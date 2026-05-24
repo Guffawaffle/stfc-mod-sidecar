@@ -37,8 +37,20 @@ export interface FleetProjectionSlot {
   updatedAt: string;
   shipKeyHash?: string;
   shipType?: string;
+  hullSpecId?: number;
   levelBand?: string;
   healthBand?: string;
+}
+
+export interface FleetRuntimeSnapshotSlot {
+  slotIndex?: unknown;
+  selected?: unknown;
+  present?: unknown;
+  fleetId?: unknown;
+  currentStateName?: unknown;
+  hullName?: unknown;
+  hullSpecId?: unknown;
+  [key: string]: unknown;
 }
 
 interface FleetTelemetryEventBase<TType extends string, TSchemaVersion extends string> {
@@ -100,7 +112,7 @@ export interface FleetRuntimeSnapshotPayload {
   fleetBarTracked?: boolean;
   selectedIndex?: number;
   fleet?: Record<string, unknown>;
-  slots: Array<Record<string, unknown>>;
+  slots: FleetRuntimeSnapshotSlot[];
 }
 
 export interface FleetRuntimeMajelEnvelope {
@@ -287,7 +299,7 @@ function fleetRuntimeEnvelopeToSnapshotEvent(
 }
 
 function fleetRuntimeSlotToProjectionSlot(
-  slot: Record<string, unknown>,
+  slot: FleetRuntimeSnapshotSlot,
   observedAt: string,
   fleetBarTracked: boolean,
 ): FleetProjectionSlot | null {
@@ -299,6 +311,7 @@ function fleetRuntimeSlotToProjectionSlot(
   const present = slot.present === true;
   const fleetId = finiteInteger(slot.fleetId);
   const hullName = safeText(slot.hullName);
+  const hullSpecId = finiteInteger(slot.hullSpecId);
   const currentStateName = safeText(slot.currentStateName);
   const slotKey = `slot-${slotIndex}`;
   const fleetKey = present && fleetId !== null
@@ -315,6 +328,9 @@ function fleetRuntimeSlotToProjectionSlot(
 
   if (present && fleetId !== null) {
     projectionSlot.shipKeyHash = shaHex(`fleet:${fleetId}`).slice(0, 32);
+  }
+  if (present && hullSpecId !== null) {
+    projectionSlot.hullSpecId = hullSpecId;
   }
   if (present && hullName) {
     projectionSlot.shipType = `hull:${hullName}`;
@@ -420,7 +436,7 @@ function asFleetRuntimeMajelEnvelope(value: unknown): FleetRuntimeMajelEnvelope 
       fleetBarTracked: payload.fleetBarTracked === true,
       selectedIndex: finiteInteger(payload.selectedIndex) ?? undefined,
       fleet: isRecord(payload.fleet) ? payload.fleet : undefined,
-      slots: payload.slots.filter(isRecord),
+      slots: payload.slots.filter(isRecord) as FleetRuntimeSnapshotSlot[],
     },
   };
 }

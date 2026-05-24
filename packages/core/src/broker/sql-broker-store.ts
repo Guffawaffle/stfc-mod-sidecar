@@ -985,6 +985,7 @@ function normalizeProjectionSlots(slots: readonly FleetProjectionSlot[]): FleetP
 }
 
 function normalizeProjectionSlot(slot: FleetProjectionSlot): FleetProjectionSlot {
+  const hullSpecId = Number.isInteger(slot.hullSpecId) ? Math.trunc(slot.hullSpecId as number) : undefined;
   return {
     slotKey: slot.slotKey,
     fleetKey: slot.fleetKey,
@@ -993,6 +994,7 @@ function normalizeProjectionSlot(slot: FleetProjectionSlot): FleetProjectionSlot
     updatedAt: slot.updatedAt,
     ...(slot.shipKeyHash ? { shipKeyHash: slot.shipKeyHash } : {}),
     ...(slot.shipType ? { shipType: slot.shipType } : {}),
+    ...(hullSpecId !== undefined ? { hullSpecId } : {}),
     ...(slot.levelBand ? { levelBand: slot.levelBand } : {}),
     ...(slot.healthBand ? { healthBand: slot.healthBand } : {}),
   };

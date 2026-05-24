@@ -357,6 +357,7 @@ function projectionSlot(overrides: Partial<FleetSnapshotEvent["slots"][number]> 
     assignmentKind: "player_ship",
     updatedAt: "2026-05-18T12:00:00.000Z",
     shipType: "hull:9191",
+    hullSpecId: 9191,
     levelBand: "20-29",
     healthBand: "tier:6",
     ...overrides,
