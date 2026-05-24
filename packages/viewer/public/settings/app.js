@@ -1,4 +1,5 @@
 import { normalizeModProfile } from "../shared/community-mod-status.js";
+import { buildHotkeyDependencyState } from "./hotkey-dependencies.js";
 
 const state = {
   snapshot: null,
@@ -36,6 +37,7 @@ const elements = {
   saveSettings: document.querySelector("#save-settings"),
   settingsTabButtons: [...document.querySelectorAll("[data-settings-tab]")],
   settingsTabPanels: [...document.querySelectorAll("[data-settings-panel]")],
+  settingsHotkeyDependencyNote: document.querySelector("#settings-hotkey-dependency-note"),
   hardSettings: document.querySelector("#hard-settings"),
   notificationSettings: document.querySelector("#notification-settings"),
   notificationMaster: document.querySelector("#notification-master"),
@@ -231,7 +233,11 @@ function settingsTabFromHash() {
 }
 
 function renderSettingsTabs() {
+  const dependency = buildHotkeyDependencyState(state.snapshot, state.draftHardSettings);
   const availableTabs = new Set(["general", "hard-settings", "keybindings"]);
+  if (!dependency.keybindingsAvailable) {
+    availableTabs.delete("keybindings");
+  }
   if ((state.diagnosticSnapshot?.settings.length ?? 0) > 0 && state.bootstrap?.developerMode !== false) {
     availableTabs.add("diagnostics");
   }
@@ -240,7 +246,8 @@ function renderSettingsTabs() {
   }
 
   if (!availableTabs.has(state.activeSettingsTab)) {
-    state.activeSettingsTab = "general";
+    state.activeSettingsTab = dependency.keybindingsAvailable ? "general" : "hard-settings";
+    window.history.replaceState(null, "", `#${state.activeSettingsTab}`);
   }
 
   for (const button of elements.settingsTabButtons) {
@@ -451,18 +458,27 @@ function renderGroupFilter() {
 }
 
 function renderHardSettings() {
+  const dependency = buildHotkeyDependencyState(state.snapshot, state.draftHardSettings);
+  elements.settingsHotkeyDependencyNote.hidden = !dependency.useScopelyHotkeys;
+  elements.settingsHotkeyDependencyNote.textContent = dependency.hardSettingsMessage;
+
   elements.hardSettings.innerHTML = state.snapshot.hardSettings.map((setting) => {
     const value = state.draftHardSettings.get(setting.id);
+    const locked = dependency.lockedHardSettingIds.includes(setting.id);
     const marker = value === setting.value ? "" : changedBadge(`data-revert-hard-setting="${escapeHtml(setting.id)}"`, `Revert ${setting.label}`);
     const control = setting.type === "boolean"
-      ? `<label class="settings-toggle"><input type="checkbox" data-hard-setting="${escapeHtml(setting.id)}"${value ? " checked" : ""} /><span>${escapeHtml(setting.label)}</span></label>`
-      : `<label class="control"><span>${escapeHtml(setting.label)}</span><input type="number" min="${setting.min ?? 0}" max="${setting.max ?? 9999}" step="${setting.step ?? 1}" value="${escapeHtml(value)}" data-hard-setting="${escapeHtml(setting.id)}" /></label>`;
+      ? `<label class="settings-toggle"><input type="checkbox" data-hard-setting="${escapeHtml(setting.id)}"${value ? " checked" : ""}${locked ? " disabled" : ""} /><span>${escapeHtml(setting.label)}</span></label>`
+      : `<label class="control"><span>${escapeHtml(setting.label)}</span><input type="number" min="${setting.min ?? 0}" max="${setting.max ?? 9999}" step="${setting.step ?? 1}" value="${escapeHtml(value)}" data-hard-setting="${escapeHtml(setting.id)}"${locked ? " disabled" : ""} /></label>`;
+    const lockedMessage = locked
+      ? `<div class="setting-issues"><span class="settings-chip settings-chip--warning">${escapeHtml(dependency.lockedSettingMessage)}</span></div>`
+      : "";
 
     return `
-      <article class="hard-setting-row">
+      <article class="hard-setting-row${locked ? " hard-setting-row--disabled" : ""}">
         <div>
           ${control}
           <p>${escapeHtml(setting.description)}</p>
+          ${lockedMessage}
         </div>
         ${marker}
       </article>
@@ -730,9 +746,7 @@ function onHardSettingChange(event) {
   const value = setting.type === "boolean" ? input.checked : Number(input.value);
   state.draftHardSettings.set(setting.id, value);
   markDirty();
-  renderHardSettings();
-  renderSummary();
-  renderSaveState();
+  renderAll();
 }
 
 function onHardSettingClick(event) {
@@ -748,9 +762,7 @@ function onHardSettingClick(event) {
 
   state.draftHardSettings.set(setting.id, setting.value);
   markDirty();
-  renderHardSettings();
-  renderSummary();
-  renderSaveState();
+  renderAll();
 }
 
 function onDiagnosticSettingChange(event) {
