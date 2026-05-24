@@ -1,6 +1,8 @@
 import { visibleViewerPages } from "./pages.js";
 import {
+    hasVariantGateReviewState,
     shouldShowVariantGateWarning,
+    variantGateCapabilityUnavailableSummary,
     variantGateWarningKey,
     variantGateWarningViewModel,
 } from "./variant-gate-warning.js";
@@ -97,15 +99,70 @@ function applyViewerState(state, options = {}) {
         renderNavigation(nav, normalizedState);
     }
 
-    for (const element of document.querySelectorAll("[data-developer-only]")) {
-        element.hidden = !normalizedState.developerMode;
-    }
-
     for (const element of document.querySelectorAll("[data-capability]")) {
         element.hidden = normalizedState.capabilities?.[element.dataset.capability] !== true;
     }
 
+    applyCapabilityCards(normalizedState);
+    applyDeveloperOnlyElements(normalizedState);
+    applyDeveloperCards(normalizedState);
+
     renderVariantGateWarning(normalizedState.variantGate);
+    renderVariantGateSetupSummary(normalizedState.variantGate);
+}
+
+function applyDeveloperOnlyElements(state) {
+    for (const element of document.querySelectorAll("[data-developer-only]")) {
+        const capabilityCard = element.closest("[data-capability-card]");
+        const capability = capabilityCard?.dataset.capabilityCard ?? "";
+        const capabilityBlocked = capability && state.capabilities?.[capability] !== true;
+        element.hidden = !state.developerMode || Boolean(capabilityBlocked);
+    }
+}
+
+function applyDeveloperCards(state) {
+    for (const card of document.querySelectorAll("[data-developer-card]")) {
+        const capability = card.dataset.capabilityCard ?? "";
+        const capabilityBlocked = capability && state.capabilities?.[capability] !== true;
+        card.classList.toggle("module-card--disabled", !state.developerMode || Boolean(capabilityBlocked));
+    }
+
+    for (const fallback of document.querySelectorAll("[data-developer-unavailable]")) {
+        const capabilityCard = fallback.closest("[data-capability-card]");
+        const capability = capabilityCard?.dataset.capabilityCard ?? "";
+        const capabilityBlocked = capability && state.capabilities?.[capability] !== true;
+        fallback.hidden = state.developerMode || Boolean(capabilityBlocked);
+    }
+}
+
+function applyCapabilityCards(state) {
+    for (const card of document.querySelectorAll("[data-capability-card]")) {
+        const capability = card.dataset.capabilityCard ?? "";
+        const enabled = state.capabilities?.[capability] === true;
+        const eyebrow = card.querySelector("[data-capability-card-eyebrow]");
+        const message = card.querySelector("[data-capability-card-message]");
+
+        card.classList.toggle("module-card--disabled", !enabled);
+        if (eyebrow) {
+            eyebrow.textContent = enabled
+                ? (eyebrow.dataset.capabilityCardEnabledLabel ?? eyebrow.textContent)
+                : (eyebrow.dataset.capabilityCardDisabledLabel ?? eyebrow.textContent);
+        }
+
+        for (const action of card.querySelectorAll("[data-capability-card-primary]")) {
+            action.hidden = !enabled;
+        }
+
+        for (const fallback of card.querySelectorAll("[data-capability-card-fallback]")) {
+            fallback.hidden = enabled;
+        }
+
+        if (message) {
+            message.textContent = enabled
+                ? ""
+                : variantGateCapabilityUnavailableSummary(state.variantGate, capability);
+        }
+    }
 }
 
 function normalizeViewerState(state = {}) {
@@ -154,38 +211,75 @@ function renderVariantGateWarning(variantGate) {
     copy.className = "variant-gate-warning__copy";
     const eyebrow = document.createElement("p");
     eyebrow.className = "eyebrow";
-    eyebrow.textContent = "Security Is Paramount";
-    const title = document.createElement("h2");
-    title.textContent = view.title;
+    eyebrow.textContent = "STFC Mod Setup";
     const summary = document.createElement("p");
-    summary.className = "page-copy";
-    summary.textContent = view.summary;
-    const details = document.createElement("ul");
-    details.className = "module-list";
+    summary.className = "variant-gate-warning__headline";
+    const title = document.createElement("strong");
+    title.textContent = `${view.title}.`;
+    summary.append(title, document.createTextNode(` ${view.summary}`));
+    const details = document.createElement("div");
+    details.className = "variant-gate-warning__details";
     for (const detail of view.details) {
-        const item = document.createElement("li");
+        const item = document.createElement("span");
+        item.className = "variant-gate-warning__detail";
         item.textContent = detail;
         details.appendChild(item);
     }
-    copy.append(eyebrow, title, summary, details);
+    copy.append(eyebrow, summary);
+    if (view.details.length > 0) {
+        copy.append(details);
+    }
 
     const actions = document.createElement("div");
     actions.className = "variant-gate-warning__actions";
     const settingsLink = document.createElement("a");
-    settingsLink.className = "link-button";
+    settingsLink.className = "link-button link-button--secondary";
     settingsLink.href = view.fixHref;
     settingsLink.textContent = view.fixLabel;
-    const ignoreButton = document.createElement("button");
-    ignoreButton.type = "button";
-    ignoreButton.className = "button-secondary";
-    ignoreButton.textContent = "Ignore This Time";
-    ignoreButton.addEventListener("click", () => {
-        writeSessionValue(VARIANT_GATE_WARNING_SESSION_KEY, warningKey);
-        warning.remove();
-    }, { once: true });
-    actions.append(settingsLink, ignoreButton);
+    actions.append(settingsLink);
+    if (!view.persistent) {
+        const ignoreButton = document.createElement("button");
+        ignoreButton.type = "button";
+        ignoreButton.className = "variant-gate-warning__dismiss";
+        ignoreButton.textContent = "Dismiss";
+        ignoreButton.addEventListener("click", () => {
+            writeSessionValue(VARIANT_GATE_WARNING_SESSION_KEY, warningKey);
+            warning.remove();
+        }, { once: true });
+        actions.append(ignoreButton);
+    }
 
     warning.append(copy, actions);
+}
+
+function renderVariantGateSetupSummary(variantGate) {
+    const summary = document.querySelector("[data-variant-gate-summary]");
+    if (!summary) {
+        return;
+    }
+
+    if (!hasVariantGateReviewState(variantGate)) {
+        summary.hidden = true;
+        return;
+    }
+
+    const view = variantGateWarningViewModel(variantGate);
+    summary.hidden = false;
+    summary.querySelector("[data-variant-gate-summary-title]")?.replaceChildren(document.createTextNode(view.title));
+    summary.querySelector("[data-variant-gate-summary-copy]")?.replaceChildren(document.createTextNode(view.summary));
+
+    const details = summary.querySelector("[data-variant-gate-summary-details]");
+    if (!details) {
+        return;
+    }
+
+    details.textContent = "";
+    for (const detail of view.details) {
+        const item = document.createElement("span");
+        item.className = "variant-gate-summary__detail";
+        item.textContent = detail;
+        details.appendChild(item);
+    }
 }
 
 function insertAfterNavigation(element) {

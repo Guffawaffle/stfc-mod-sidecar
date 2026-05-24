@@ -8,24 +8,19 @@
   </head>
   <body>
     <main class="shell site-shell">
-      <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="watch"></nav>
+      <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="fleet-watch"></nav>
 
       <header class="hero">
         <div>
-          <p class="eyebrow">Watch</p>
+          <p class="eyebrow">Operational Surface</p>
           <h1>Observed Fleet State</h1>
-          <p class="hero-copy">Text-first read-only watch surface for observed fleet rows from the local projection API. This is current local state, not final dock planning.</p>
+          <p class="hero-copy">Fleet Watch is the text-first read-only surface for observed fleet rows from the local projection API. This is current local state, not final dock planning.</p>
         </div>
         <section class="hero-controls" aria-label="fleet projection controls">
           <button id="refresh-button" type="button">Refresh now</button>
           <button id="toggle-empty-slots-button" class="button-secondary" type="button">Show empty slots</button>
         </section>
       </header>
-
-      <section class="site-nav" aria-label="watch section navigation">
-        <a class="site-nav__link site-nav__link--active" href="/fleet/">Observed Fleet State</a>
-        <a class="site-nav__link" href="/">Start</a>
-      </section>
 
       <section class="status-strip" aria-live="polite">
         <article>
@@ -53,7 +48,7 @@
       <section class="detail-column fleet-panel">
         <div class="panel-heading">
           <h2>Observed fleet rows</h2>
-          <p>Current row-oriented snapshot for the Watch surface. It shows observed fleet and slot state without claiming a final dock layout.</p>
+          <p>Current row-oriented snapshot for Fleet Watch. It shows observed fleet and slot state without claiming a final dock layout.</p>
         </div>
         <p id="projection-note" class="detail-note fleet-status-note">Waiting for the local fleet projection.</p>
         <div id="projection-view" class="detail-view">

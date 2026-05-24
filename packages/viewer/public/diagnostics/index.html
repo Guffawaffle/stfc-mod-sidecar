@@ -14,13 +14,13 @@
         <div>
           <p class="eyebrow">Advanced Surface</p>
           <h1>Diagnostics</h1>
-          <p class="hero-copy">Raw evidence, transport monitors, and advanced companion tooling. Battle Log stays easy to reach here while Watch summaries are still deferred.</p>
+          <p class="hero-copy">Raw evidence, transport monitors, and advanced companion tooling. Battle Log stays easy to reach here while Fleet Watch remains focused on current fleet state.</p>
         </div>
       </header>
 
       <section class="module-grid" aria-label="diagnostics surfaces">
-        <article class="module-card module-card--primary" data-capability="battleLog" hidden>
-          <p class="eyebrow">Available Now</p>
+        <article class="module-card module-card--primary" data-capability-card="battleLog">
+          <p class="eyebrow" data-capability-card-eyebrow data-capability-card-enabled-label="Available Now" data-capability-card-disabled-label="Blocked">Available Now</p>
           <h2>Battle Log Explorer</h2>
           <p class="page-copy">Inspect recent raw battle and activity events from the local sidecar data layer.</p>
           <ul class="module-list">
@@ -28,11 +28,15 @@
             <li>Decoded battle detail</li>
             <li>Catalog coverage and analytics evidence</li>
           </ul>
-          <a class="link-button" href="/battle-log/">Open Battle Log</a>
+          <a class="link-button" href="/battle-log/" data-capability-card-primary>Open Battle Log</a>
+          <div class="module-card__unavailable" data-capability-card-fallback hidden>
+            <p class="module-card__status" data-capability-card-message></p>
+            <a class="link-button link-button--secondary" href="/about/?surface=setup">Open STFC Mod Setup</a>
+          </div>
         </article>
 
-        <article class="module-card" data-developer-only data-capability="battleLog" hidden>
-          <p class="eyebrow">Developer Tools</p>
+        <article class="module-card" data-developer-card data-capability-card="battleLog">
+          <p class="eyebrow" data-capability-card-eyebrow data-capability-card-enabled-label="Developer Tools" data-capability-card-disabled-label="Blocked">Developer Tools</p>
           <h2>Battle Workbench</h2>
           <p class="page-copy">Evidence-heavy battle diagnostics on top of canonical capture data.</p>
           <ul class="module-list">
@@ -40,10 +44,17 @@
             <li>Decoded segments and derived timeline</li>
             <li>Source-token evidence</li>
           </ul>
-          <a class="link-button link-button--secondary" href="/battle-log/workbench/">Open Workbench</a>
+          <a class="link-button link-button--secondary" href="/battle-log/workbench/" data-capability-card-primary data-developer-only hidden>Open Workbench</a>
+          <div class="module-card__unavailable" data-capability-card-fallback hidden>
+            <p class="module-card__status" data-capability-card-message></p>
+            <a class="link-button link-button--secondary" href="/about/?surface=setup">Open STFC Mod Setup</a>
+          </div>
+          <div class="module-card__unavailable" data-developer-unavailable hidden>
+            <p class="module-card__status">Available when Companion developer mode is enabled.</p>
+          </div>
         </article>
 
-        <article class="module-card" data-developer-only hidden>
+        <article class="module-card" data-developer-card>
           <p class="eyebrow">Cloud Boundary</p>
           <h2>Cloud Sync Monitor</h2>
           <p class="page-copy">Monitor accepted cloud-safe envelopes from the local companion window without relabeling transport/debug state as the assistant.</p>
@@ -52,7 +63,10 @@
             <li>Endpoint and payload detail</li>
             <li>Developer-only sync monitor</li>
           </ul>
-          <a class="link-button link-button--secondary" href="/diagnostics/cloud-sync/">Open Cloud Sync Monitor</a>
+          <a class="link-button link-button--secondary" href="/diagnostics/cloud-sync/" data-developer-only hidden>Open Cloud Sync Monitor</a>
+          <div class="module-card__unavailable" data-developer-unavailable hidden>
+            <p class="module-card__status">Available when Companion developer mode is enabled.</p>
+          </div>
         </article>
 
         <article class="module-card module-card--accent">
@@ -64,10 +78,10 @@
             <li>Settings troubleshooting prompt</li>
             <li>Support and recovery context</li>
           </ul>
-          <a class="link-button link-button--secondary" href="/about/">Open Setup And Support</a>
+          <a class="link-button link-button--secondary" href="/about/#diagnostics-bundle">Open Diagnostics Bundle</a>
         </article>
 
-        <article class="module-card" data-developer-only hidden>
+        <article class="module-card" data-developer-card>
           <p class="eyebrow">Controls</p>
           <h2>Developer Diagnostics Controls</h2>
           <p class="page-copy">Trace and local capture controls remain in the settings route for now, but they are classified under Diagnostics.</p>
@@ -76,7 +90,10 @@
             <li>Replay retention</li>
             <li>Capture configuration</li>
           </ul>
-          <a class="link-button link-button--secondary" href="/settings/#diagnostics">Open Controls</a>
+          <a class="link-button link-button--secondary" href="/settings/#diagnostics" data-developer-only hidden>Open Controls</a>
+          <div class="module-card__unavailable" data-developer-unavailable hidden>
+            <p class="module-card__status">Available when Companion developer mode is enabled.</p>
+          </div>
         </article>
       </section>
     </main>

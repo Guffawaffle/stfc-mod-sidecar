@@ -9,22 +9,25 @@ const __dirname = path.dirname(__filename);
 const homeHtml = readFileSync(path.resolve(__dirname, "../../viewer/public/index.html"), "utf8");
 
 describe("viewer home markup", () => {
-    test("keeps Battle Log directly reachable while gating the raw surfaces", () => {
-        expect(homeHtml).toMatch(/module-card module-card--primary[^>]+data-capability="battleLog"/);
-        expect(homeHtml).toMatch(/module-card[^>]+data-developer-only[^>]+data-capability="battleLog"/);
-        expect(homeHtml).toContain("Still Easy To Reach");
-        expect(homeHtml).toContain('href="/battle-log/"');
-        expect(homeHtml.indexOf('href="/battle-log/"')).toBeLessThan(homeHtml.indexOf('href="/diagnostics/"'));
+    test("restores Home as the card-based launcher with separate Settings and STFC Mod Setup surfaces", () => {
+        expect(homeHtml).toContain("<title>STFC Sidecar Viewer | Home</title>");
+        expect(homeHtml).toContain('data-current-page="home"');
+        expect(homeHtml).toContain("<h1>Home</h1>");
+        expect(homeHtml).not.toContain('aria-label="watch section navigation"');
+        expect(homeHtml).toContain('href="/fleet/">Open Fleet Watch</a>');
+        expect(homeHtml).toContain('href="/aria/"');
+        expect(homeHtml).toContain('href="/settings/">Open Settings</a>');
+        expect(homeHtml).toContain('href="/about/?surface=setup"');
+        expect(homeHtml).toContain('href="/diagnostics/"');
     });
 
-    test("surfaces the Watch start page plus setup and diagnostics transition modules", () => {
-        expect(homeHtml).toContain("<h1>Start</h1>");
-        expect(homeHtml).toContain('aria-label="watch section navigation"');
-        expect(homeHtml).toContain('href="/fleet/">Observed Fleet State</a>');
-        expect(homeHtml).toMatch(/module-card[^>]+data-capability="notifications"/);
-        expect(homeHtml).toMatch(/module-card[^>]+data-developer-only[^>]+hidden/);
-        expect(homeHtml).toContain('href="/aria/"');
-        expect(homeHtml).toContain('href="/setup/"');
-        expect(homeHtml).toContain('href="/diagnostics/"');
+    test("keeps raw and developer battle tools out of the Home launcher", () => {
+        expect(homeHtml).toContain("Battle Log Explorer");
+        expect(homeHtml).toContain("raw battle tools");
+        expect(homeHtml).not.toContain('href="/battle-log/"');
+        expect(homeHtml).not.toContain('href="/battle-log/workbench/"');
+        expect(homeHtml).not.toContain('data-capability="battleLog"');
+        expect(homeHtml).not.toContain("Battle Workbench");
+        expect(homeHtml).not.toContain("Notification Preferences");
     });
 });

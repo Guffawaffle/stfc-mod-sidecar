@@ -14,56 +14,51 @@
         <div>
           <p class="eyebrow">Remote Assistant</p>
           <h1>Aria</h1>
-          <p class="hero-copy">Aria in the sidecar is a client and context bridge to the remote assistant. This slice does not add local inference, background upload, or new assistant behavior.</p>
+          <p class="hero-copy">Aria is the sidecar boundary for explicit local context handoff into the remote assistant. This surface still does not imply a local model, silent upload, or a second assistant runtime inside the desktop app.</p>
         </div>
       </header>
 
-      <section class="module-grid" aria-label="Aria surface overview">
-        <article class="module-card module-card--primary">
+      <section class="module-grid module-grid--two" aria-label="Aria surface overview">
+        <article class="module-card module-card--primary module-card--wide">
           <p class="eyebrow">Current Boundary</p>
           <h2>Remote Assistant, Local Bridge</h2>
-          <p class="page-copy">Aria belongs to the remote advisor stack. The companion keeps local context explicit instead of implying a second assistant runtime inside the desktop app.</p>
+          <p class="page-copy">Aria belongs to the remote advisor stack. The companion keeps the local bridge explicit so desktop evidence and player state are only handed off when the user chooses it.</p>
           <ul class="module-list">
             <li>Remote advisor and API-backed intelligence</li>
             <li>Explicit local context direction</li>
             <li>No local LLM runtime implied</li>
           </ul>
+          <div class="module-actions" aria-label="Aria boundary actions">
+            <a class="link-button" href="/settings/">Review Local Settings</a>
+            <a class="link-button link-button--secondary" href="/diagnostics/">Inspect Diagnostics</a>
+          </div>
         </article>
 
         <article class="module-card">
-          <p class="eyebrow">What Stays Local</p>
-          <h2>Watch And Setup Stay Separate</h2>
-          <p class="page-copy">Observed fleet state, companion setup, and diagnostics stay in their own surfaces until the user explicitly chooses to share safe local context.</p>
-          <ul class="module-list">
-            <li>Observed fleet state stays under Watch</li>
-            <li>Install and configuration stay under Setup</li>
-            <li>Raw evidence stays under Diagnostics</li>
-          </ul>
-          <a class="link-button link-button--secondary" href="/fleet/">Open Watch</a>
-        </article>
-
-        <article class="module-card">
-          <p class="eyebrow">Next Surface</p>
-          <h2>Bridge Work Is Intentionally Deferred</h2>
-          <p class="page-copy">Connection status, explicit local context preview, and member or API status belong here later, but they are intentionally not implemented in this nav-and-copy slice.</p>
+          <p class="eyebrow">Later Here</p>
+          <h2>Explicit Context Send, Not Silent Collection</h2>
+          <p class="page-copy">When Aria grows, this is where connection state, local context preview, and send controls belong. That work is intentionally deferred until the surrounding local surfaces are stable and honest.</p>
           <ul class="module-list">
             <li>Connection state</li>
-            <li>Context preview and send</li>
+            <li>Explicit context preview and send</li>
             <li>Member or API-backed status</li>
           </ul>
-          <a class="link-button link-button--secondary" href="/setup/">Open Setup</a>
         </article>
 
         <article class="module-card module-card--accent">
-          <p class="eyebrow">Keep Boundaries Honest</p>
-          <h2>Diagnostics Are Not Aria</h2>
-          <p class="page-copy">Cloud sync monitors, raw battle evidence, and transport internals stay under Diagnostics even when they support future assistant workflows.</p>
+          <p class="eyebrow">Stays Separate</p>
+          <h2>Fleet Watch, Setup, And Diagnostics Keep Their Own Homes</h2>
+          <p class="page-copy">Observed fleet state, STFC Mod setup, and raw diagnostics stay in their own routes until you deliberately cross the boundary with explicit local context.</p>
           <ul class="module-list">
-            <li>Battle Log Explorer</li>
-            <li>Cloud Sync Monitor</li>
-            <li>Diagnostics bundle and developer tools</li>
+            <li>Observed fleet state stays under Fleet Watch</li>
+            <li>Install and profile flows stay under STFC Mod Setup</li>
+            <li>Raw evidence and cloud transport stay under Diagnostics</li>
           </ul>
-          <a class="link-button link-button--secondary" href="/diagnostics/">Open Diagnostics</a>
+          <div class="module-actions" aria-label="Aria related surfaces">
+            <a class="link-button link-button--secondary" href="/fleet/">Open Fleet Watch</a>
+            <a class="link-button link-button--secondary" href="/about/?surface=setup">Open STFC Mod Setup</a>
+            <a class="link-button link-button--secondary" href="/diagnostics/">Open Diagnostics</a>
+          </div>
         </article>
       </section>
     </main>

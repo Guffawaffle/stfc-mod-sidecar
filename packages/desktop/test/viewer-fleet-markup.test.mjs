@@ -10,11 +10,11 @@ const fleetHtml = readFileSync(path.resolve(__dirname, "../../viewer/public/flee
 const fleetApp = readFileSync(path.resolve(__dirname, "../../viewer/public/fleet/app.js"), "utf8");
 
 describe("viewer fleet markup", () => {
-    test("adds a watch-surface navigation page with a dedicated Fleet script entry", () => {
-        expect(fleetHtml).toContain('data-current-page="watch"');
+    test("keeps Fleet Watch focused on observed fleet state with a dedicated Fleet script entry", () => {
+        expect(fleetHtml).toContain('data-current-page="fleet-watch"');
         expect(fleetHtml).toContain("<h1>Observed Fleet State</h1>");
-        expect(fleetHtml).toContain('aria-label="watch section navigation"');
-        expect(fleetHtml).toContain('href="/">Start</a>');
+        expect(fleetHtml).not.toContain('aria-label="watch section navigation"');
+        expect(fleetHtml).toContain("Fleet Watch is the text-first read-only surface");
         expect(fleetHtml).toContain("Observed fleet rows");
         expect(fleetHtml).toContain("Show empty slots");
         expect(fleetHtml).toContain('/fleet/app.js');

@@ -3,61 +3,32 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>STFC Sidecar Viewer | Start</title>
+    <title>STFC Sidecar Viewer | Home</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="shell site-shell">
-      <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="watch"></nav>
+      <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="home"></nav>
 
       <header class="hero home-hero">
         <div>
-          <p class="eyebrow">Watch</p>
-          <h1>Start</h1>
-          <p class="hero-copy">Observed Fleet State is the current live Watch view. Start keeps the current Watch overview and the cross-surface entry points together while the rest of the Watch product surface is still taking shape.</p>
+          <p class="eyebrow">Local Companion</p>
+          <h1>Home</h1>
+          <p class="hero-copy">Home is the card-based launcher for the current companion surfaces. Fleet Watch stays focused on live fleet state while settings, STFC Mod setup, and diagnostics keep their own boundaries.</p>
         </div>
       </header>
-
-      <section class="site-nav" aria-label="watch section navigation">
-        <a class="site-nav__link site-nav__link--active" href="/">Start</a>
-        <a class="site-nav__link" href="/fleet/">Observed Fleet State</a>
-      </section>
 
       <section class="module-grid" aria-label="viewer modules">
         <article class="module-card module-card--primary">
           <p class="eyebrow">Available Now</p>
-          <h2>Observed Fleet State</h2>
-          <p class="page-copy">Open the current read-only watch view of observed fleet rows from the local projection API.</p>
+          <h2>Fleet Watch</h2>
+          <p class="page-copy">Open the current read-only fleet surface backed by the local projection API.</p>
           <ul class="module-list">
             <li>Observed fleet and slot state</li>
             <li>Projection freshness and version</li>
-            <li>Local watch surface foundation</li>
+            <li>Operational fleet-state surface</li>
           </ul>
-          <a class="link-button" href="/fleet/">Open Observed Fleet</a>
-        </article>
-
-        <article class="module-card module-card--primary" data-capability="battleLog" hidden>
-          <p class="eyebrow">Still Easy To Reach</p>
-          <h2>Battle Log Explorer</h2>
-          <p class="page-copy">Raw battle and activity evidence stays easy to reach while simple Watch summaries are still deferred.</p>
-          <ul class="module-list">
-            <li>Recent feed events and raw JSON</li>
-            <li>Decoded battle detail and catalog coverage</li>
-            <li>Source data for future recent-activity views</li>
-          </ul>
-          <a class="link-button" href="/battle-log/">Open Battle Log</a>
-        </article>
-
-        <article class="module-card" data-developer-only data-capability="battleLog" hidden>
-          <p class="eyebrow">Diagnostics</p>
-          <h2>Battle Workbench</h2>
-          <p class="page-copy">Developer-only evidence-heavy battle diagnostics remain directly reachable during the Watch transition.</p>
-          <ul class="module-list">
-            <li>Decoded segments and attack timeline</li>
-            <li>Combatants, rewards, and battle detail</li>
-            <li>Source-token evidence</li>
-          </ul>
-          <a class="link-button link-button--secondary" href="/battle-log/workbench/">Open Workbench</a>
+          <a class="link-button" href="/fleet/">Open Fleet Watch</a>
         </article>
 
         <article class="module-card">
@@ -74,26 +45,26 @@
 
         <article class="module-card">
           <p class="eyebrow">Configuration</p>
-          <h2>Setup</h2>
-          <p class="page-copy">Install, configure, and support the selected Community Mod profile without mixing those flows into Watch or Diagnostics.</p>
+          <h2>Settings</h2>
+          <p class="page-copy">Adjust general sidecar preferences without mixing them into STFC Mod setup or diagnostics.</p>
           <ul class="module-list">
-            <li>Settings and keybindings</li>
-            <li>Install and update workflows</li>
-            <li>Support, diagnostics bundle, and legal</li>
+            <li>General sidecar preferences</li>
+            <li>Keybindings and notification settings</li>
+            <li>Developer diagnostics controls</li>
           </ul>
-          <a class="link-button link-button--secondary" href="/setup/">Open Setup</a>
+          <a class="link-button link-button--secondary" href="/settings/">Open Settings</a>
         </article>
 
-        <article class="module-card" data-capability="notifications" hidden>
-          <p class="eyebrow">Setup</p>
-          <h2>Notification Preferences</h2>
-          <p class="page-copy">Desktop delivery and audio cues stay under Setup while Watch-specific reminder behavior is intentionally deferred.</p>
+        <article class="module-card">
+          <p class="eyebrow">Install And Profile</p>
+          <h2>STFC Mod Setup</h2>
+          <p class="page-copy">Open install, update, profile, DLL, and support flows for the selected STFC Community Mod setup.</p>
           <ul class="module-list">
-            <li>Desktop notification toggles</li>
-            <li>Per-event audio cues</li>
-            <li>Inline sound previews</li>
+            <li>Install and update workflows</li>
+            <li>Profile, DLL, and security status</li>
+            <li>Support, diagnostics bundle, and legal</li>
           </ul>
-          <a class="link-button link-button--secondary" href="/settings/#notifications">Open Notification Preferences</a>
+          <a class="link-button link-button--secondary" href="/about/?surface=setup">Open STFC Mod Setup</a>
         </article>
 
         <article class="module-card module-card--accent">
