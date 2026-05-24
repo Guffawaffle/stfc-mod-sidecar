@@ -137,6 +137,7 @@ describe("fleet telemetry broker", () => {
       state: "warping",
       shipType: "hull:Discovery",
       hullSpecId: 1307832955,
+      shipIdentityId: "2667207912673592502",
     });
     expect(slots[0]).not.toHaveProperty("token");
     expect(slots[0]).not.toHaveProperty("rawJson");
@@ -222,7 +223,16 @@ function runtimeEnvelope(overrides: Record<string, unknown> = {}) {
         { slotIndex: 0, present: true, fleetId: 1000, currentStateName: "Docked", hullName: "Enterprise", token: "secret" },
         { slotIndex: 1, present: true, fleetId: 1001, currentStateName: "Docked", hullName: "Defiant" },
         { slotIndex: 2, present: true, fleetId: 1002, currentStateName: "Docked", hullName: "Voyager" },
-        { slotIndex: 3, present: true, fleetId: 1003, currentStateName: "Warping", hullName: "Discovery", hullSpecId: 1307832955, coordinates: { x: 1, y: 2 } },
+        {
+          slotIndex: 3,
+          present: true,
+          fleetId: 1003,
+          currentStateName: "Warping",
+          hullName: "Discovery",
+          hullSpecId: 1307832955,
+          shipIdentityProbe: { shipId: "2667207912673592502", source: "FleetPlayerData.Ship.ID" },
+          coordinates: { x: 1, y: 2 },
+        },
         { slotIndex: 4, present: true, fleetId: 1004, currentStateName: "Docked", hullName: "Franklin" },
         { slotIndex: 5, present: true, fleetId: 1005, currentStateName: "Docked", hullName: "Meridian" },
         { slotIndex: 6, present: true, fleetId: 1006, currentStateName: "Mining", hullName: "Botany Bay" },

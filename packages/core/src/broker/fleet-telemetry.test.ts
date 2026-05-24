@@ -112,6 +112,140 @@ describe("fleet runtime telemetry conversion", () => {
     ]);
     expect(events[0].slots[0]).not.toHaveProperty("hullSpecId");
   });
+
+  it("accepts runtime snapshots without a ship identity probe", () => {
+    const payload = runtimeEnvelope({
+      payload: {
+        type: "fleet.runtime",
+        schemaVersion: "stfc.fleet.runtime_snapshot.v1",
+        source: "fleet-slot-combat-started",
+        observedAtMs: 1747569900000,
+        fleetBarTracked: true,
+        selectedIndex: 2,
+        slots: [
+          { slotIndex: 0, present: true, fleetId: 4001, currentStateName: "Docked", hullName: "Enterprise" },
+        ],
+      },
+    });
+
+    const envelopes = extractFleetRuntimeMajelEnvelopes(payload);
+
+    expect(envelopes).toHaveLength(1);
+    expect(envelopes[0]?.payload.slots[0]).not.toHaveProperty("shipIdentityProbe");
+  });
+
+  it("preserves string ship identity probe fields in raw Majel payloads", () => {
+    const payload = runtimeEnvelope({
+      payload: {
+        type: "fleet.runtime",
+        schemaVersion: "stfc.fleet.runtime_snapshot.v1",
+        source: "fleet-slot-combat-started",
+        observedAtMs: 1747569900000,
+        fleetBarTracked: true,
+        selectedIndex: 2,
+        slots: [
+          {
+            slotIndex: 0,
+            present: true,
+            fleetId: 4001,
+            currentStateName: "Docked",
+            hullName: "Enterprise",
+            shipIdentityProbe: {
+              shipId: "2679690622826529803",
+              source: "FleetPlayerData.Ship.ID",
+            },
+          },
+        ],
+      },
+    });
+
+    const envelopes = extractFleetRuntimeMajelEnvelopes(payload);
+    const slot = envelopes[0]?.payload.slots[0];
+
+    expect(envelopes).toHaveLength(1);
+    expect(slot).toMatchObject({
+      shipIdentityProbe: {
+        shipId: "2679690622826529803",
+        source: "FleetPlayerData.Ship.ID",
+      },
+    });
+  });
+
+  it("projects exact string ship identity ids onto runtime fleet rows", () => {
+    const payload = runtimeEnvelope({
+      payload: {
+        type: "fleet.runtime",
+        schemaVersion: "stfc.fleet.runtime_snapshot.v1",
+        source: "fleet-slot-combat-started",
+        observedAtMs: 1747569900000,
+        fleetBarTracked: true,
+        selectedIndex: 2,
+        slots: [
+          {
+            slotIndex: 0,
+            present: true,
+            fleetId: 4001,
+            currentStateName: "Docked",
+            hullName: "Enterprise",
+            shipIdentityProbe: {
+              shipId: "2679690622826529803",
+              source: "FleetPlayerData.Ship.ID",
+            },
+          },
+        ],
+      },
+    });
+
+    const envelopes = extractFleetRuntimeMajelEnvelopes(payload);
+    const events = buildFleetRuntimeTelemetryEvents(envelopes, {
+      installId: "install-test",
+      sidecarVersion: "0.1.0-test",
+    });
+
+    expect(events[0]?.slots[0]).toMatchObject({
+      shipIdentityId: "2679690622826529803",
+    });
+  });
+
+  it("does not trust numeric ship identity probe fields for projection", () => {
+    const payload = runtimeEnvelope({
+      payload: {
+        type: "fleet.runtime",
+        schemaVersion: "stfc.fleet.runtime_snapshot.v1",
+        source: "fleet-slot-combat-started",
+        observedAtMs: 1747569900000,
+        fleetBarTracked: true,
+        selectedIndex: 2,
+        slots: [
+          {
+            slotIndex: 0,
+            present: true,
+            fleetId: 4001,
+            currentStateName: "Docked",
+            hullName: "Enterprise",
+            shipIdentityProbe: {
+              shipId: 2679690622826529803,
+              source: "FleetPlayerData.Ship.ID",
+            },
+          },
+        ],
+      },
+    });
+
+    const envelopes = extractFleetRuntimeMajelEnvelopes(payload);
+    const events = buildFleetRuntimeTelemetryEvents(envelopes, {
+      installId: "install-test",
+      sidecarVersion: "0.1.0-test",
+    });
+
+    expect(envelopes[0]?.payload.slots[0]).toMatchObject({
+      shipIdentityProbe: {
+        shipId: 2679690622826529803,
+        source: "FleetPlayerData.Ship.ID",
+      },
+    });
+    expect(events[0]?.slots[0]).not.toHaveProperty("shipIdentityId");
+  });
 });
 
 function runtimeEnvelope(overrides: Record<string, unknown> = {}) {

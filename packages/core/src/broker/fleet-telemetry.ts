@@ -35,6 +35,7 @@ export interface FleetProjectionSlot {
   state: string;
   assignmentKind: string;
   updatedAt: string;
+  shipIdentityId?: string;
   shipKeyHash?: string;
   shipType?: string;
   hullSpecId?: number;
@@ -312,6 +313,7 @@ function fleetRuntimeSlotToProjectionSlot(
   const fleetId = finiteInteger(slot.fleetId);
   const hullName = safeText(slot.hullName);
   const hullSpecId = finiteInteger(slot.hullSpecId);
+  const shipIdentityId = exactStringIdFromShipIdentityProbe(slot.shipIdentityProbe);
   const currentStateName = safeText(slot.currentStateName);
   const slotKey = `slot-${slotIndex}`;
   const fleetKey = present && fleetId !== null
@@ -328,6 +330,9 @@ function fleetRuntimeSlotToProjectionSlot(
 
   if (present && fleetId !== null) {
     projectionSlot.shipKeyHash = shaHex(`fleet:${fleetId}`).slice(0, 32);
+  }
+  if (present && shipIdentityId !== null) {
+    projectionSlot.shipIdentityId = shipIdentityId;
   }
   if (present && hullSpecId !== null) {
     projectionSlot.hullSpecId = hullSpecId;
@@ -459,4 +464,21 @@ function safeText(value: unknown, maxLength = 80): string | null {
   }
   const normalized = value.replace(/\s+/gu, " ").trim();
   return normalized ? normalized.slice(0, maxLength) : null;
+}
+
+function exactStringIdFromShipIdentityProbe(value: unknown): string | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return exactDigitString(value.shipId);
+}
+
+function exactDigitString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return /^\d+$/u.test(normalized) ? normalized : null;
 }

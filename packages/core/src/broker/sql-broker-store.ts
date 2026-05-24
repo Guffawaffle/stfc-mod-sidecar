@@ -992,6 +992,7 @@ function normalizeProjectionSlot(slot: FleetProjectionSlot): FleetProjectionSlot
     state: slot.state,
     assignmentKind: slot.assignmentKind,
     updatedAt: slot.updatedAt,
+    ...(slot.shipIdentityId ? { shipIdentityId: slot.shipIdentityId } : {}),
     ...(slot.shipKeyHash ? { shipKeyHash: slot.shipKeyHash } : {}),
     ...(slot.shipType ? { shipType: slot.shipType } : {}),
     ...(hullSpecId !== undefined ? { hullSpecId } : {}),
