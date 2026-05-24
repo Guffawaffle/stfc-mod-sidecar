@@ -69,8 +69,13 @@ describe("sql fleet broker store", () => {
       outboxInserted: 1,
       outboxUpdated: 0,
       projectionAdvanced: 1,
+      lastProjectionAdvancedAt: "2026-05-18T12:00:00.000Z",
       projectionNoOp: 0,
+      lastProjectionNoOpAt: null,
+      lastProjectionNoOpReason: null,
       projectionStale: 0,
+      lastProjectionStaleAt: null,
+      lastProjectionStaleReason: null,
     });
     expect(summary).toMatchObject({
       rawEventCount: 1,
@@ -174,7 +179,13 @@ describe("sql fleet broker store", () => {
     const summary = await store.readSummary();
 
     expect(first).toMatchObject({ projectionAdvanced: 1, outboxInserted: 1 });
-    expect(second).toMatchObject({ projectionNoOp: 1, outboxInserted: 0, outboxUpdated: 0 });
+    expect(second).toMatchObject({
+      projectionNoOp: 1,
+      lastProjectionNoOpAt: "2026-05-18T12:01:00.000Z",
+      lastProjectionNoOpReason: "state_hash_unchanged",
+      outboxInserted: 0,
+      outboxUpdated: 0,
+    });
     expect(summary).toMatchObject({ rawEventCount: 2, pendingOutboxCount: 1, projectionCount: 1 });
     expect(projection).toMatchObject({ stateVersion: 1 });
 
@@ -213,7 +224,13 @@ describe("sql fleet broker store", () => {
     const projection = await store.readProjection("fleet:install-test");
 
     expect(newer).toMatchObject({ projectionAdvanced: 1 });
-    expect(stale).toMatchObject({ projectionStale: 1, outboxInserted: 0, outboxUpdated: 0 });
+    expect(stale).toMatchObject({
+      projectionStale: 1,
+      lastProjectionStaleAt: "2026-05-18T11:59:00.000Z",
+      lastProjectionStaleReason: "state_version_not_newer_for_session",
+      outboxInserted: 0,
+      outboxUpdated: 0,
+    });
     expect(projection).toMatchObject({ stateVersion: 2 });
     expect(findProjectionSlot(projection, "slot-alpha")?.state).toBe("assigned");
 
@@ -281,7 +298,14 @@ describe("sql fleet broker store", () => {
     ]);
     const projection = await store.readProjection("fleet:install-test");
 
-    expect(stale).toMatchObject({ projectionStale: 1, projectionAdvanced: 0, outboxInserted: 0, outboxUpdated: 0 });
+    expect(stale).toMatchObject({
+      projectionStale: 1,
+      projectionAdvanced: 0,
+      lastProjectionStaleAt: "2026-05-18T12:06:00.000Z",
+      lastProjectionStaleReason: "state_version_not_newer_for_session",
+      outboxInserted: 0,
+      outboxUpdated: 0,
+    });
     expect(projection).toMatchObject({ sessionId: "session-a", stateVersion: 10, slotCount: 1 });
     expect(projection?.slots[0]?.slotKey).toBe("ship-alpha");
 

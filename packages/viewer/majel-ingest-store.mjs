@@ -11,6 +11,7 @@ export function createMajelIngestStore(options = {}) {
     let rejectedCount = 0;
     let nextLocalId = 1;
     let lastReceivedAt = null;
+    let lastAcceptedFleetRuntimeAt = null;
     let lastRejectedAt = null;
     let lastRejectedError = null;
 
@@ -30,6 +31,9 @@ export function createMajelIngestStore(options = {}) {
         const accepted = validationResults.map((result) => appendEnvelope(result.envelope, receivedAt));
         acceptedCount += accepted.length;
         lastReceivedAt = receivedAt;
+        if (accepted.some((entry) => isFleetRuntimeEnvelope(entry.envelope))) {
+            lastAcceptedFleetRuntimeAt = receivedAt;
+        }
 
         return {
             ok: true,
@@ -95,9 +99,26 @@ export function createMajelIngestStore(options = {}) {
             returnedEnvelopes: visibleEntries.length,
             rejectedEnvelopes: rejectedCount,
             lastReceivedAt,
+            lastAcceptedFleetRuntimeAt,
             lastRejectedAt,
             lastRejectedError,
             events: visibleEntries.map(summarizeEntry),
+        };
+    }
+
+    function status() {
+        return {
+            ok: true,
+            source: "majel-ingest-memory",
+            endpoint: "/api/majel/ingest",
+            generatedAt: now().toISOString(),
+            totalEnvelopes: acceptedCount,
+            storedEnvelopes: entries.length,
+            rejectedEnvelopes: rejectedCount,
+            lastReceivedAt,
+            lastAcceptedFleetRuntimeAt,
+            lastRejectedAt,
+            lastRejectedError,
         };
     }
 
@@ -130,11 +151,18 @@ export function createMajelIngestStore(options = {}) {
 
     return {
         ingest,
+        status,
         snapshot,
         detail,
         recordRejected: reject,
         validate: validateMajelEnvelope,
     };
+}
+
+function isFleetRuntimeEnvelope(envelope) {
+    return envelope?.schema === "stfc.fleet.runtime_snapshot.v1"
+        || envelope?.payload?.type === "fleet.runtime"
+        || envelope?.payload?.schemaVersion === "stfc.fleet.runtime_snapshot.v1";
 }
 
 export function validateMajelEnvelope(value, index = 0) {

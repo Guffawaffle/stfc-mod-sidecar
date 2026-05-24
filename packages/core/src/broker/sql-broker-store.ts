@@ -37,8 +37,13 @@ export interface FleetBrokerStoreAppendResult {
   outboxInserted: number;
   outboxUpdated: number;
   projectionAdvanced: number;
+  lastProjectionAdvancedAt: string | null;
   projectionNoOp: number;
+  lastProjectionNoOpAt: string | null;
+  lastProjectionNoOpReason: string | null;
   projectionStale: number;
+  lastProjectionStaleAt: string | null;
+  lastProjectionStaleReason: string | null;
 }
 
 export interface FleetOutboxEntry {
@@ -151,8 +156,8 @@ interface FleetProjectionDocument {
 
 type ProjectionOutcome =
   | { status: "advanced"; projection: FleetProjectionRecord }
-  | { status: "noop" }
-  | { status: "stale" };
+  | { status: "noop"; reason: string }
+  | { status: "stale"; reason: string };
 
 const DEFAULT_RAW_TABLE_NAME = "sidecar_raw_events";
 const DEFAULT_OUTBOX_TABLE_NAME = "sidecar_outbox";
@@ -192,8 +197,13 @@ class SqlFleetBrokerStore implements FleetBrokerStore {
     let outboxInserted = 0;
     let outboxUpdated = 0;
     let projectionAdvanced = 0;
+    let lastProjectionAdvancedAt: string | null = null;
     let projectionNoOp = 0;
+    let lastProjectionNoOpAt: string | null = null;
+    let lastProjectionNoOpReason: string | null = null;
     let projectionStale = 0;
+    let lastProjectionStaleAt: string | null = null;
+    let lastProjectionStaleReason: string | null = null;
 
     await this.executor.begin();
     try {
@@ -217,11 +227,15 @@ class SqlFleetBrokerStore implements FleetBrokerStore {
         const projectionOutcome = applyProjectionEvent(currentProjection, record);
         if (projectionOutcome.status === "noop") {
           projectionNoOp += 1;
+          lastProjectionNoOpAt = record.observedAt;
+          lastProjectionNoOpReason = projectionOutcome.reason;
           continue;
         }
 
         if (projectionOutcome.status === "stale") {
           projectionStale += 1;
+          lastProjectionStaleAt = record.observedAt;
+          lastProjectionStaleReason = projectionOutcome.reason;
           continue;
         }
 
@@ -231,6 +245,7 @@ class SqlFleetBrokerStore implements FleetBrokerStore {
         );
         projectionCache.set(record.projectionKey, projectionOutcome.projection);
         projectionAdvanced += 1;
+        lastProjectionAdvancedAt = projectionOutcome.projection.updatedAt;
 
         const outboxResult = await this.writeOutboxRecord(record, projectionOutcome.projection.stateHash);
         if (outboxResult === "inserted") {
@@ -253,8 +268,13 @@ class SqlFleetBrokerStore implements FleetBrokerStore {
       outboxInserted,
       outboxUpdated,
       projectionAdvanced,
+      lastProjectionAdvancedAt,
       projectionNoOp,
+      lastProjectionNoOpAt,
+      lastProjectionNoOpReason,
       projectionStale,
+      lastProjectionStaleAt,
+      lastProjectionStaleReason,
     };
   }
 
@@ -907,11 +927,11 @@ function applyProjectionEvent(
     : applySlotChange(currentSlots, record.event);
   const nextStateHash = hashProjectionSlots(nextSlots);
   if (current && nextStateHash === current.stateHash) {
-    return { status: "noop" };
+    return { status: "noop", reason: "state_hash_unchanged" };
   }
 
   if (current && current.sessionId === record.sessionId && record.stateVersion <= current.stateVersion) {
-    return { status: "stale" };
+    return { status: "stale", reason: "state_version_not_newer_for_session" };
   }
 
   return {

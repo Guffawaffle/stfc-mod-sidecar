@@ -33,6 +33,11 @@ export function buildUnavailableFleetBrokerSummary(options = {}) {
         latestSequence: 0,
         lastObservedAt: null,
         lastProjectedAt: null,
+        lastProjectionAdvancedAt: null,
+        lastProjectionNoOpAt: null,
+        lastProjectionNoOpReason: null,
+        lastProjectionStaleAt: null,
+        lastProjectionStaleReason: null,
         lastError: options.error ? summarizeError(options.error) : null,
         lastErrorAt: options.error ? now().toISOString() : null,
     };

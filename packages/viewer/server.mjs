@@ -121,6 +121,8 @@ const eventStreamClients = new Set();
 const fleetStreamClients = new Set();
 const majelStreamClients = new Set();
 const communityModOperationLocks = new Map();
+let lastFleetStreamBroadcastAt = null;
+let lastFleetStreamBroadcastReason = null;
 
 let shutdownRequested = false;
 let exitTimer;
@@ -367,7 +369,9 @@ const server = createServer(async (request, response) => {
         getCommunityModCapabilities: () => communityModCapabilities,
         getEventStoreBackend: () => eventStore?.backend ?? "none",
         readAxPackage,
+        readFleetStreamStatus,
         readFleetBrokerSummary,
+        readMajelIngestStatus,
         settingsPath,
     })) {
         return;
@@ -1078,6 +1082,17 @@ async function readFleetBrokerSummary() {
     }
 }
 
+function readMajelIngestStatus() {
+    return majelIngestStore.status();
+}
+
+function readFleetStreamStatus() {
+    return {
+        lastBroadcastAt: lastFleetStreamBroadcastAt,
+        lastBroadcastReason: lastFleetStreamBroadcastReason,
+    };
+}
+
 async function readFleetBrokerQueueDepth() {
     if (!fleetBroker) {
         return 0;
@@ -1476,6 +1491,7 @@ function handleEventStream(request, response) {
 }
 
 function handleFleetStream(request, response) {
+    recordFleetStreamBroadcast("ready");
     handleStream(request, response, fleetStreamClients, "ready");
 }
 
@@ -1542,10 +1558,18 @@ function broadcastStreamUpdate(clients, eventName, reason, extra = {}) {
         return;
     }
 
+    if (clients === fleetStreamClients) {
+        recordFleetStreamBroadcast(reason);
+    }
     const payload = streamPayload(reason, extra);
     for (const client of clients) {
         sendEventStreamMessage(client, eventName, payload);
     }
+}
+
+function recordFleetStreamBroadcast(reason) {
+    lastFleetStreamBroadcastAt = new Date().toISOString();
+    lastFleetStreamBroadcastReason = reason ?? null;
 }
 
 function streamPayload(reason, extra = {}) {

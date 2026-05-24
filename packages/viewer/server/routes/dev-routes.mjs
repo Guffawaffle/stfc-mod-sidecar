@@ -30,7 +30,9 @@ export async function handleDevRoutes(request, response, requestUrl, context) {
             settingsPath: context.settingsPath,
             eventStoreBackend: context.getEventStoreBackend(),
             cloudTelemetry: context.cloudTelemetryBridge.status(),
+            majelIngest: context.readMajelIngestStatus(),
             fleetBroker: await context.readFleetBrokerSummary(),
+            fleetStream: context.readFleetStreamStatus(),
             generatedAt: new Date().toISOString(),
         });
         return true;

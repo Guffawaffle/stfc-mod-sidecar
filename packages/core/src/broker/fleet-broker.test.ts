@@ -143,6 +143,49 @@ describe("fleet telemetry broker", () => {
 
     await broker.close();
   });
+
+  it("reports projection diagnostic timing for advanced, no-op, and stale runtime snapshots", async () => {
+    const store = await createSqlFleetBrokerStore({
+      backend: "sqlite",
+      connection: makeTempPath("fleet-runtime-status.sqlite"),
+    });
+    const broker = await createFleetTelemetryBroker({
+      store,
+      installId: "install-test",
+      sessionId: "viewer-session",
+      sidecarVersion: "0.1.0-test",
+      cloudUploadEnabled: false,
+      now: fixedClock("2026-05-18T12:00:00.000Z"),
+    });
+
+    await broker.ingestFleetRuntimePayload(runtimeEnvelope({
+      sessionId: "mod-session-1",
+      sequence: 17,
+      observedAt: "2026-05-18T12:05:00.000Z",
+    }));
+    await broker.ingestFleetRuntimePayload(runtimeEnvelope({
+      eventId: "runtime-event-2",
+      sequence: 18,
+      observedAt: "2026-05-18T12:05:00.000Z",
+    }));
+    await broker.ingestFleetRuntimePayload(runtimeEnvelope({
+      eventId: "runtime-event-3",
+      sequence: 16,
+      observedAt: "2026-05-18T12:04:00.000Z",
+    }));
+
+    const status = await broker.status();
+
+    expect(status).toMatchObject({
+      lastProjectionAdvancedAt: "2026-05-18T12:05:00.000Z",
+      lastProjectionNoOpAt: "2026-05-18T12:05:00.000Z",
+      lastProjectionNoOpReason: "state_hash_unchanged",
+      lastProjectionStaleAt: "2026-05-18T12:04:00.000Z",
+      lastProjectionStaleReason: "state_version_not_newer_for_session",
+    });
+
+    await broker.close();
+  });
 });
 
 function makeTempPath(fileName: string): string {

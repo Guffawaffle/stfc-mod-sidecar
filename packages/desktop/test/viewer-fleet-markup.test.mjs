@@ -17,6 +17,7 @@ describe("viewer fleet markup", () => {
         expect(fleetHtml).toContain("Fleet Watch is the text-first read-only surface");
         expect(fleetHtml).toContain("Observed fleet rows");
         expect(fleetHtml).toContain("Show empty slots");
+        expect(fleetHtml).toContain('id="projection-debug"');
         expect(fleetHtml).toContain('/fleet/app.js');
     });
 

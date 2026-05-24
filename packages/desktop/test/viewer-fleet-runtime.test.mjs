@@ -64,6 +64,10 @@ describe.sequential("viewer fleet runtime", () => {
         expect(page.elements.status.textContent).toBe("Current");
         expect(page.elements.rowCount.textContent).toBe("1");
         expect(page.elements.note.textContent).toContain("Projection current. Showing 1 observed fleet rows");
+        expect(page.elements.debug.textContent).toContain("Last projection fetch:");
+        expect(page.elements.debug.textContent).not.toContain("Last projection fetch: Never");
+        expect(page.elements.debug.textContent).not.toContain("Last render/update: Never");
+        expect(page.elements.debug.textContent).toContain("Rendered version: v12");
         expect(page.elements.view.innerHTML).toContain("Fleet ALPHA1");
         expect(page.elements.view.innerHTML).toContain("Slot BRAVO0");
         expect(page.elements.view.innerHTML).not.toContain("fleet:ALPHA-1234567890");
@@ -207,6 +211,8 @@ describe.sequential("viewer fleet runtime", () => {
         ]);
         expect(page.requests.some((request) => request.includes("/api/events"))).toBe(false);
         expect(page.elements.version.textContent).toBe("v8");
+        expect(page.elements.debug.textContent).not.toContain("Last SSE event: Never");
+        expect(page.elements.debug.textContent).toContain("Rendered version: v8");
         expect(page.setIntervalCalls).toBe(0);
     });
 
@@ -326,6 +332,7 @@ async function loadFleetPage(payload, options = {}) {
 
 function createFleetDom() {
     const elements = {
+        debug: new MockElement(),
         endpoint: new MockElement(),
         note: new MockElement(),
         refreshButton: new MockElement(),
@@ -337,6 +344,7 @@ function createFleetDom() {
         view: new MockElement({ innerHTML: '<div class="empty-state">Loading current fleet projection...</div>' }),
     };
     const selectors = new Map([
+        ["#projection-debug", elements.debug],
         ["#projection-endpoint", elements.endpoint],
         ["#projection-note", elements.note],
         ["#projection-row-count", elements.rowCount],

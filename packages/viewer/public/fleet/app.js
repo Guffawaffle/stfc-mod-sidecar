@@ -10,6 +10,11 @@ let activeRefreshPromise = null;
 let fallbackRefreshTimer = null;
 let fleetEventSource = null;
 let lastProjectionPayload = null;
+let lastProjectionFetchAt = null;
+let lastSseConnectedAt = null;
+let lastSseEventAt = null;
+let lastRenderAt = null;
+let currentRenderedStateVersion = "No projection";
 let showEmptySlots = false;
 
 const elements = {
@@ -22,6 +27,7 @@ const elements = {
   view: document.querySelector("#projection-view"),
   refreshButton: document.querySelector("#refresh-button"),
   toggleEmptySlotsButton: document.querySelector("#toggle-empty-slots-button"),
+  debug: document.querySelector("#projection-debug"),
 };
 
 const bridgeStatus = createBridgeStatus(elements.status);
@@ -66,6 +72,7 @@ export function fleetProjectionPageEnterEvent() {
 }
 
 updateEmptySlotsToggle();
+renderDebugStamps();
 
 async function refreshProjection(options = {}) {
   if (activeRefreshPromise) {
@@ -76,6 +83,8 @@ async function refreshProjection(options = {}) {
   }
 
   const requestId = ++refreshSequence;
+  lastProjectionFetchAt = new Date().toISOString();
+  renderDebugStamps();
   bridgeStatus.begin(options.activityLabel ?? (options.announce ? "Refreshing" : "Checking"));
 
   const refreshPromise = (async () => {
@@ -122,6 +131,8 @@ function startLiveUpdateLoop() {
   fleetEventSource.addEventListener("open", markLiveUpdatesConnected);
   fleetEventSource.addEventListener("ready", markLiveUpdatesConnected);
   fleetEventSource.addEventListener("fleet-projection-changed", () => {
+    lastSseEventAt = new Date().toISOString();
+    renderDebugStamps();
     void refreshProjection({ announce: false, activityLabel: "Updating" });
   });
   fleetEventSource.addEventListener("error", () => {
@@ -131,6 +142,8 @@ function startLiveUpdateLoop() {
 }
 
 function markLiveUpdatesConnected() {
+  lastSseConnectedAt = new Date().toISOString();
+  renderDebugStamps();
   clearFallbackRefresh();
 }
 
@@ -194,6 +207,7 @@ function renderUnavailable(payload) {
   elements.version.textContent = "Unavailable";
   elements.note.textContent = `Projection unavailable. ${String(payload.error ?? "The local broker did not return a current projection.")}`;
   elements.view.innerHTML = `<div class="empty-state">${escapeHtml(unavailableMessage(payload))}</div>`;
+  markProjectionRendered("No projection");
   bridgeStatus.disconnected("Unavailable");
 }
 
@@ -205,6 +219,7 @@ function renderEmpty(payload) {
   elements.version.textContent = Number.isFinite(projection?.stateVersion) ? `v${projection.stateVersion}` : "No projection";
   elements.note.textContent = "Projection available but empty. No observed fleet rows have been stored yet.";
   elements.view.innerHTML = '<div class="empty-state">No observed fleet rows are available yet.</div>';
+  markProjectionRendered(Number.isFinite(projection?.stateVersion) ? `v${projection.stateVersion}` : "No projection");
   bridgeStatus.off("Empty");
 }
 
@@ -266,6 +281,7 @@ function renderRows(payload, options = {}) {
       </table>
     </div>
   `;
+  markProjectionRendered(Number.isFinite(projection?.stateVersion) ? `v${projection.stateVersion}` : "Unknown");
 
   if (stale) {
     bridgeStatus.off("Possibly stale");
@@ -273,6 +289,26 @@ function renderRows(payload, options = {}) {
   }
 
   bridgeStatus.open("Current");
+}
+
+function markProjectionRendered(versionLabel) {
+  lastRenderAt = new Date().toISOString();
+  currentRenderedStateVersion = versionLabel || "No projection";
+  renderDebugStamps();
+}
+
+function renderDebugStamps() {
+  if (!elements.debug) {
+    return;
+  }
+
+  elements.debug.textContent = [
+    `Last projection fetch: ${formatDiagnosticTime(lastProjectionFetchAt)}`,
+    `Last SSE connected: ${formatDiagnosticTime(lastSseConnectedAt)}`,
+    `Last SSE event: ${formatDiagnosticTime(lastSseEventAt)}`,
+    `Last render/update: ${formatDiagnosticTime(lastRenderAt)}`,
+    `Rendered version: ${currentRenderedStateVersion || "No projection"}`,
+  ].join(" | ");
 }
 
 function viewModelForSlot(slot) {
@@ -427,6 +463,10 @@ function unavailableMessage(payload) {
   }
 
   return "Fleet projection is unavailable.";
+}
+
+function formatDiagnosticTime(value) {
+  return value ? formatDateTime(value) : "Never";
 }
 
 function formatDateTime(value) {

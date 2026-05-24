@@ -40,6 +40,11 @@ export interface FleetBrokerStatusSummary extends FleetBrokerStoreSummary {
   cloudUploadEnabled: boolean;
   lastError: string | null;
   lastErrorAt: string | null;
+  lastProjectionAdvancedAt: string | null;
+  lastProjectionNoOpAt: string | null;
+  lastProjectionNoOpReason: string | null;
+  lastProjectionStaleAt: string | null;
+  lastProjectionStaleReason: string | null;
 }
 
 export interface FleetBrokerReadProjectionResult {
@@ -88,6 +93,11 @@ class FleetTelemetryBrokerImpl implements FleetTelemetryBroker {
     private sequence: number,
     private lastError: string | null,
     private lastErrorAt: string | null,
+    private lastProjectionAdvancedAt: string | null,
+    private lastProjectionNoOpAt: string | null,
+    private lastProjectionNoOpReason: string | null,
+    private lastProjectionStaleAt: string | null,
+    private lastProjectionStaleReason: string | null,
   ) {
     this.backend = store.backend;
   }
@@ -102,6 +112,11 @@ class FleetTelemetryBrokerImpl implements FleetTelemetryBroker {
       Boolean(options.cloudUploadEnabled),
       options.now ?? (() => new Date()),
       sequence,
+      null,
+      null,
+      null,
+      null,
+      null,
       null,
       null,
     );
@@ -185,6 +200,11 @@ class FleetTelemetryBrokerImpl implements FleetTelemetryBroker {
         cloudUploadEnabled: this.cloudUploadEnabled,
         lastError: this.lastError,
         lastErrorAt: this.lastErrorAt,
+        lastProjectionAdvancedAt: this.lastProjectionAdvancedAt ?? summary.lastProjectedAt,
+        lastProjectionNoOpAt: this.lastProjectionNoOpAt,
+        lastProjectionNoOpReason: this.lastProjectionNoOpReason,
+        lastProjectionStaleAt: this.lastProjectionStaleAt,
+        lastProjectionStaleReason: this.lastProjectionStaleReason,
         ...summary,
       };
     } catch (error) {
@@ -215,14 +235,30 @@ class FleetTelemetryBrokerImpl implements FleetTelemetryBroker {
         outboxInserted: 0,
         outboxUpdated: 0,
         projectionAdvanced: 0,
+        lastProjectionAdvancedAt: null,
         projectionNoOp: 0,
+        lastProjectionNoOpAt: null,
+        lastProjectionNoOpReason: null,
         projectionStale: 0,
+        lastProjectionStaleAt: null,
+        lastProjectionStaleReason: null,
       };
     }
 
     const result = await this.store.append(events);
     const { received: _ignoredReceived, ...storeResult } = result;
     this.lastError = null;
+    if (result.lastProjectionAdvancedAt) {
+      this.lastProjectionAdvancedAt = result.lastProjectionAdvancedAt;
+    }
+    if (result.lastProjectionNoOpAt) {
+      this.lastProjectionNoOpAt = result.lastProjectionNoOpAt;
+      this.lastProjectionNoOpReason = result.lastProjectionNoOpReason;
+    }
+    if (result.lastProjectionStaleAt) {
+      this.lastProjectionStaleAt = result.lastProjectionStaleAt;
+      this.lastProjectionStaleReason = result.lastProjectionStaleReason;
+    }
     return {
       ok: true,
       protocolVersion: SIDECAR_TELEMETRY_PROTOCOL_VERSION,

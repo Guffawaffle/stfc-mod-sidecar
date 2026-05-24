@@ -28,12 +28,25 @@ describe("viewer dev routes", () => {
             ok: true,
             eventStoreBackend: "sqlite",
             cloudTelemetry: { tokenConfigured: true },
+            majelIngest: {
+                lastReceivedAt: "2026-05-18T12:05:00.000Z",
+                lastAcceptedFleetRuntimeAt: "2026-05-18T12:05:00.000Z",
+            },
             fleetBroker: {
                 available: true,
                 backend: "sqlite",
                 cloudUploadEnabled: false,
                 rawEventCount: 2,
                 pendingOutboxCount: 1,
+                lastProjectionAdvancedAt: "2026-05-18T12:00:00.000Z",
+                lastProjectionNoOpAt: "2026-05-18T12:01:00.000Z",
+                lastProjectionNoOpReason: "state_hash_unchanged",
+                lastProjectionStaleAt: "2026-05-18T12:02:00.000Z",
+                lastProjectionStaleReason: "state_version_not_newer_for_session",
+            },
+            fleetStream: {
+                lastBroadcastAt: "2026-05-18T12:03:00.000Z",
+                lastBroadcastReason: "majel-ingest",
             },
         });
         expect(body.fleetBroker.payloadJson).toBeUndefined();
@@ -124,6 +137,14 @@ function baseContext(overrides = {}) {
         feedPath: "C:/Games/STFC/game/community_patch_battle_feed.jsonl",
         getCommunityModCapabilities: () => ({ battleLog: true, eventStore: true }),
         getEventStoreBackend: () => "sqlite",
+        readFleetStreamStatus: () => ({
+            lastBroadcastAt: "2026-05-18T12:03:00.000Z",
+            lastBroadcastReason: "majel-ingest",
+        }),
+        readMajelIngestStatus: () => ({
+            lastReceivedAt: "2026-05-18T12:05:00.000Z",
+            lastAcceptedFleetRuntimeAt: "2026-05-18T12:05:00.000Z",
+        }),
         readAxPackage: vi.fn(async () => ({ ok: true, route: "ax" })),
         readFleetBrokerSummary: vi.fn(async () => ({
             available: true,
@@ -135,6 +156,11 @@ function baseContext(overrides = {}) {
             latestSequence: 2,
             lastObservedAt: "2026-05-18T12:00:00.000Z",
             lastProjectedAt: "2026-05-18T12:00:00.000Z",
+            lastProjectionAdvancedAt: "2026-05-18T12:00:00.000Z",
+            lastProjectionNoOpAt: "2026-05-18T12:01:00.000Z",
+            lastProjectionNoOpReason: "state_hash_unchanged",
+            lastProjectionStaleAt: "2026-05-18T12:02:00.000Z",
+            lastProjectionStaleReason: "state_version_not_newer_for_session",
             lastError: null,
             lastErrorAt: null,
         })),
