@@ -1,7 +1,12 @@
 export const viewerPages = [
     {
-        id: "watch",
-        label: "Watch",
+        id: "home",
+        label: "Home",
+        href: "/",
+    },
+    {
+        id: "fleet-watch",
+        label: "Fleet Watch",
         href: "/fleet/",
     },
     {
@@ -10,9 +15,14 @@ export const viewerPages = [
         href: "/aria/",
     },
     {
+        id: "settings",
+        label: "Settings",
+        href: "/settings/",
+    },
+    {
         id: "setup",
-        label: "Setup",
-        href: "/setup/",
+        label: "STFC Mod Setup",
+        href: "/about/?surface=setup",
     },
     {
         id: "diagnostics",

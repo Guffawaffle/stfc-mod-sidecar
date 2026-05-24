@@ -17,10 +17,24 @@ describe("viewer about markup", () => {
         expect(aboutHtml).toContain("about-mod-release-summary-state");
     });
 
+    test("supports a setup-only surface mode over the about page", () => {
+        expect(aboutHtml).toContain('id="about-surface-heading"');
+        expect(aboutHtml).toContain('data-about-hide-when-setup');
+        expect(aboutHtml).toContain('data-about-setup-surface');
+        expect(aboutApp).toContain('searchParams.get("surface")');
+        expect(aboutApp).toContain('document.title = "STFC Sidecar Viewer | STFC Mod Setup"');
+        expect(aboutApp).toContain('data-about-hide-when-setup');
+    });
+
     test("folds generic release UI into the companion app card", () => {
         expect(aboutHtml).not.toContain('<p class="eyebrow">Release</p>');
         expect(aboutHtml).toContain('<p class="eyebrow">Companion App</p>');
         expect(aboutHtml.indexOf("about-release-version")).toBeLessThan(aboutHtml.indexOf("about-companion-install-state"));
+    });
+
+    test("provides a stable Diagnostics Bundle deep-link target", () => {
+        expect(aboutHtml).toContain('id="diagnostics-bundle"');
+        expect(aboutHtml.indexOf('id="diagnostics-bundle"')).toBeLessThan(aboutHtml.indexOf('id="diagnostics-state"'));
     });
 
     test("walks missing-directory users through the install path", () => {

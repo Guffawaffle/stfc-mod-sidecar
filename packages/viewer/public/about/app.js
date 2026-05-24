@@ -62,7 +62,13 @@ const state = {
     modUninstallExecuting: false,
 };
 
+const surfaceMode = aboutSurfaceMode();
+
 const elements = {
+    surfaceEyebrow: document.querySelector("#about-surface-eyebrow"),
+    surfaceHeading: document.querySelector("#about-surface-heading"),
+    surfaceCopy: document.querySelector("#about-surface-copy"),
+    surfaceGrid: document.querySelector("#about-surface-grid"),
     developerModeState: document.querySelector("#about-developer-mode-state"),
     settingsConfigState: document.querySelector("#about-settings-config-state"),
     settingsWarningCount: document.querySelector("#about-settings-warning-count"),
@@ -138,6 +144,8 @@ const elements = {
     confirmationDialogConfirm: document.querySelector("#about-confirmation-dialog-confirm"),
 };
 
+applySurfaceMode();
+
 elements.previewSettingsPrompt?.addEventListener("click", previewSettingsPrompt);
 elements.copySettingsPrompt?.addEventListener("click", () => void copySettingsPrompt());
 elements.previewDiagnostics?.addEventListener("click", () => void previewDiagnostics());
@@ -167,6 +175,27 @@ elements.modUninstallDeleteSettingsAndLogs?.addEventListener("change", () => {
 
 await loadMode();
 await loadSettingsContext();
+
+function aboutSurfaceMode() {
+    const surface = new URL(window.location.href).searchParams.get("surface");
+    return surface === "setup" ? "setup" : "default";
+}
+
+function applySurfaceMode() {
+    if (surfaceMode !== "setup") {
+        return;
+    }
+
+    document.title = "STFC Sidecar Viewer | STFC Mod Setup";
+    elements.surfaceEyebrow.textContent = "Install And Profile";
+    elements.surfaceHeading.textContent = "STFC Mod Setup";
+    elements.surfaceCopy.textContent = "Install, update, review profile and DLL state, and handle setup-specific security checks without mixing in support-only companion surfaces.";
+    elements.surfaceGrid?.setAttribute("aria-label", "STFC Mod setup details");
+
+    for (const element of document.querySelectorAll("[data-about-hide-when-setup]")) {
+        element.hidden = true;
+    }
+}
 
 async function loadMode() {
     try {

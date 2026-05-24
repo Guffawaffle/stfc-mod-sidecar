@@ -12,13 +12,13 @@
 
       <header class="hero home-hero">
         <div>
-          <p class="eyebrow">Setup</p>
-          <h1>Setup And Support</h1>
-          <p class="hero-copy">Install and recover the Community Mod, review companion release status, download diagnostics, and read support and legal boundaries.</p>
+          <p id="about-surface-eyebrow" class="eyebrow">Setup</p>
+          <h1 id="about-surface-heading">Setup And Support</h1>
+          <p id="about-surface-copy" class="hero-copy">Install and recover the Community Mod, review companion release status, download diagnostics, and read support and legal boundaries.</p>
         </div>
       </header>
 
-      <section class="module-grid module-grid--two about-grid" aria-label="setup and support details">
+      <section id="about-surface-grid" class="module-grid module-grid--two about-grid" aria-label="setup and support details">
         <article class="module-card module-card--wide module-card--primary community-mod-card">
           <p class="eyebrow">Community Mod</p>
           <h2 id="about-mod-install-title">Install Status</h2>
@@ -109,25 +109,25 @@
         </article>
 
         <div class="about-grid__column">
-          <article class="module-card module-card--primary">
+          <article class="module-card module-card--primary" data-about-setup-surface>
             <p class="eyebrow">Boundary</p>
             <h2>Outside The Game Process</h2>
             <p class="page-copy">The sidecar reads local files and documented local APIs. It does not inject into STFC, synthesize input, automate gameplay, or send arbitrary commands to the mod.</p>
           </article>
 
-          <article class="module-card module-card--accent">
+          <article class="module-card module-card--accent" data-about-setup-surface>
             <p class="eyebrow">Security</p>
             <h2>Security Is Paramount</h2>
             <p class="page-copy">Desktop bootstrap accepts only a canonical local game directory with prime.exe directly inside it before the sidecar reads or writes derived mod files.</p>
           </article>
 
-          <article class="module-card">
+          <article class="module-card" data-about-hide-when-setup>
             <p class="eyebrow">Mode Boundary</p>
             <h2>Standard By Default</h2>
             <p id="about-developer-mode-state" class="page-copy">Loading companion mode...</p>
           </article>
 
-          <article class="module-card">
+          <article class="module-card" data-about-hide-when-setup>
             <p class="eyebrow">Configuration</p>
             <h2>Settings Health</h2>
             <div class="path-stack about-settings-health">
@@ -151,7 +151,7 @@
           </article>
         </div>
 
-        <div class="about-grid__column">
+        <div class="about-grid__column" data-about-hide-when-setup>
           <article class="module-card">
             <p class="eyebrow">Companion App</p>
             <h2 id="about-release-version">Version</h2>
@@ -177,7 +177,7 @@
           </article>
         </div>
 
-        <article class="module-card module-card--wide">
+        <article id="diagnostics-bundle" class="module-card module-card--wide" data-about-hide-when-setup>
           <p class="eyebrow">Support</p>
           <h2>Diagnostics Bundle</h2>
           <p id="diagnostics-state" class="page-copy">Ready</p>
