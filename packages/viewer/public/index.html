@@ -10,76 +10,117 @@
     <main class="shell site-shell">
       <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="home"></nav>
 
-      <header class="hero home-hero">
-        <div>
-          <p class="eyebrow">Local Companion</p>
+      <header class="console-header-rail">
+        <span class="console-header-rail__code">01</span>
+        <div class="console-header-rail__title">
           <h1>Home</h1>
-          <p class="hero-copy">Home is the card-based launcher for the current companion surfaces. Fleet Watch stays focused on live fleet state while settings, STFC Mod setup, and diagnostics keep their own boundaries.</p>
+          <span>Local companion console</span>
         </div>
+        <details class="console-help">
+          <summary aria-label="About Home">?</summary>
+          <p>Command console for sidecar surfaces.</p>
+        </details>
       </header>
 
-      <section class="module-grid" aria-label="viewer modules">
-        <article class="module-card module-card--primary">
-          <p class="eyebrow">Available Now</p>
-          <h2>Fleet Watch</h2>
-          <p class="page-copy">Open the current read-only fleet surface backed by the local projection API.</p>
-          <ul class="module-list">
-            <li>Observed fleet and slot state</li>
-            <li>Projection freshness and version</li>
-            <li>Operational fleet-state surface</li>
-          </ul>
-          <a class="link-button" href="/fleet/">Open Fleet Watch</a>
-        </article>
+      <section class="command-console home-command-console" aria-label="viewer command console">
+        <div class="command-bank" role="tablist" aria-label="sidecar destinations">
+          <button id="home-tile-fleet" class="command-tile is-selected" type="button" role="tab" aria-selected="true" aria-controls="home-panel-fleet" data-command-tile data-command-panel-id="home-panel-fleet">
+            <span class="command-tile__code">FW</span>
+            <span class="command-tile__label">Fleet Watch</span>
+          </button>
+          <button id="home-tile-aria" class="command-tile" type="button" role="tab" aria-selected="false" aria-controls="home-panel-aria" data-command-tile data-command-panel-id="home-panel-aria">
+            <span class="command-tile__code">AR</span>
+            <span class="command-tile__label">Aria</span>
+          </button>
+          <button id="home-tile-settings" class="command-tile" type="button" role="tab" aria-selected="false" aria-controls="home-panel-settings" data-command-tile data-command-panel-id="home-panel-settings">
+            <span class="command-tile__code">ST</span>
+            <span class="command-tile__label">Settings</span>
+          </button>
+          <button id="home-tile-setup" class="command-tile" type="button" role="tab" aria-selected="false" aria-controls="home-panel-setup" data-command-tile data-command-panel-id="home-panel-setup">
+            <span class="command-tile__code">DLL</span>
+            <span class="command-tile__label">STFC Mod Setup</span>
+          </button>
+          <button id="home-tile-diagnostics" class="command-tile" type="button" role="tab" aria-selected="false" aria-controls="home-panel-diagnostics" data-command-tile data-command-panel-id="home-panel-diagnostics">
+            <span class="command-tile__code">DX</span>
+            <span class="command-tile__label">Diagnostics</span>
+          </button>
+        </div>
 
-        <article class="module-card">
-          <p class="eyebrow">Remote Assistant</p>
-          <h2>Aria</h2>
-          <p class="page-copy">The sidecar surface for the remote assistant boundary. This slice keeps Aria as a client and context bridge, not a local runtime.</p>
-          <ul class="module-list">
-            <li>Remote assistant boundary</li>
-            <li>Explicit local context direction</li>
-            <li>No local LLM runtime implied</li>
-          </ul>
-          <a class="link-button link-button--secondary" href="/aria/">Open Aria</a>
-        </article>
+        <div class="command-preview-stack">
+          <section id="home-panel-fleet" class="command-preview is-active" role="tabpanel" aria-labelledby="home-tile-fleet" data-command-panel>
+            <div class="command-preview__code">FW</div>
+            <div class="command-preview__body">
+              <p class="eyebrow">Selected Console</p>
+              <h2>Fleet Watch</h2>
+              <p class="page-copy">Current projection, observed fleet rows, freshness, and version.</p>
+              <div class="command-preview__chips" aria-label="Fleet Watch status">
+                <span class="command-chip command-chip--ready">Current</span>
+                <span class="command-chip">Projection API</span>
+                <span class="command-chip">Read-only</span>
+              </div>
+            </div>
+            <a class="link-button" href="/fleet/">Open Fleet Watch</a>
+          </section>
 
-        <article class="module-card">
-          <p class="eyebrow">Configuration</p>
-          <h2>Settings</h2>
-          <p class="page-copy">Adjust general sidecar preferences without mixing them into STFC Mod setup or diagnostics.</p>
-          <ul class="module-list">
-            <li>General sidecar preferences</li>
-            <li>Keybindings and notification settings</li>
-            <li>Developer diagnostics controls</li>
-          </ul>
-          <a class="link-button link-button--secondary" href="/settings/">Open Settings</a>
-        </article>
+          <section id="home-panel-aria" class="command-preview" role="tabpanel" aria-labelledby="home-tile-aria" data-command-panel hidden>
+            <div class="command-preview__code">AR</div>
+            <div class="command-preview__body">
+              <p class="eyebrow">Selected Console</p>
+              <h2>Aria</h2>
+              <p class="page-copy">Assistant bridge placeholder with explicit future context handoff.</p>
+              <div class="command-preview__chips" aria-label="Aria status">
+                <span class="command-chip">Bridge</span>
+                <span class="command-chip">No local model</span>
+              </div>
+            </div>
+            <a class="link-button link-button--secondary" href="/aria/">Open Aria</a>
+          </section>
 
-        <article class="module-card">
-          <p class="eyebrow">Install And Profile</p>
-          <h2>STFC Mod Setup</h2>
-          <p class="page-copy">Open install, update, profile, DLL, and support flows for the selected STFC Community Mod setup.</p>
-          <ul class="module-list">
-            <li>Install and update workflows</li>
-            <li>Profile, DLL, and security status</li>
-            <li>Support, diagnostics bundle, and legal</li>
-          </ul>
-          <a class="link-button link-button--secondary" href="/about/?surface=setup">Open STFC Mod Setup</a>
-        </article>
+          <section id="home-panel-settings" class="command-preview" role="tabpanel" aria-labelledby="home-tile-settings" data-command-panel hidden>
+            <div class="command-preview__code">ST</div>
+            <div class="command-preview__body">
+              <p class="eyebrow">Selected Console</p>
+              <h2>Settings</h2>
+              <p class="page-copy">Preferences, keybindings, notifications, and developer diagnostics controls.</p>
+              <div class="command-preview__chips" aria-label="Settings status">
+                <span class="command-chip">Config</span>
+                <span class="command-chip">Local</span>
+              </div>
+            </div>
+            <a class="link-button link-button--secondary" href="/settings/">Open Settings</a>
+          </section>
 
-        <article class="module-card module-card--accent">
-          <p class="eyebrow">Advanced Surface</p>
-          <h2>Diagnostics</h2>
-          <p class="page-copy">Open raw battle tools, cloud sync monitors, projection internals, and diagnostics bundle paths.</p>
-          <ul class="module-list">
-            <li>Battle Log Explorer</li>
-            <li>Workbench and envelope monitor</li>
-            <li>Diagnostics bundle and developer tooling</li>
-          </ul>
-          <a class="link-button link-button--secondary" href="/diagnostics/">Open Diagnostics</a>
-        </article>
+          <section id="home-panel-setup" class="command-preview" role="tabpanel" aria-labelledby="home-tile-setup" data-command-panel hidden>
+            <div class="command-preview__code">DLL</div>
+            <div class="command-preview__body">
+              <p class="eyebrow">Selected Console</p>
+              <h2>STFC Mod Setup</h2>
+              <p class="page-copy">Install, update, profile selection, DLL status, and setup warnings.</p>
+              <div class="command-preview__chips" aria-label="STFC Mod Setup status">
+                <span class="command-chip command-chip--warn">DLL review</span>
+                <span class="command-chip">Setup</span>
+              </div>
+            </div>
+            <a class="link-button link-button--secondary" href="/about/?surface=setup">Open STFC Mod Setup</a>
+          </section>
+
+          <section id="home-panel-diagnostics" class="command-preview" role="tabpanel" aria-labelledby="home-tile-diagnostics" data-command-panel hidden>
+            <div class="command-preview__code">DX</div>
+            <div class="command-preview__body">
+              <p class="eyebrow">Selected Console</p>
+              <h2>Diagnostics</h2>
+              <p class="page-copy">Raw evidence tools, transport monitors, and support bundle paths.</p>
+              <div class="command-preview__chips" aria-label="Diagnostics status">
+                <span class="command-chip">Tools</span>
+                <span class="command-chip">Evidence</span>
+              </div>
+            </div>
+            <a class="link-button link-button--secondary" href="/diagnostics/">Open Diagnostics</a>
+          </section>
+        </div>
       </section>
     </main>
+    <script type="module" src="/home/app.js"></script>
     <script type="module" src="/shared/shell.js"></script>
   </body>
 </html>

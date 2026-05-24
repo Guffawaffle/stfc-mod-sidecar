@@ -303,11 +303,11 @@ function renderDebugStamps() {
   }
 
   elements.debug.textContent = [
-    `Last projection fetch: ${formatDiagnosticTime(lastProjectionFetchAt)}`,
-    `Last SSE connected: ${formatDiagnosticTime(lastSseConnectedAt)}`,
-    `Last SSE event: ${formatDiagnosticTime(lastSseEventAt)}`,
-    `Last render/update: ${formatDiagnosticTime(lastRenderAt)}`,
-    `Rendered version: ${currentRenderedStateVersion || "No projection"}`,
+    `Fetch: ${formatDiagnosticTime(lastProjectionFetchAt)}`,
+    `SSE: ${formatDiagnosticTime(lastSseConnectedAt)}`,
+    `Event: ${formatDiagnosticTime(lastSseEventAt)}`,
+    `Render: ${formatDiagnosticTime(lastRenderAt)}`,
+    `Version: ${currentRenderedStateVersion || "No projection"}`,
   ].join(" | ");
 }
 
@@ -358,15 +358,15 @@ function updateEmptySlotsToggle() {
 
 function projectionNote({ hiddenEmptyCount, stale, totalRowCount, updatedAt, visibleRowCount }) {
   const freshness = stale
-    ? `Projection may be stale. Showing the last stored observed fleet rows from ${formatDateTime(updatedAt)}.`
-    : `Projection current. Showing ${visibleRowCount} observed fleet rows from the latest local projection.`;
+    ? `Stale: last stored rows from ${formatDateTime(updatedAt)}.`
+    : `Current: ${visibleRowCount} observed fleet ${visibleRowCount === 1 ? "row" : "rows"}.`;
   const hiddenNote = hiddenEmptyCount > 0 && !showEmptySlots
     ? ` ${hiddenEmptyCount} ${hiddenEmptyCount === 1 ? "empty slot is" : "empty slots are"} hidden.`
     : "";
   const emptyNote = visibleRowCount === 0 && totalRowCount > 0 && !showEmptySlots
     ? " All slots are currently empty."
     : "";
-  return `${freshness}${emptyNote}${hiddenNote} Cargo is not currently projected in this slice.`;
+  return `${freshness}${emptyNote}${hiddenNote} Cargo not projected.`;
 }
 
 function filteredEmptyState(hiddenEmptyCount) {

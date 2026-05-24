@@ -12,12 +12,15 @@ const fleetApp = readFileSync(path.resolve(__dirname, "../../viewer/public/fleet
 describe("viewer fleet markup", () => {
     test("keeps Fleet Watch focused on observed fleet state with a dedicated Fleet script entry", () => {
         expect(fleetHtml).toContain('data-current-page="fleet-watch"');
-        expect(fleetHtml).toContain("<h1>Observed Fleet State</h1>");
+        expect(fleetHtml).toContain("<h1>Fleet Watch</h1>");
+        expect(fleetHtml).toContain('class="console-header-rail console-header-rail--with-controls"');
+        expect(fleetHtml).toContain('<span class="console-header-rail__code">02</span>');
         expect(fleetHtml).not.toContain('aria-label="watch section navigation"');
-        expect(fleetHtml).toContain("Fleet Watch is the text-first read-only surface");
-        expect(fleetHtml).toContain("Observed fleet rows");
+        expect(fleetHtml).toContain("Projection surface");
+        expect(fleetHtml).toContain("Observed Rows");
         expect(fleetHtml).toContain("Show empty slots");
         expect(fleetHtml).toContain('id="projection-debug"');
+        expect(fleetHtml).toContain("fleet-debug-stamps");
         expect(fleetHtml).toContain('/fleet/app.js');
     });
 
@@ -26,8 +29,8 @@ describe("viewer fleet markup", () => {
         expect(fleetApp).not.toContain("/api/events");
         expect(fleetApp).toContain("Projection unavailable.");
         expect(fleetApp).toContain("Projection available but empty.");
-        expect(fleetApp).toContain("Projection may be stale.");
-        expect(fleetApp).toContain("Projection current.");
+        expect(fleetApp).toContain("Stale: last stored rows");
+        expect(fleetApp).toContain("Current:");
         expect(fleetApp).toContain("Show empty slots");
     });
 });

@@ -21,8 +21,9 @@ describe("viewer shell state hydration", () => {
     });
 
     test("renders both the compact global warning and the setup review summary from the same viewer state", () => {
+        expect(shellJs).toContain("variant-gate-warning--rail");
         expect(shellJs).toContain("variant-gate-warning__headline");
-        expect(shellJs).toContain("variant-gate-warning__detail");
+        expect(shellJs).toContain("compactSummary");
         expect(shellJs).toContain("renderVariantGateSetupSummary");
         expect(shellJs).toContain("data-variant-gate-summary");
     });
@@ -30,6 +31,9 @@ describe("viewer shell state hydration", () => {
     test("keeps diagnostics capability cards visible and switches them into disabled-state copy", () => {
         expect(shellJs).toContain('querySelectorAll("[data-capability-card]")');
         expect(shellJs).toContain("module-card--disabled");
+        expect(shellJs).toContain("module-card--review");
+        expect(shellJs).toContain("isCapabilityReviewOnly");
+        expect(shellJs).toContain("variantGateCapabilityReviewSummary");
         expect(shellJs).toContain("variantGateCapabilityUnavailableSummary");
         expect(shellJs).toContain("data-capability-card-fallback");
     });

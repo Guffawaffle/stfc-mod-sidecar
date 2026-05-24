@@ -13,8 +13,10 @@ const hotkeyDependencies = readFileSync(path.resolve(__dirname, "../../viewer/pu
 describe("viewer settings markup", () => {
     test("marks the interactive settings page as the top-level Settings surface", () => {
         expect(settingsHtml).toContain('data-current-page="settings"');
-        expect(settingsHtml).toContain("<p class=\"eyebrow\">General Preferences</p>");
+        expect(settingsHtml).toContain('class="console-header-rail"');
+        expect(settingsHtml).toContain('<span class="console-header-rail__code">04</span>');
         expect(settingsHtml).toContain("<h1>Companion Settings</h1>");
+        expect(settingsHtml).toContain("Preferences and local controls");
     });
 
     test("keeps save controls outside individual tab panels", () => {

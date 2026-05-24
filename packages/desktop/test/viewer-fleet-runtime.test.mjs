@@ -63,11 +63,11 @@ describe.sequential("viewer fleet runtime", () => {
 
         expect(page.elements.status.textContent).toBe("Current");
         expect(page.elements.rowCount.textContent).toBe("1");
-        expect(page.elements.note.textContent).toContain("Projection current. Showing 1 observed fleet rows");
-        expect(page.elements.debug.textContent).toContain("Last projection fetch:");
-        expect(page.elements.debug.textContent).not.toContain("Last projection fetch: Never");
-        expect(page.elements.debug.textContent).not.toContain("Last render/update: Never");
-        expect(page.elements.debug.textContent).toContain("Rendered version: v12");
+        expect(page.elements.note.textContent).toContain("Current: 1 observed fleet row.");
+        expect(page.elements.debug.textContent).toContain("Fetch:");
+        expect(page.elements.debug.textContent).not.toContain("Fetch: Never");
+        expect(page.elements.debug.textContent).not.toContain("Render: Never");
+        expect(page.elements.debug.textContent).toContain("Version: v12");
         expect(page.elements.view.innerHTML).toContain("Fleet ALPHA1");
         expect(page.elements.view.innerHTML).toContain("Slot BRAVO0");
         expect(page.elements.view.innerHTML).not.toContain("fleet:ALPHA-1234567890");
@@ -211,8 +211,8 @@ describe.sequential("viewer fleet runtime", () => {
         ]);
         expect(page.requests.some((request) => request.includes("/api/events"))).toBe(false);
         expect(page.elements.version.textContent).toBe("v8");
-        expect(page.elements.debug.textContent).not.toContain("Last SSE event: Never");
-        expect(page.elements.debug.textContent).toContain("Rendered version: v8");
+        expect(page.elements.debug.textContent).not.toContain("Event: Never");
+        expect(page.elements.debug.textContent).toContain("Version: v8");
         expect(page.setIntervalCalls).toBe(0);
     });
 

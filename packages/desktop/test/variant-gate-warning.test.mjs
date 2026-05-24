@@ -2,7 +2,9 @@ import { describe, expect, test } from "vitest";
 
 import {
     hasVariantGateReviewState,
+    isVariantGateCapabilityReviewOnly,
     shouldShowVariantGateWarning,
+    variantGateCapabilityReviewSummary,
     variantGateCapabilityUnavailableSummary,
     variantGateWarningKey,
     variantGateWarningViewModel,
@@ -39,6 +41,7 @@ describe("variant gate warning", () => {
         expect(shouldShowVariantGateWarning(variantGate)).toBe(true);
         expect(shouldShowVariantGateWarning(variantGate, key)).toBe(true);
         expect(view.title).toMatch(/unsafe dll override/i);
+        expect(view.compactSummary).toMatch(/review setup/i);
         expect(view.summary).toMatch(/override is allowing/i);
         expect(view.persistent).toBe(true);
     });
@@ -66,8 +69,35 @@ describe("variant gate warning", () => {
             capabilityReasons: { battleLog: ["installed_dll_unknown"] },
         }), "battleLog");
 
-        expect(summary).toMatch(/installed version\.dll is unrecognized/i);
+        expect(summary).toMatch(/version\.dll unrecognized/i);
         expect(summary).toMatch(/STFC Mod Setup/);
+    });
+
+    test("treats unknown installed DLLs as review-only for safe diagnostic profiles", () => {
+        const variantGate = gate({
+            mismatchKind: "unknown_installed",
+            selectedProfile: "waffle-advanced",
+            installedProfile: "unknown",
+            capabilityReasons: { battleLog: ["installed_dll_unknown"] },
+        });
+
+        expect(isVariantGateCapabilityReviewOnly(variantGate, "battleLog")).toBe(true);
+        expect(variantGateCapabilityReviewSummary(variantGate, "battleLog")).toMatch(/read-only review/i);
+    });
+
+    test("allows developer mode to soften unknown-DLL diagnostics without changing hard unsupported profiles", () => {
+        const variantGate = gate({
+            mismatchKind: "unknown_installed",
+            selectedProfile: "netniv-basic",
+            installedProfile: "unknown",
+            capabilityReasons: { battleLog: ["installed_dll_unknown"] },
+        });
+
+        expect(isVariantGateCapabilityReviewOnly(variantGate, "battleLog")).toBe(false);
+        expect(isVariantGateCapabilityReviewOnly(variantGate, "battleLog", { developerMode: true })).toBe(true);
+        expect(isVariantGateCapabilityReviewOnly(gate({
+            capabilityReasons: { battleLog: ["selected_profile_netniv-basic_does_not_support_battleLog"] },
+        }), "battleLog", { developerMode: true })).toBe(false);
     });
 });
 

@@ -10,93 +10,116 @@
     <main class="shell site-shell">
       <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="diagnostics"></nav>
 
-      <header class="hero home-hero">
-        <div>
-          <p class="eyebrow">Advanced Surface</p>
+      <header class="console-header-rail">
+        <span class="console-header-rail__code">06</span>
+        <div class="console-header-rail__title">
           <h1>Diagnostics</h1>
-          <p class="hero-copy">Raw evidence, transport monitors, and advanced companion tooling. Battle Log stays easy to reach here while Fleet Watch remains focused on current fleet state.</p>
+          <span>Evidence and transport tools</span>
         </div>
+        <details class="console-help">
+          <summary aria-label="About Diagnostics">?</summary>
+          <p>Raw evidence tools and transport monitors.</p>
+        </details>
       </header>
 
-      <section class="module-grid" aria-label="diagnostics surfaces">
-        <article class="module-card module-card--primary" data-capability-card="battleLog">
-          <p class="eyebrow" data-capability-card-eyebrow data-capability-card-enabled-label="Available Now" data-capability-card-disabled-label="Blocked">Available Now</p>
-          <h2>Battle Log Explorer</h2>
-          <p class="page-copy">Inspect recent raw battle and activity events from the local sidecar data layer.</p>
-          <ul class="module-list">
-            <li>Raw event feed and JSON</li>
-            <li>Decoded battle detail</li>
-            <li>Catalog coverage and analytics evidence</li>
-          </ul>
-          <a class="link-button" href="/battle-log/" data-capability-card-primary>Open Battle Log</a>
-          <div class="module-card__unavailable" data-capability-card-fallback hidden>
-            <p class="module-card__status" data-capability-card-message></p>
-            <a class="link-button link-button--secondary" href="/about/?surface=setup">Open STFC Mod Setup</a>
+      <section class="diagnostic-console" aria-label="diagnostics tools">
+        <article class="diagnostic-tool-row" data-capability-card="battleLog">
+          <div class="diagnostic-tool-row__code">DX-01</div>
+          <div class="diagnostic-tool-row__main">
+            <h2>Battle Log Explorer</h2>
+            <span class="command-chip command-chip--ready" data-capability-card-eyebrow data-capability-card-enabled-label="READY" data-capability-card-review-label="REVIEW" data-capability-card-disabled-label="LOCKED">READY</span>
+          </div>
+          <div class="diagnostic-tool-row__actions">
+            <button class="button-secondary diagnostic-detail-toggle" type="button" aria-expanded="false" aria-controls="diagnostic-detail-battle-log" data-detail-toggle>Details</button>
+            <a class="link-button" href="/battle-log/" data-capability-card-primary data-capability-card-open-label="Open" data-capability-card-review-action-label="Open with warning">Open</a>
+            <button class="link-button link-button--disabled" type="button" data-capability-card-fallback hidden disabled>Open</button>
+          </div>
+          <div id="diagnostic-detail-battle-log" class="diagnostic-tool-row__detail" data-detail-panel hidden>
+            <p>Inspect raw battle/activity events, decoded battle detail, catalog coverage, and analytics evidence.</p>
+            <p class="diagnostic-tool-row__gate-note" data-capability-card-message></p>
+            <a class="link-button link-button--secondary" href="/about/?surface=setup" data-capability-card-review-setup hidden>Review Setup</a>
           </div>
         </article>
 
-        <article class="module-card" data-developer-card data-capability-card="battleLog">
-          <p class="eyebrow" data-capability-card-eyebrow data-capability-card-enabled-label="Developer Tools" data-capability-card-disabled-label="Blocked">Developer Tools</p>
-          <h2>Battle Workbench</h2>
-          <p class="page-copy">Evidence-heavy battle diagnostics on top of canonical capture data.</p>
-          <ul class="module-list">
-            <li>Combatant and reward breakdowns</li>
-            <li>Decoded segments and derived timeline</li>
-            <li>Source-token evidence</li>
-          </ul>
-          <a class="link-button link-button--secondary" href="/battle-log/workbench/" data-capability-card-primary data-developer-only hidden>Open Workbench</a>
-          <div class="module-card__unavailable" data-capability-card-fallback hidden>
-            <p class="module-card__status" data-capability-card-message></p>
-            <a class="link-button link-button--secondary" href="/about/?surface=setup">Open STFC Mod Setup</a>
+        <article class="diagnostic-tool-row" data-developer-card data-capability-card="battleLog">
+          <div class="diagnostic-tool-row__code">DX-02</div>
+          <div class="diagnostic-tool-row__main">
+            <h2>Battle Workbench</h2>
+            <span class="command-chip" data-capability-card-eyebrow data-capability-card-enabled-label="DEV" data-capability-card-review-label="REVIEW" data-capability-card-disabled-label="LOCKED">DEV</span>
           </div>
-          <div class="module-card__unavailable" data-developer-unavailable hidden>
-            <p class="module-card__status">Available when Companion developer mode is enabled.</p>
+          <div class="diagnostic-tool-row__actions">
+            <button class="button-secondary diagnostic-detail-toggle" type="button" aria-expanded="false" aria-controls="diagnostic-detail-workbench" data-detail-toggle>Details</button>
+            <a class="link-button link-button--secondary" href="/battle-log/workbench/" data-capability-card-primary data-capability-card-open-label="Open" data-capability-card-review-action-label="Open with warning" data-developer-only hidden>Open</a>
+            <button class="link-button link-button--disabled" type="button" data-capability-card-fallback hidden disabled>Open</button>
+            <div class="diagnostic-tool-row__fallback" data-developer-unavailable hidden>
+              <p>Developer mode required.</p>
+            </div>
           </div>
-        </article>
-
-        <article class="module-card" data-developer-card>
-          <p class="eyebrow">Cloud Boundary</p>
-          <h2>Cloud Sync Monitor</h2>
-          <p class="page-copy">Monitor accepted cloud-safe envelopes from the local companion window without relabeling transport/debug state as the assistant.</p>
-          <ul class="module-list">
-            <li>Accepted and rejected envelope counts</li>
-            <li>Endpoint and payload detail</li>
-            <li>Developer-only sync monitor</li>
-          </ul>
-          <a class="link-button link-button--secondary" href="/diagnostics/cloud-sync/" data-developer-only hidden>Open Cloud Sync Monitor</a>
-          <div class="module-card__unavailable" data-developer-unavailable hidden>
-            <p class="module-card__status">Available when Companion developer mode is enabled.</p>
+          <div id="diagnostic-detail-workbench" class="diagnostic-tool-row__detail" data-detail-panel hidden>
+            <p>Evidence-heavy battle diagnostics with combatant/reward breakdowns, decoded segments, and source-token evidence.</p>
+            <p class="diagnostic-tool-row__gate-note" data-capability-card-message></p>
+            <a class="link-button link-button--secondary" href="/about/?surface=setup" data-capability-card-review-setup hidden>Review Setup</a>
           </div>
         </article>
 
-        <article class="module-card module-card--accent">
-          <p class="eyebrow">Support</p>
-          <h2>Diagnostics Bundle</h2>
-          <p class="page-copy">Use Setup and Support for bundle preview, copy/download workflows, and troubleshooting context.</p>
-          <ul class="module-list">
-            <li>Bundle preview and export</li>
-            <li>Settings troubleshooting prompt</li>
-            <li>Support and recovery context</li>
-          </ul>
-          <a class="link-button link-button--secondary" href="/about/#diagnostics-bundle">Open Diagnostics Bundle</a>
+        <article class="diagnostic-tool-row" data-developer-card>
+          <div class="diagnostic-tool-row__code">DX-03</div>
+          <div class="diagnostic-tool-row__main">
+            <h2>Cloud Sync Monitor</h2>
+            <span class="command-chip">DEV</span>
+          </div>
+          <div class="diagnostic-tool-row__actions">
+            <button class="button-secondary diagnostic-detail-toggle" type="button" aria-expanded="false" aria-controls="diagnostic-detail-cloud" data-detail-toggle>Details</button>
+            <a class="link-button link-button--secondary" href="/diagnostics/cloud-sync/" data-developer-only hidden>Open</a>
+            <div class="diagnostic-tool-row__fallback" data-developer-unavailable hidden>
+              <p>Developer mode required.</p>
+            </div>
+          </div>
+          <div id="diagnostic-detail-cloud" class="diagnostic-tool-row__detail" data-detail-panel hidden>
+            <p>Monitor accepted and rejected cloud-safe envelopes, endpoint state, and payload detail.</p>
+          </div>
         </article>
 
-        <article class="module-card" data-developer-card>
-          <p class="eyebrow">Controls</p>
-          <h2>Developer Diagnostics Controls</h2>
-          <p class="page-copy">Trace and local capture controls remain in the settings route for now, but they are classified under Diagnostics.</p>
-          <ul class="module-list">
-            <li>Trace level</li>
-            <li>Replay retention</li>
-            <li>Capture configuration</li>
-          </ul>
-          <a class="link-button link-button--secondary" href="/settings/#diagnostics" data-developer-only hidden>Open Controls</a>
-          <div class="module-card__unavailable" data-developer-unavailable hidden>
-            <p class="module-card__status">Available when Companion developer mode is enabled.</p>
+        <article class="diagnostic-tool-row diagnostic-tool-row--ready">
+          <div class="diagnostic-tool-row__code">DX-04</div>
+          <div class="diagnostic-tool-row__main">
+            <h2>Diagnostics Bundle</h2>
+            <span class="command-chip command-chip--ready">READY</span>
+          </div>
+          <div class="diagnostic-tool-row__actions">
+            <button class="button-secondary diagnostic-detail-toggle" type="button" aria-expanded="false" aria-controls="diagnostic-detail-bundle" data-detail-toggle>Details</button>
+          </div>
+          <div id="diagnostic-detail-bundle" class="diagnostic-tool-row__detail" data-detail-panel hidden>
+            <p id="diagnostics-state" aria-live="polite">Ready</p>
+            <div class="diagnostics-actions">
+              <button id="preview-diagnostics" type="button">Preview JSON</button>
+              <button id="copy-diagnostics" type="button">Copy Markdown</button>
+              <button id="download-diagnostics" type="button">Download JSON</button>
+            </div>
+            <pre id="diagnostics-preview" class="diagnostics-preview" hidden></pre>
+          </div>
+        </article>
+
+        <article class="diagnostic-tool-row" data-developer-card>
+          <div class="diagnostic-tool-row__code">DX-05</div>
+          <div class="diagnostic-tool-row__main">
+            <h2>Developer Diagnostics Controls</h2>
+            <span class="command-chip">DEV</span>
+          </div>
+          <div class="diagnostic-tool-row__actions">
+            <button class="button-secondary diagnostic-detail-toggle" type="button" aria-expanded="false" aria-controls="diagnostic-detail-controls" data-detail-toggle>Details</button>
+            <a class="link-button link-button--secondary" href="/settings/#diagnostics" data-developer-only hidden>Open</a>
+            <div class="diagnostic-tool-row__fallback" data-developer-unavailable hidden>
+              <p>Developer mode required.</p>
+            </div>
+          </div>
+          <div id="diagnostic-detail-controls" class="diagnostic-tool-row__detail" data-detail-panel hidden>
+            <p>Trace level, replay retention, and local capture controls remain in Settings.</p>
           </div>
         </article>
       </section>
     </main>
+    <script type="module" src="/diagnostics/app.js"></script>
     <script type="module" src="/shared/shell.js"></script>
   </body>
 </html>

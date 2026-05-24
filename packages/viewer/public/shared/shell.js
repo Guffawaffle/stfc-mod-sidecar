@@ -1,7 +1,9 @@
 import { visibleViewerPages } from "./pages.js";
 import {
     hasVariantGateReviewState,
+    isVariantGateCapabilityReviewOnly,
     shouldShowVariantGateWarning,
+    variantGateCapabilityReviewSummary,
     variantGateCapabilityUnavailableSummary,
     variantGateWarningKey,
     variantGateWarningViewModel,
@@ -115,7 +117,7 @@ function applyDeveloperOnlyElements(state) {
     for (const element of document.querySelectorAll("[data-developer-only]")) {
         const capabilityCard = element.closest("[data-capability-card]");
         const capability = capabilityCard?.dataset.capabilityCard ?? "";
-        const capabilityBlocked = capability && state.capabilities?.[capability] !== true;
+        const capabilityBlocked = capability && !isCapabilityActionAvailable(state, capability);
         element.hidden = !state.developerMode || Boolean(capabilityBlocked);
     }
 }
@@ -123,14 +125,14 @@ function applyDeveloperOnlyElements(state) {
 function applyDeveloperCards(state) {
     for (const card of document.querySelectorAll("[data-developer-card]")) {
         const capability = card.dataset.capabilityCard ?? "";
-        const capabilityBlocked = capability && state.capabilities?.[capability] !== true;
+        const capabilityBlocked = capability && !isCapabilityActionAvailable(state, capability);
         card.classList.toggle("module-card--disabled", !state.developerMode || Boolean(capabilityBlocked));
     }
 
     for (const fallback of document.querySelectorAll("[data-developer-unavailable]")) {
         const capabilityCard = fallback.closest("[data-capability-card]");
         const capability = capabilityCard?.dataset.capabilityCard ?? "";
-        const capabilityBlocked = capability && state.capabilities?.[capability] !== true;
+        const capabilityBlocked = capability && !isCapabilityActionAvailable(state, capability);
         fallback.hidden = state.developerMode || Boolean(capabilityBlocked);
     }
 }
@@ -139,30 +141,57 @@ function applyCapabilityCards(state) {
     for (const card of document.querySelectorAll("[data-capability-card]")) {
         const capability = card.dataset.capabilityCard ?? "";
         const enabled = state.capabilities?.[capability] === true;
+        const reviewOnly = !enabled && isCapabilityReviewOnly(state, capability);
+        const actionAvailable = enabled || reviewOnly;
         const eyebrow = card.querySelector("[data-capability-card-eyebrow]");
         const message = card.querySelector("[data-capability-card-message]");
 
-        card.classList.toggle("module-card--disabled", !enabled);
+        card.classList.toggle("module-card--disabled", !actionAvailable);
+        card.classList.toggle("module-card--review", reviewOnly);
         if (eyebrow) {
             eyebrow.textContent = enabled
                 ? (eyebrow.dataset.capabilityCardEnabledLabel ?? eyebrow.textContent)
+                : reviewOnly
+                    ? (eyebrow.dataset.capabilityCardReviewLabel ?? "REVIEW")
                 : (eyebrow.dataset.capabilityCardDisabledLabel ?? eyebrow.textContent);
+            eyebrow.classList.toggle("command-chip--review", reviewOnly);
+            eyebrow.classList.toggle("command-chip--locked", !actionAvailable);
         }
 
         for (const action of card.querySelectorAll("[data-capability-card-primary]")) {
-            action.hidden = !enabled;
+            action.hidden = !actionAvailable;
+            if (actionAvailable) {
+                action.textContent = reviewOnly
+                    ? (action.dataset.capabilityCardReviewActionLabel ?? action.textContent)
+                    : (action.dataset.capabilityCardOpenLabel ?? action.textContent);
+            }
         }
 
         for (const fallback of card.querySelectorAll("[data-capability-card-fallback]")) {
-            fallback.hidden = enabled;
+            fallback.hidden = actionAvailable;
+        }
+
+        for (const setupLink of card.querySelectorAll("[data-capability-card-review-setup]")) {
+            setupLink.hidden = enabled;
         }
 
         if (message) {
             message.textContent = enabled
                 ? ""
-                : variantGateCapabilityUnavailableSummary(state.variantGate, capability);
+                : reviewOnly
+                    ? variantGateCapabilityReviewSummary(state.variantGate, capability, { developerMode: state.developerMode })
+                    : variantGateCapabilityUnavailableSummary(state.variantGate, capability);
+            message.hidden = enabled;
         }
     }
+}
+
+function isCapabilityActionAvailable(state, capability) {
+    return state.capabilities?.[capability] === true || isCapabilityReviewOnly(state, capability);
+}
+
+function isCapabilityReviewOnly(state, capability) {
+    return isVariantGateCapabilityReviewOnly(state.variantGate, capability, { developerMode: state.developerMode });
 }
 
 function normalizeViewerState(state = {}) {
@@ -198,7 +227,7 @@ function renderVariantGateWarning(variantGate) {
 
     if (!warning) {
         warning = document.createElement("section");
-        warning.className = "variant-gate-warning";
+        warning.className = "variant-gate-warning variant-gate-warning--rail";
         warning.dataset.variantGateWarning = "";
         warning.setAttribute("role", "alert");
         insertAfterNavigation(warning);
@@ -211,24 +240,13 @@ function renderVariantGateWarning(variantGate) {
     copy.className = "variant-gate-warning__copy";
     const eyebrow = document.createElement("p");
     eyebrow.className = "eyebrow";
-    eyebrow.textContent = "STFC Mod Setup";
+    eyebrow.textContent = "System Alert";
     const summary = document.createElement("p");
     summary.className = "variant-gate-warning__headline";
     const title = document.createElement("strong");
     title.textContent = `${view.title}.`;
-    summary.append(title, document.createTextNode(` ${view.summary}`));
-    const details = document.createElement("div");
-    details.className = "variant-gate-warning__details";
-    for (const detail of view.details) {
-        const item = document.createElement("span");
-        item.className = "variant-gate-warning__detail";
-        item.textContent = detail;
-        details.appendChild(item);
-    }
+    summary.append(title, document.createTextNode(` ${view.compactSummary ?? view.summary}`));
     copy.append(eyebrow, summary);
-    if (view.details.length > 0) {
-        copy.append(details);
-    }
 
     const actions = document.createElement("div");
     actions.className = "variant-gate-warning__actions";

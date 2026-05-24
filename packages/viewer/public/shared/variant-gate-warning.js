@@ -41,6 +41,7 @@ export function variantGateWarningViewModel(variantGate) {
     if (variantGate?.unsafeOverrides?.active) {
         return {
             title: "Unsafe DLL override is active",
+            compactSummary: `Unrecognized version.dll allowed by local override for ${selectedProfile}. Review setup.`,
             summary: `The Companion still cannot identify the installed version.dll, but the local sidecar override is allowing ${selectedProfile} runtime surfaces to stay visible. Treat the current DLL as unsafe until it is replaced or recognized.`,
             details: [
                 `Selected profile: ${selectedProfile}`,
@@ -56,6 +57,7 @@ export function variantGateWarningViewModel(variantGate) {
     if (variantGate?.mismatchKind === "unknown_installed") {
         return {
             title: "Installed DLL needs review",
+            compactSummary: "Installed version.dll is unrecognized. Review setup before using runtime surfaces.",
             summary: `The Companion cannot identify the installed version.dll. Runtime features stay blocked until it is replaced or recognized.`,
             details: [
                 `Installed DLL: ${installedProfile} (${installedState})`,
@@ -69,6 +71,7 @@ export function variantGateWarningViewModel(variantGate) {
 
     return {
         title: "Selected profile and installed DLL differ",
+        compactSummary: `${selectedProfile} selected; installed DLL is ${installedProfile}. Review setup.`,
         summary: `The Companion is using ${selectedProfile} intent, but the installed DLL is ${installedProfile}. Runtime features stay blocked when either side does not support them.`,
         details: [
             `Selected profile: ${selectedProfile}`,
@@ -87,22 +90,41 @@ export function variantGateCapabilityUnavailableSummary(variantGate, capability)
         : [];
 
     if (reasons.includes("installed_dll_unknown")) {
-        return "Blocked because the installed version.dll is unrecognized. Review STFC Mod Setup before using this surface.";
+        return "Installed version.dll unrecognized. Review STFC Mod Setup.";
     }
 
     if (reasons.includes("installed_dll_missing")) {
-        return "Blocked because no Community Mod DLL is installed. Finish STFC Mod Setup before using this surface.";
+        return "No Community Mod DLL installed. Finish STFC Mod Setup.";
     }
 
     if (reasons.some((reason) => reason.startsWith("selected_profile_"))) {
-        return `Blocked because the selected profile does not include ${capabilityLabel(capability)}. Review STFC Mod Setup if Advanced tooling is expected.`;
+        return `Selected profile lacks ${capabilityLabel(capability)}. Review STFC Mod Setup.`;
     }
 
     if (reasons.some((reason) => reason.startsWith("installed_profile_"))) {
-        return `Blocked because the installed DLL does not include ${capabilityLabel(capability)}. Review STFC Mod Setup if Advanced tooling is expected.`;
+        return `Installed DLL lacks ${capabilityLabel(capability)}. Review STFC Mod Setup.`;
     }
 
     return `${capabilityLabel(capability)} is unavailable for the active Community Mod variant gate.`;
+}
+
+export function isVariantGateCapabilityReviewOnly(variantGate, capability, options = {}) {
+    const reasons = Array.isArray(variantGate?.capabilityReasons?.[capability])
+        ? variantGate.capabilityReasons[capability]
+        : [];
+    if (!reasons.includes("installed_dll_unknown")) {
+        return false;
+    }
+
+    return Boolean(options.developerMode) || profileSupportsCapability(variantGate?.selectedProfile, capability);
+}
+
+export function variantGateCapabilityReviewSummary(variantGate, capability, options = {}) {
+    if (isVariantGateCapabilityReviewOnly(variantGate, capability, options)) {
+        return `${capabilityLabel(capability)} is available for read-only review, but the installed DLL is unrecognized. Confirm setup before trusting runtime output.`;
+    }
+
+    return variantGateCapabilityUnavailableSummary(variantGate, capability);
 }
 
 function battleLogReasons(variantGate) {
@@ -161,6 +183,14 @@ function capabilityLabel(capability) {
     }
 
     return labelFromToken(capability ?? "capability");
+}
+
+function profileSupportsCapability(profile, capability) {
+    if (capability === "battleLog") {
+        return profile === "waffle-advanced" || profile === "guff-advanced";
+    }
+
+    return false;
 }
 
 function labelFromToken(value) {
