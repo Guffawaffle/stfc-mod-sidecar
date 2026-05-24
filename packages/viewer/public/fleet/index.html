@@ -16,14 +16,14 @@
           <h1>Fleet Watch</h1>
           <span>Projection surface</span>
         </div>
-        <details class="console-help">
-          <summary aria-label="About Fleet Watch">?</summary>
-          <p>Read-only local projection of observed fleet rows.</p>
-        </details>
         <section class="hero-controls" aria-label="fleet projection controls">
           <button id="refresh-button" type="button">Refresh now</button>
           <button id="toggle-empty-slots-button" class="button-secondary" type="button">Show empty slots</button>
         </section>
+        <details class="console-help">
+          <summary aria-label="About Fleet Watch">?</summary>
+          <p>Read-only local projection of observed fleet rows.</p>
+        </details>
       </header>
 
       <section class="status-strip status-strip--compact" aria-live="polite">
@@ -58,6 +58,19 @@
         <p id="projection-debug" class="detail-note fleet-status-note fleet-debug-stamps">Fetch: Never | SSE: Never | Event: Never | Render: Never | Version: No projection</p>
         <div id="projection-view" class="detail-view">
           <div class="empty-state">Loading current fleet projection...</div>
+        </div>
+      </section>
+
+      <section class="detail-column fleet-activity-panel" aria-labelledby="fleet-activity-heading">
+        <div class="panel-heading fleet-activity-panel__heading">
+          <div>
+            <h2 id="fleet-activity-heading">Recent Activity (preview)</h2>
+            <p>Provisional local activity snapshot from sidecar event summaries.</p>
+          </div>
+          <a class="link-button link-button--secondary fleet-activity-panel__evidence" href="/diagnostics/">Diagnostics</a>
+        </div>
+        <div id="fleet-activity-view" class="fleet-activity-list" data-preview="true">
+          <div class="empty-state">Loading recent activity preview...</div>
         </div>
       </section>
     </main>

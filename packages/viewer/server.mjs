@@ -56,6 +56,7 @@ import {
 import { installBoundedConsoleLogSync } from "./bounded-log-file.mjs";
 import { createMajelIngestStore } from "./majel-ingest-store.mjs";
 import { buildCompatibleFleetSyncSuccessPayload, buildUnavailableFleetBrokerSummary } from "./server/fleet-broker-contract.mjs";
+import { buildFleetActivitySnapshot } from "./server/fleet-activity.mjs";
 import { createFeedWatcher } from "./server/feed-watcher.mjs";
 import { fleetProjectionStreamSummary, shouldNotifyFleetProjectionChanged } from "./server/fleet-stream-events.mjs";
 import { ingestAcceptedMajelPayload } from "./server/majel-ingest-bridge.mjs";
@@ -232,6 +233,7 @@ const server = createServer(async (request, response) => {
     }
 
     if (await handleFleetRoutes(request, response, requestUrl, {
+        readFleetActivity,
         handleFleetSyncIngest,
         handleFleetStream,
         readFleetProjection,
@@ -1430,6 +1432,18 @@ async function readFleetProjection() {
             error: error instanceof Error ? error.message : String(error),
         };
     }
+}
+
+async function readFleetActivity(limit) {
+    if (!communityModCapabilities.battleLog) {
+        return buildFleetActivitySnapshot(emptyEventsSnapshot({ includeDetails: false }), { limit });
+    }
+
+    const snapshot = await readEventsSnapshot(limit, {
+        includeDetails: false,
+        eventTypes: BATTLE_EVENT_TYPES,
+    });
+    return buildFleetActivitySnapshot(snapshot, { limit });
 }
 
 async function handleMajelIngest(request, response) {

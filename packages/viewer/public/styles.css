@@ -2730,6 +2730,71 @@ h3,
   background: rgba(124, 214, 255, 0.06);
 }
 
+.fleet-activity-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+  border-left-color: var(--lcars-peach);
+}
+
+.fleet-activity-panel__heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: end;
+  justify-content: space-between;
+  margin-bottom: 0;
+}
+
+.fleet-activity-panel__heading h2 {
+  font-size: 1.18rem;
+}
+
+.fleet-activity-panel__heading p {
+  margin: 4px 0 0;
+}
+
+.fleet-activity-panel__evidence {
+  margin-top: 0;
+}
+
+.fleet-activity-list {
+  display: grid;
+  gap: 8px;
+}
+
+.fleet-activity-row {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(124, 214, 255, 0.16);
+  border-left: 10px solid var(--lcars-peach);
+  border-radius: 0 14px 14px 0;
+  background: rgba(5, 6, 9, 0.28);
+}
+
+.fleet-activity-row__top {
+  display: flex;
+  gap: 8px;
+  align-items: start;
+  justify-content: space-between;
+}
+
+.fleet-activity-row .chip-row {
+  margin: 0;
+}
+
+.fleet-activity-row p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.fleet-activity-row time {
+  color: rgba(255, 248, 217, 0.68);
+  font-size: 0.78rem;
+}
+
 button,
 .link-button {
   border-radius: 0 999px 999px 0;

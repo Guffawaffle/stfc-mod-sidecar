@@ -10,6 +10,7 @@ let activeRefreshPromise = null;
 let fallbackRefreshTimer = null;
 let fleetEventSource = null;
 let lastProjectionPayload = null;
+let activeActivityRefreshPromise = null;
 let lastProjectionFetchAt = null;
 let lastSseConnectedAt = null;
 let lastSseEventAt = null;
@@ -28,11 +29,12 @@ const elements = {
   refreshButton: document.querySelector("#refresh-button"),
   toggleEmptySlotsButton: document.querySelector("#toggle-empty-slots-button"),
   debug: document.querySelector("#projection-debug"),
+  activityView: document.querySelector("#fleet-activity-view"),
 };
 
 const bridgeStatus = createBridgeStatus(elements.status);
 
-elements.refreshButton?.addEventListener("click", () => refreshProjection({ announce: true }));
+elements.refreshButton?.addEventListener("click", () => refreshFleetPage({ announce: true }));
 elements.toggleEmptySlotsButton?.addEventListener("click", () => {
   showEmptySlots = !showEmptySlots;
   updateEmptySlotsToggle();
@@ -44,19 +46,19 @@ window.addEventListener("pageshow", () => {
   if (!fleetEventSource) {
     startLiveUpdateLoop();
   }
-  return refreshProjection({ announce: false });
+  return refreshFleetPage({ announce: false });
 });
-window.addEventListener("focus", () => refreshProjection({ announce: false }));
+window.addEventListener("focus", () => refreshFleetPage({ announce: false }));
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
-    return refreshProjection({ announce: false });
+    return refreshFleetPage({ announce: false });
   }
 
   return undefined;
 });
 window.addEventListener(FLEET_PAGE_ENTER_EVENT, (event) => {
   if (event.detail?.page === "fleet") {
-    return refreshProjection({ announce: false });
+    return refreshFleetPage({ announce: false });
   }
 
   return undefined;
@@ -64,7 +66,7 @@ window.addEventListener(FLEET_PAGE_ENTER_EVENT, (event) => {
 window.addEventListener("pagehide", closeLiveUpdateLoop);
 window.addEventListener("beforeunload", closeLiveUpdateLoop);
 
-await refreshProjection({ announce: true });
+await refreshFleetPage({ announce: true });
 startLiveUpdateLoop();
 
 export function fleetProjectionPageEnterEvent() {
@@ -73,6 +75,13 @@ export function fleetProjectionPageEnterEvent() {
 
 updateEmptySlotsToggle();
 renderDebugStamps();
+
+async function refreshFleetPage(options = {}) {
+  await Promise.all([
+    refreshProjection(options),
+    refreshActivity(),
+  ]);
+}
 
 async function refreshProjection(options = {}) {
   if (activeRefreshPromise) {
@@ -117,6 +126,80 @@ async function refreshProjection(options = {}) {
       activeRefreshPromise = null;
     }
   }
+}
+
+async function refreshActivity() {
+  if (!elements.activityView) {
+    return undefined;
+  }
+
+  if (activeActivityRefreshPromise) {
+    return activeActivityRefreshPromise;
+  }
+
+  const refreshPromise = (async () => {
+    try {
+      const response = await fetch("/api/fleet/activity?limit=6", { cache: "no-store" });
+      const payload = await response.json();
+      renderActivity(payload);
+    } catch {
+      renderActivityUnavailable();
+    }
+  })();
+
+  activeActivityRefreshPromise = refreshPromise;
+  try {
+    return await refreshPromise;
+  } finally {
+    if (activeActivityRefreshPromise === refreshPromise) {
+      activeActivityRefreshPromise = null;
+    }
+  }
+}
+
+function renderActivity(payload) {
+  if (!elements.activityView) {
+    return;
+  }
+
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  if (payload?.ok === false) {
+    renderActivityUnavailable(payload.error);
+    return;
+  }
+
+  if (items.length === 0) {
+    elements.activityView.innerHTML = '<div class="empty-state">No recent activity preview is available yet.</div>';
+    return;
+  }
+
+  elements.activityView.innerHTML = items.map(renderActivityRow).join("");
+}
+
+function renderActivityUnavailable(message) {
+  if (!elements.activityView) {
+    return;
+  }
+
+  elements.activityView.innerHTML = `<div class="empty-state">${escapeHtml(message || "Recent activity preview is unavailable.")}</div>`;
+}
+
+function renderActivityRow(item) {
+  const chips = Array.isArray(item.chips) ? item.chips.slice(0, 4) : [];
+  const chipMarkup = chips.map((chip) => `<span>${escapeHtml(chip)}</span>`).join("");
+  const lineBadge = Number.isFinite(item.lineNumber) ? `<span class="line-badge">L${item.lineNumber}</span>` : "";
+
+  return `
+    <article class="fleet-activity-row">
+      <div class="fleet-activity-row__top">
+        <div class="chip-row">${chipMarkup}</div>
+        ${lineBadge}
+      </div>
+      <strong>${escapeHtml(item.title || "Activity")}</strong>
+      <p>${escapeHtml(item.subtitle || item.eventType || "Local sidecar activity")}</p>
+      <time>${escapeHtml(item.timestamp ? formatDateTime(item.timestamp) : "No timestamp")}</time>
+    </article>
+  `;
 }
 
 function startLiveUpdateLoop() {

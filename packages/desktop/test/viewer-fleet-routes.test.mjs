@@ -68,6 +68,36 @@ describe("viewer fleet routes", () => {
         });
     });
 
+    it("returns provisional activity from the Fleet activity read path", async () => {
+        const response = captureResponse();
+        const context = baseContext({
+            readFleetActivity: vi.fn(async (limit) => ({
+                ok: true,
+                source: "fleet.activity.preview",
+                provisional: true,
+                limit,
+                items: [{ id: "battle-1", title: "Hostile", chips: ["battle.report"] }],
+            })),
+        });
+
+        await expect(handleFleetRoutes(
+            { method: "GET" },
+            response,
+            new URL("http://127.0.0.1/api/fleet/activity?limit=12"),
+            context,
+        )).resolves.toBe(true);
+
+        expect(context.readFleetActivity).toHaveBeenCalledWith(12);
+        expect(response.statusCode).toBe(200);
+        expect(JSON.parse(response.body)).toMatchObject({
+            ok: true,
+            source: "fleet.activity.preview",
+            provisional: true,
+            limit: 12,
+            items: [{ id: "battle-1", title: "Hostile" }],
+        });
+    });
+
     it("delegates fleet projection stream requests", async () => {
         const context = baseContext();
         const response = captureResponse();
@@ -103,6 +133,16 @@ describe("viewer fleet routes", () => {
         );
         expect(projectionResponse.statusCode).toBe(405);
         expect(JSON.parse(projectionResponse.body)).toEqual({ ok: false, error: "Method not allowed" });
+
+        const activityResponse = captureResponse();
+        await handleFleetRoutes(
+            { method: "POST" },
+            activityResponse,
+            new URL("http://127.0.0.1/api/fleet/activity"),
+            baseContext(),
+        );
+        expect(activityResponse.statusCode).toBe(405);
+        expect(JSON.parse(activityResponse.body)).toEqual({ ok: false, error: "Method not allowed" });
 
         const streamResponse = captureResponse();
         await handleFleetRoutes(
@@ -148,6 +188,7 @@ function baseContext(overrides = {}) {
             response.writeHead(200, { "content-type": "text/event-stream; charset=utf-8" });
             response.end("stream");
         }),
+        readFleetActivity: vi.fn(async () => ({ ok: true, provisional: true, items: [] })),
         readFleetProjection: vi.fn(async () => ({ ok: true, available: false, projection: null })),
         ...overrides,
     };
