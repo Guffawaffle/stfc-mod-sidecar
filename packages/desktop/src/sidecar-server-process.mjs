@@ -41,27 +41,23 @@ export function createSidecarServerProcess(options) {
             const env = options.env ?? options.process?.env ?? process.env;
             const requestedPort = Number.parseInt(env.STFC_SIDECAR_PORT ?? String(DEFAULT_SIDECAR_PORT), 10);
             const firstPort = Number.isFinite(requestedPort) ? requestedPort : DEFAULT_SIDECAR_PORT;
-
-            for (let offset = 0; offset < 10; offset += 1) {
-                const port = firstPort + offset;
-                const url = `http://127.0.0.1:${port}`;
-                const existing = await fetchReadiness(url, 800);
-                if (!existing?.ok) {
-                    const server = await startSidecarServer(url);
-                    sidecarUrl = server.url;
-                    return server;
-                }
-
-                if (existing.desktop === true) {
-                    options.writeLog("log", `[sidecar-desktop] using existing desktop sidecar server at ${url}`);
-                    sidecarUrl = url;
-                    return { url, owned: false };
-                }
-
-                options.writeLog("warn", `[sidecar-desktop] port ${port} already has a browser-mode sidecar server; trying next port`);
+            const url = `http://127.0.0.1:${firstPort}`;
+            const existing = await fetchReadiness(url, 800);
+            if (!existing?.ok) {
+                const server = await startSidecarServer(url);
+                sidecarUrl = server.url;
+                return server;
             }
 
-            throw new Error(`No available sidecar port near ${firstPort}; stop browser-mode viewer servers or set STFC_SIDECAR_PORT.`);
+            if (existing.desktop === true) {
+                options.writeLog("log", `[sidecar-desktop] using existing desktop sidecar server at ${url}`);
+                sidecarUrl = url;
+                return { url, owned: false };
+            }
+
+            const message = `requested sidecar port ${firstPort} already has a browser-mode sidecar server; the desktop app will not fall back automatically. Stop the browser-mode viewer or set STFC_SIDECAR_PORT explicitly.`;
+            options.writeLog("error", `[sidecar-desktop] ${message}`);
+            throw new Error(message);
         },
         async startSidecarServer(url) {
             const server = await startSidecarServer(url);
