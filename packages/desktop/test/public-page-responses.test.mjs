@@ -18,6 +18,13 @@ describe("public capability unavailable page", () => {
         expect(html).toContain("/shared/shell.js");
     });
 
+    test("defaults navigation to Watch and Setup surfaces", () => {
+        const html = buildCapabilityUnavailablePage();
+
+        expect(html).toContain('href="/">Open Watch</a>');
+        expect(html).toContain('href="/setup/">Open Setup</a>');
+    });
+
     test("escapes dynamic text", () => {
         const html = buildCapabilityUnavailablePage({
             heading: "<script>alert(1)</script>",

@@ -12,7 +12,9 @@ describe("viewer home markup", () => {
     test("keeps Battle Log directly reachable while gating the raw surfaces", () => {
         expect(homeHtml).toMatch(/module-card module-card--primary[^>]+data-capability="battleLog"/);
         expect(homeHtml).toMatch(/module-card[^>]+data-developer-only[^>]+data-capability="battleLog"/);
+        expect(homeHtml).toContain("Still Easy To Reach");
         expect(homeHtml).toContain('href="/battle-log/"');
+        expect(homeHtml.indexOf('href="/battle-log/"')).toBeLessThan(homeHtml.indexOf('href="/diagnostics/"'));
     });
 
     test("surfaces the Watch landing plus setup and diagnostics transition modules", () => {
