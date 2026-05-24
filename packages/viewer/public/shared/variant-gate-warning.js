@@ -1,16 +1,30 @@
 const WARNING_MISMATCH_KINDS = new Set(["selected_differs_from_installed", "unknown_installed"]);
 
+export function hasVariantGateReviewState(variantGate) {
+    return Boolean(variantGateWarningKey(variantGate));
+}
+
 export function shouldShowVariantGateWarning(variantGate, ignoredKey = "") {
     const key = variantGateWarningKey(variantGate);
-    return Boolean(key && key !== ignoredKey && WARNING_MISMATCH_KINDS.has(variantGate?.mismatchKind));
+    if (!key) {
+        return false;
+    }
+
+    if (variantGate?.unsafeOverrides?.active) {
+        return true;
+    }
+
+    return Boolean(key !== ignoredKey && WARNING_MISMATCH_KINDS.has(variantGate?.mismatchKind));
 }
 
 export function variantGateWarningKey(variantGate) {
-    if (!variantGate?.mismatchKind || !WARNING_MISMATCH_KINDS.has(variantGate.mismatchKind)) {
+    const warnableMismatch = WARNING_MISMATCH_KINDS.has(variantGate?.mismatchKind);
+    if (!variantGate?.mismatchKind || (!warnableMismatch && !variantGate?.unsafeOverrides?.active)) {
         return "";
     }
 
     return [
+        variantGate?.unsafeOverrides?.active ? "unsafe_override_active" : "standard",
         variantGate.mismatchKind,
         variantGate.selectedProfile ?? "unknown",
         variantGate.installedProfile ?? "unknown",
@@ -24,6 +38,21 @@ export function variantGateWarningViewModel(variantGate) {
     const installedState = labelFromToken(variantGate?.installedState ?? "unknown");
     const reasons = battleLogReasons(variantGate);
 
+    if (variantGate?.unsafeOverrides?.active) {
+        return {
+            title: "Unsafe DLL override is active",
+            summary: `The Companion still cannot identify the installed version.dll, but the local sidecar override is allowing ${selectedProfile} runtime surfaces to stay visible. Treat the current DLL as unsafe until it is replaced or recognized.`,
+            details: [
+                `Selected profile: ${selectedProfile}`,
+                `Installed DLL: ${installedProfile} (${installedState})`,
+                "Unsafe override: unsafeAllowUnrecognizedInstalledDll = true",
+            ],
+            fixLabel: "Open STFC Mod Setup",
+            fixHref: "/about/?surface=setup",
+            persistent: true,
+        };
+    }
+
     if (variantGate?.mismatchKind === "unknown_installed") {
         return {
             title: "Installed DLL needs review",
@@ -32,8 +61,9 @@ export function variantGateWarningViewModel(variantGate) {
                 `Installed DLL: ${installedProfile} (${installedState})`,
                 ...reasons,
             ],
-            fixLabel: "Open General",
-            fixHref: "/settings/#general",
+            fixLabel: "Open STFC Mod Setup",
+            fixHref: "/about/?surface=setup",
+            persistent: false,
         };
     }
 
@@ -45,9 +75,34 @@ export function variantGateWarningViewModel(variantGate) {
             `Installed DLL: ${installedProfile} (${installedState})`,
             ...reasons,
         ],
-        fixLabel: "Open General",
-        fixHref: "/settings/#general",
+        fixLabel: "Open STFC Mod Setup",
+        fixHref: "/about/?surface=setup",
+        persistent: false,
     };
+}
+
+export function variantGateCapabilityUnavailableSummary(variantGate, capability) {
+    const reasons = Array.isArray(variantGate?.capabilityReasons?.[capability])
+        ? variantGate.capabilityReasons[capability]
+        : [];
+
+    if (reasons.includes("installed_dll_unknown")) {
+        return "Blocked because the installed version.dll is unrecognized. Review STFC Mod Setup before using this surface.";
+    }
+
+    if (reasons.includes("installed_dll_missing")) {
+        return "Blocked because no Community Mod DLL is installed. Finish STFC Mod Setup before using this surface.";
+    }
+
+    if (reasons.some((reason) => reason.startsWith("selected_profile_"))) {
+        return `Blocked because the selected profile does not include ${capabilityLabel(capability)}. Review STFC Mod Setup if Advanced tooling is expected.`;
+    }
+
+    if (reasons.some((reason) => reason.startsWith("installed_profile_"))) {
+        return `Blocked because the installed DLL does not include ${capabilityLabel(capability)}. Review STFC Mod Setup if Advanced tooling is expected.`;
+    }
+
+    return `${capabilityLabel(capability)} is unavailable for the active Community Mod variant gate.`;
 }
 
 function battleLogReasons(variantGate) {
@@ -94,6 +149,18 @@ function profileLabel(profile) {
     }
 
     return "Unknown";
+}
+
+function capabilityLabel(capability) {
+    if (capability === "battleLog") {
+        return "Battle Log";
+    }
+
+    if (capability === "eventStore") {
+        return "the event store";
+    }
+
+    return labelFromToken(capability ?? "capability");
 }
 
 function labelFromToken(value) {

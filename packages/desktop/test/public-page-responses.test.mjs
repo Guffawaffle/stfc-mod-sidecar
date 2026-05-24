@@ -18,11 +18,11 @@ describe("public capability unavailable page", () => {
         expect(html).toContain("/shared/shell.js");
     });
 
-    test("defaults navigation to Watch and Setup surfaces", () => {
+    test("defaults navigation to Fleet Watch and STFC Mod Setup surfaces", () => {
         const html = buildCapabilityUnavailablePage();
 
-        expect(html).toContain('href="/fleet/">Open Watch</a>');
-        expect(html).toContain('href="/setup/">Open Setup</a>');
+        expect(html).toContain('href="/fleet/">Open Fleet Watch</a>');
+        expect(html).toContain('href="/about/?surface=setup">Open STFC Mod Setup</a>');
     });
 
     test("escapes dynamic text", () => {

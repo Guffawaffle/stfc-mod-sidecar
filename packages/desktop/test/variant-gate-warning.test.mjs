@@ -1,7 +1,9 @@
 import { describe, expect, test } from "vitest";
 
 import {
+    hasVariantGateReviewState,
     shouldShowVariantGateWarning,
+    variantGateCapabilityUnavailableSummary,
     variantGateWarningKey,
     variantGateWarningViewModel,
 } from "../../viewer/public/shared/variant-gate-warning.js";
@@ -21,13 +23,51 @@ describe("variant gate warning", () => {
         expect(shouldShowVariantGateWarning(gate({ mismatchKind: "no_install", installedProfile: "none" }))).toBe(false);
     });
 
+    test("keeps the warning persistent when the unsafe override is active", () => {
+        const variantGate = gate({
+            mismatchKind: "unknown_installed",
+            installedProfile: "unknown",
+            unsafeOverrides: {
+                allowUnrecognizedInstalledDll: true,
+                active: true,
+                configPath: "C:/Games/STFC/game/.stfc-sidecar/sidecar-local-config.json",
+            },
+        });
+        const key = variantGateWarningKey(variantGate);
+        const view = variantGateWarningViewModel(variantGate);
+
+        expect(shouldShowVariantGateWarning(variantGate)).toBe(true);
+        expect(shouldShowVariantGateWarning(variantGate, key)).toBe(true);
+        expect(view.title).toMatch(/unsafe dll override/i);
+        expect(view.summary).toMatch(/override is allowing/i);
+        expect(view.persistent).toBe(true);
+    });
+
+    test("keeps setup review state available even when the global banner can be dismissed", () => {
+        expect(hasVariantGateReviewState(gate({ mismatchKind: "unknown_installed", installedProfile: "unknown" }))).toBe(true);
+        expect(hasVariantGateReviewState(gate({ mismatchKind: "selected_differs_from_installed" }))).toBe(true);
+        expect(hasVariantGateReviewState(gate({ mismatchKind: "none" }))).toBe(false);
+    });
+
     test("builds a user-facing explanation with fix affordance", () => {
         const view = variantGateWarningViewModel(gate({ mismatchKind: "selected_differs_from_installed" }));
 
         expect(view.title).toMatch(/selected profile/i);
         expect(view.summary).toContain("Basic");
         expect(view.summary).toContain("Waffle Advanced");
-        expect(view.fixHref).toBe("/settings/#general");
+        expect(view.fixLabel).toBe("Open STFC Mod Setup");
+        expect(view.fixHref).toBe("/about/?surface=setup");
+    });
+
+    test("summarizes blocked capability cards with setup-oriented copy", () => {
+        const summary = variantGateCapabilityUnavailableSummary(gate({
+            mismatchKind: "unknown_installed",
+            installedProfile: "unknown",
+            capabilityReasons: { battleLog: ["installed_dll_unknown"] },
+        }), "battleLog");
+
+        expect(summary).toMatch(/installed version\.dll is unrecognized/i);
+        expect(summary).toMatch(/STFC Mod Setup/);
     });
 });
 
@@ -37,7 +77,12 @@ function gate(overrides = {}) {
         installedProfile: overrides.installedProfile ?? "waffle-advanced",
         installedState: overrides.installedState ?? "installed",
         mismatchKind: overrides.mismatchKind ?? "selected_differs_from_installed",
-        capabilityReasons: {
+        unsafeOverrides: overrides.unsafeOverrides ?? {
+            allowUnrecognizedInstalledDll: false,
+            active: false,
+            configPath: "",
+        },
+        capabilityReasons: overrides.capabilityReasons ?? {
             battleLog: ["selected_profile_netniv-basic_does_not_support_battleLog"],
         },
     };
