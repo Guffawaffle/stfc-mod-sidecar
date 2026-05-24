@@ -13,6 +13,8 @@ describe("viewer fleet markup", () => {
     test("adds a watch-surface navigation page with a dedicated Fleet script entry", () => {
         expect(fleetHtml).toContain('data-current-page="watch"');
         expect(fleetHtml).toContain("<h1>Observed Fleet State</h1>");
+        expect(fleetHtml).toContain('aria-label="watch section navigation"');
+        expect(fleetHtml).toContain('href="/">Start</a>');
         expect(fleetHtml).toContain("Observed fleet rows");
         expect(fleetHtml).toContain("Show empty slots");
         expect(fleetHtml).toContain('/fleet/app.js');

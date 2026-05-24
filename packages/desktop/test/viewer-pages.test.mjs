@@ -8,6 +8,7 @@ describe("viewer page visibility", () => {
 
         expect(pages.map((page) => page.id)).toEqual(["watch", "aria", "setup", "diagnostics"]);
         expect(pages.find((page) => page.id === "watch")?.label).toBe("Watch");
+        expect(pages.find((page) => page.id === "watch")?.href).toBe("/fleet/");
         expect(pages.find((page) => page.id === "aria")?.label).toBe("Aria");
         expect(pages.find((page) => page.id === "setup")?.label).toBe("Setup");
         expect(pages.find((page) => page.id === "diagnostics")?.label).toBe("Diagnostics");

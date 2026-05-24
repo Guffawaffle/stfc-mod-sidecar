@@ -380,7 +380,7 @@ const server = createServer(async (request, response) => {
             heading: "Battle Log Unavailable",
             message: "Battle Log surfaces are currently blocked by the active Community Mod variant gate.",
             details: variantGateCapabilityDetails("battleLog", reasons),
-            primaryHref: "/",
+            primaryHref: "/fleet/",
             primaryLabel: "Open Watch",
             secondaryHref: "/setup/",
             secondaryLabel: "Open Setup",

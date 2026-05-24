@@ -131,7 +131,7 @@ function renderEventList(snapshot) {
     state.selectedLocalId = null;
     elements.eventList.appendChild(renderEmpty(snapshot.lastRejectedError
       ? `No accepted envelopes yet. Last rejection: ${snapshot.lastRejectedError}`
-      : "No Majel envelopes have been accepted yet."));
+      : "No cloud sync envelopes have been accepted yet."));
     return;
   }
 
@@ -153,7 +153,7 @@ function renderEventList(snapshot) {
     button.innerHTML = `
       <div class="event-card__top">
         <strong>${escapeHtml(summary.title ?? "Unknown schema")}</strong>
-        <span class="line-badge">M${entry.localId}</span>
+        <span class="line-badge">E${entry.localId}</span>
       </div>
       <p>${escapeHtml(summary.subtitle ?? "")}</p>
       <div class="chip-row">${chips.map((chip) => `<span>${escapeHtml(chip)}</span>`).join("")}</div>
@@ -173,7 +173,7 @@ function renderEventList(snapshot) {
 async function renderSelectedDetail() {
   elements.detailView.textContent = "";
   if (!state.selectedLocalId) {
-    elements.detailView.appendChild(renderEmpty("Select a Majel envelope to inspect its payload."));
+    elements.detailView.appendChild(renderEmpty("Select a cloud sync envelope to inspect its payload."));
     return;
   }
 
@@ -185,14 +185,14 @@ async function renderSelectedDetail() {
       const response = await fetch(`/api/majel/events/${requestedLocalId}`, { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok || !payload.ok || !payload.event) {
-        throw new Error(payload.error ?? "Unable to load Majel envelope.");
+        throw new Error(payload.error ?? "Unable to load cloud sync envelope.");
       }
 
       detail = payload.event;
       state.detailsById.set(requestedLocalId, detail);
     } catch (error) {
       elements.detailView.textContent = "";
-      elements.detailView.appendChild(renderEmpty(error instanceof Error ? error.message : "Unable to load Majel envelope."));
+      elements.detailView.appendChild(renderEmpty(error instanceof Error ? error.message : "Unable to load cloud sync envelope."));
       return;
     }
   }

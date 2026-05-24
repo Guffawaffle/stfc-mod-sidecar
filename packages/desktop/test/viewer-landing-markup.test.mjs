@@ -15,7 +15,7 @@ describe("viewer landing page markup", () => {
         expect(ariaHtml).toContain('data-current-page="aria"');
         expect(ariaHtml).toContain("<h1>Aria</h1>");
         expect(ariaHtml).toContain("Remote Assistant, Local Bridge");
-        expect(ariaHtml).toContain('href="/"');
+        expect(ariaHtml).toContain('href="/fleet/"');
         expect(ariaHtml).toContain('href="/setup/"');
         expect(ariaHtml).toContain('href="/diagnostics/"');
         expect(ariaHtml).toContain('/shared/shell.js');
@@ -41,7 +41,8 @@ describe("viewer landing page markup", () => {
         expect(diagnosticsHtml).toContain("Cloud Sync Monitor");
         expect(diagnosticsHtml).toContain('href="/battle-log/"');
         expect(diagnosticsHtml).toContain('href="/battle-log/workbench/"');
-        expect(diagnosticsHtml).toContain('href="/majel/"');
+        expect(diagnosticsHtml).toContain('href="/diagnostics/cloud-sync/"');
+        expect(diagnosticsHtml).not.toContain('href="/majel/"');
         expect(diagnosticsHtml).toContain('href="/about/"');
         expect(diagnosticsHtml).toContain('href="/settings/#diagnostics"');
         expect(diagnosticsHtml).toContain('/shared/shell.js');

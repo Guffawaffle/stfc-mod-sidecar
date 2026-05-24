@@ -21,7 +21,7 @@ describe("public capability unavailable page", () => {
     test("defaults navigation to Watch and Setup surfaces", () => {
         const html = buildCapabilityUnavailablePage();
 
-        expect(html).toContain('href="/">Open Watch</a>');
+        expect(html).toContain('href="/fleet/">Open Watch</a>');
         expect(html).toContain('href="/setup/">Open Setup</a>');
     });
 

@@ -17,8 +17,10 @@ describe("viewer home markup", () => {
         expect(homeHtml.indexOf('href="/battle-log/"')).toBeLessThan(homeHtml.indexOf('href="/diagnostics/"'));
     });
 
-    test("surfaces the Watch landing plus setup and diagnostics transition modules", () => {
-        expect(homeHtml).toContain("<h1>Watch</h1>");
+    test("surfaces the Watch start page plus setup and diagnostics transition modules", () => {
+        expect(homeHtml).toContain("<h1>Start</h1>");
+        expect(homeHtml).toContain('aria-label="watch section navigation"');
+        expect(homeHtml).toContain('href="/fleet/">Observed Fleet State</a>');
         expect(homeHtml).toMatch(/module-card[^>]+data-capability="notifications"/);
         expect(homeHtml).toMatch(/module-card[^>]+data-developer-only[^>]+hidden/);
         expect(homeHtml).toContain('href="/aria/"');

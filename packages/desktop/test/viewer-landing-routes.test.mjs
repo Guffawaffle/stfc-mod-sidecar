@@ -30,4 +30,18 @@ describe("viewer landing page routes", () => {
             contentType: "text/html; charset=utf-8",
         });
     });
+
+    test("serves /diagnostics/cloud-sync/ through static public asset resolution", async () => {
+        await expect(resolvePublicAsset(publicDir, "/diagnostics/cloud-sync/")).resolves.toMatchObject({
+            filePath: path.resolve(publicDir, "diagnostics", "cloud-sync", "index.html"),
+            contentType: "text/html; charset=utf-8",
+        });
+    });
+
+    test("keeps /majel/ resolving as a legacy compatibility route", async () => {
+        await expect(resolvePublicAsset(publicDir, "/majel/")).resolves.toMatchObject({
+            filePath: path.resolve(publicDir, "majel", "index.html"),
+            contentType: "text/html; charset=utf-8",
+        });
+    });
 });

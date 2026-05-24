@@ -2,7 +2,7 @@ export const viewerPages = [
     {
         id: "watch",
         label: "Watch",
-        href: "/",
+        href: "/fleet/",
     },
     {
         id: "aria",
