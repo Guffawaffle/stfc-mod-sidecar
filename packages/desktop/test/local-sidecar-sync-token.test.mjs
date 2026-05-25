@@ -8,6 +8,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
     applyLocalSidecarSyncTokenToToml,
+    LOCAL_SIDECAR_BATTLELOGS_REALTIME_ENABLED,
+    LOCAL_SIDECAR_FLEET_RUNTIME_ENABLED,
+    LOCAL_SIDECAR_INGEST_URL,
+    LOCAL_SIDECAR_SYNC_ENABLED,
     prepareLocalSidecarSyncTokenForLaunch,
     propagateLocalSidecarSyncTokenToProducerConfig,
     resolveLocalSidecarSyncToken,
@@ -61,16 +65,14 @@ describe("local Sidecar sync token", () => {
 
     it("updates only the active local sidecar target token", () => {
         const original = [
-            "# [sync.targets.sidecar]",
+            "# [sidecar.sync]",
             "# token = \"commented-token\"",
-            "[sync.targets.sidecar]",
+            "[sidecar.sync]",
+            "enabled = false",
             "url = \"http://127.0.0.1:43127/api/events\"",
             "token = \"old-local-token\" # local producer token",
-            "battlelogs_realtime = true",
-            "",
-            "[sync.targets.sidecar_fleet]",
-            "token = \"fleet-token\"",
-            "url = \"http://127.0.0.1:43127/api/fleet/sync\"",
+            "battlelogs_realtime = false",
+            "fleet_runtime = false",
             "",
             "[sync.targets.majel]",
             "token = \"majel-token\"",
@@ -82,41 +84,85 @@ describe("local Sidecar sync token", () => {
 
         expect(result.changed).toBe(true);
         expect(result.targetFound).toBe(true);
+        expect(result.text).toContain(`enabled = ${JSON.stringify(LOCAL_SIDECAR_SYNC_ENABLED)}`);
         expect(result.text).toContain("token = \"new-local-token\" # local producer token");
-        expect(result.text).toContain("token = \"fleet-token\"");
+        expect(result.text).toContain(`url = ${JSON.stringify(LOCAL_SIDECAR_INGEST_URL)}`);
+        expect(result.text).toContain(`battlelogs_realtime = ${JSON.stringify(LOCAL_SIDECAR_BATTLELOGS_REALTIME_ENABLED)}`);
+        expect(result.text).toContain(`fleet_runtime = ${JSON.stringify(LOCAL_SIDECAR_FLEET_RUNTIME_ENABLED)}`);
         expect(result.text).toContain("token = \"majel-token\"");
         expect(result.text).toContain("# token = \"commented-token\"");
     });
 
     it("inserts a token into an existing sidecar target without creating other targets", () => {
-        const result = applyLocalSidecarSyncTokenToToml("[sync.targets.sidecar]\nurl = \"http://127.0.0.1:43127/api/events\"\n", "new-local-token");
+        const result = applyLocalSidecarSyncTokenToToml("[sidecar.sync]\nurl = \"http://127.0.0.1:43127/api/events\"\n", "new-local-token");
 
         expect(result.changed).toBe(true);
-        expect(result.text).toBe("[sync.targets.sidecar]\ntoken = \"new-local-token\"\nurl = \"http://127.0.0.1:43127/api/events\"\n");
+        expect(result.text).toBe(
+            `[sidecar.sync]\n`
+            + `enabled = ${JSON.stringify(LOCAL_SIDECAR_SYNC_ENABLED)}\n`
+            + `url = ${JSON.stringify(LOCAL_SIDECAR_INGEST_URL)}\n`
+            + `token = \"new-local-token\"\n`
+            + `battlelogs_realtime = ${JSON.stringify(LOCAL_SIDECAR_BATTLELOGS_REALTIME_ENABLED)}\n`
+            + `fleet_runtime = ${JSON.stringify(LOCAL_SIDECAR_FLEET_RUNTIME_ENABLED)}\n`,
+        );
     });
 
-    it("does not create a sidecar target when the producer config has none", () => {
+    it("creates the canonical sidecar target when the producer config has none", () => {
         const result = applyLocalSidecarSyncTokenToToml("[sync.targets.majel]\ntoken = \"remote-token\"\n", "new-local-token");
 
-        expect(result).toMatchObject({ changed: false, targetFound: false });
-        expect(result.text).not.toContain("new-local-token");
+        expect(result).toMatchObject({ changed: true, targetFound: true, tokenLineFound: false });
+        expect(result.text).toContain("[sync.targets.majel]\ntoken = \"remote-token\"\n");
+        expect(result.text).toContain("[sidecar.sync]");
+        expect(result.text).toContain(`enabled = ${JSON.stringify(LOCAL_SIDECAR_SYNC_ENABLED)}`);
+        expect(result.text).toContain(`url = ${JSON.stringify(LOCAL_SIDECAR_INGEST_URL)}`);
+        expect(result.text).toContain("token = \"new-local-token\"");
+        expect(result.text).toContain(`battlelogs_realtime = ${JSON.stringify(LOCAL_SIDECAR_BATTLELOGS_REALTIME_ENABLED)}`);
+        expect(result.text).toContain(`fleet_runtime = ${JSON.stringify(LOCAL_SIDECAR_FLEET_RUNTIME_ENABLED)}`);
     });
 
     it("propagates the launch token to producer config without returning the token in status", async () => {
         const gameDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "stfc-sidecar-token-"));
         try {
             const settingsPath = path.join(gameDirectory, "community_patch_settings.toml");
-            await fs.writeFile(settingsPath, "[sync.targets.sidecar]\ntoken = \"old-token\"\nurl = \"http://127.0.0.1:43127/api/events\"\n", "utf8");
+            await fs.writeFile(settingsPath, "[sidecar.sync]\ntoken = \"old-token\"\nurl = \"http://127.0.0.1:43127/api/events\"\n", "utf8");
 
             const result = await propagateLocalSidecarSyncTokenToProducerConfig({
                 gameDirectory,
                 token: "new-local-token",
             });
 
-            expect(result).toMatchObject({ ok: true, status: "updated", target: "sync.targets.sidecar" });
+            expect(result).toMatchObject({ ok: true, status: "updated", target: "sidecar.sync" });
             expect(JSON.stringify(result)).not.toContain("new-local-token");
             expect(await fs.readFile(settingsPath, "utf8")).toContain("token = \"new-local-token\"");
+            expect(await fs.readFile(settingsPath, "utf8")).toContain(`enabled = ${JSON.stringify(LOCAL_SIDECAR_SYNC_ENABLED)}`);
+            expect(await fs.readFile(settingsPath, "utf8")).toContain(`battlelogs_realtime = ${JSON.stringify(LOCAL_SIDECAR_BATTLELOGS_REALTIME_ENABLED)}`);
+            expect(await fs.readFile(settingsPath, "utf8")).toContain(`fleet_runtime = ${JSON.stringify(LOCAL_SIDECAR_FLEET_RUNTIME_ENABLED)}`);
             await expect(fs.readFile(`${settingsPath}.bak.sidecar`, "utf8")).resolves.toContain("token = \"old-token\"");
+        } finally {
+            await fs.rm(gameDirectory, { recursive: true, force: true });
+        }
+    });
+
+    it("creates the canonical sidecar target in an existing producer config when missing", async () => {
+        const gameDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "stfc-sidecar-create-token-"));
+        try {
+            const settingsPath = path.join(gameDirectory, "community_patch_settings.toml");
+            await fs.writeFile(settingsPath, "[sync.targets.majel]\ntoken = \"remote-token\"\n", "utf8");
+
+            const result = await propagateLocalSidecarSyncTokenToProducerConfig({
+                gameDirectory,
+                token: "new-local-token",
+            });
+
+            expect(result).toMatchObject({ ok: true, status: "updated", target: "sidecar.sync" });
+            const text = await fs.readFile(settingsPath, "utf8");
+            expect(text).toContain("[sync.targets.majel]\ntoken = \"remote-token\"\n");
+            expect(text).toContain("[sidecar.sync]");
+            expect(text).toContain(`enabled = ${JSON.stringify(LOCAL_SIDECAR_SYNC_ENABLED)}`);
+            expect(text).toContain(`url = ${JSON.stringify(LOCAL_SIDECAR_INGEST_URL)}`);
+            expect(text).toContain("token = \"new-local-token\"");
+            expect(text).toContain(`battlelogs_realtime = ${JSON.stringify(LOCAL_SIDECAR_BATTLELOGS_REALTIME_ENABLED)}`);
+            expect(text).toContain(`fleet_runtime = ${JSON.stringify(LOCAL_SIDECAR_FLEET_RUNTIME_ENABLED)}`);
         } finally {
             await fs.rm(gameDirectory, { recursive: true, force: true });
         }
@@ -128,7 +174,7 @@ describe("local Sidecar sync token", () => {
         const setDesktopSettings = vi.fn();
         try {
             const settingsPath = path.join(gameDirectory, "community_patch_settings.toml");
-            await fs.writeFile(settingsPath, "[sync.targets.sidecar]\ntoken = \"old-token\"\nurl = \"http://127.0.0.1:43127/api/events\"\n", "utf8");
+            await fs.writeFile(settingsPath, "[sidecar.sync]\ntoken = \"old-token\"\nurl = \"http://127.0.0.1:43127/api/events\"\n", "utf8");
 
             const launch = await prepareLocalSidecarSyncTokenForLaunch({
                 env: {},
@@ -144,7 +190,11 @@ describe("local Sidecar sync token", () => {
             expect(launch.persistedDesktopSettings).toBe(true);
             expect(saveDesktopSettings).toHaveBeenCalledWith(expect.objectContaining({ localSidecarSyncToken: "generated-local-token" }));
             expect(setDesktopSettings).toHaveBeenCalledWith(expect.objectContaining({ localSidecarSyncToken: "generated-local-token" }));
-            expect(await fs.readFile(settingsPath, "utf8")).toContain("token = \"generated-local-token\"");
+            const text = await fs.readFile(settingsPath, "utf8");
+            expect(text).toContain("token = \"generated-local-token\"");
+            expect(text).toContain(`enabled = ${JSON.stringify(LOCAL_SIDECAR_SYNC_ENABLED)}`);
+            expect(text).toContain(`battlelogs_realtime = ${JSON.stringify(LOCAL_SIDECAR_BATTLELOGS_REALTIME_ENABLED)}`);
+            expect(text).toContain(`fleet_runtime = ${JSON.stringify(LOCAL_SIDECAR_FLEET_RUNTIME_ENABLED)}`);
             expect(JSON.stringify(launch.propagation)).not.toContain("generated-local-token");
         } finally {
             await fs.rm(gameDirectory, { recursive: true, force: true });
@@ -155,6 +205,7 @@ describe("local Sidecar sync token", () => {
         const serverSource = readFileSync(path.join(repositoryRoot, "packages/viewer/server.mjs"), "utf8");
 
         expect(serverSource).toMatch(/async function handleFleetSyncIngest[\s\S]*?!isAuthorizedSyncRequest\(request\)/u);
+        expect(serverSource).toMatch(/async function handleSidecarIngest[\s\S]*?!isAuthorizedSyncRequest\(request\)/u);
         expect(serverSource).toMatch(/async function handleMajelIngest[\s\S]*?!isAuthorizedSyncRequest\(request\)/u);
     });
 

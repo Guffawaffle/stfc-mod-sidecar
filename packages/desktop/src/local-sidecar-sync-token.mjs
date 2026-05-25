@@ -4,7 +4,11 @@ import path from "node:path";
 
 import { localCapabilityTokenFrom } from "../../viewer/local-auth.mjs";
 
-export const LOCAL_SIDECAR_SYNC_TARGET = "sync.targets.sidecar";
+export const LOCAL_SIDECAR_SYNC_TARGET = "sidecar.sync";
+export const LOCAL_SIDECAR_INGEST_URL = "http://127.0.0.1:43127/api/sidecar/ingest";
+export const LOCAL_SIDECAR_SYNC_ENABLED = true;
+export const LOCAL_SIDECAR_BATTLELOGS_REALTIME_ENABLED = true;
+export const LOCAL_SIDECAR_FLEET_RUNTIME_ENABLED = true;
 export const COMMUNITY_PATCH_SETTINGS_FILE = "community_patch_settings.toml";
 
 export function resolveLocalSidecarSyncToken(options = {}) {
@@ -156,47 +160,57 @@ export function applyLocalSidecarSyncTokenToToml(tomlText, token) {
     }
 
     const lines = splitLines(String(tomlText ?? ""));
-    const sectionIndex = lines.findIndex((line) => isTargetSectionLine(line.text));
+    const newline = newlineForInsert(lines);
+    let sectionIndex = lines.findIndex((line) => isTargetSectionLine(line.text));
+    let changed = false;
+
     if (sectionIndex < 0) {
-        return {
-            text: String(tomlText ?? ""),
-            changed: false,
-            targetFound: false,
-            tokenLineFound: false,
-        };
+        if (lines.length > 0 && lines[lines.length - 1].text !== "") {
+            lines.push({ text: "", newline });
+        }
+        sectionIndex = lines.length;
+        lines.push({ text: "[sidecar.sync]", newline });
+        changed = true;
     }
 
-    const nextSectionIndex = findNextSectionIndex(lines, sectionIndex + 1);
-    const tokenLineIndex = findTokenLineIndex(lines, sectionIndex + 1, nextSectionIndex);
-    const nextTokenLine = tokenAssignmentLine(normalizedToken);
+    let sectionEnd = findNextSectionIndex(lines, sectionIndex + 1);
+    let insertionIndex = sectionIndex + 1;
+    let tokenLineFound = false;
+    const desiredAssignments = [
+        ["enabled", LOCAL_SIDECAR_SYNC_ENABLED],
+        ["url", LOCAL_SIDECAR_INGEST_URL],
+        ["token", normalizedToken],
+        ["battlelogs_realtime", LOCAL_SIDECAR_BATTLELOGS_REALTIME_ENABLED],
+        ["fleet_runtime", LOCAL_SIDECAR_FLEET_RUNTIME_ENABLED],
+    ];
 
-    if (tokenLineIndex >= 0) {
-        const currentLine = lines[tokenLineIndex];
-        const replacement = replaceTokenValue(currentLine.text, normalizedToken);
-        if (replacement === currentLine.text) {
-            return {
-                text: String(tomlText ?? ""),
-                changed: false,
-                targetFound: true,
-                tokenLineFound: true,
-            };
+    for (const [key, value] of desiredAssignments) {
+        const lineIndex = findAssignmentLineIndex(lines, sectionIndex + 1, sectionEnd, key);
+        if (lineIndex >= 0) {
+            const currentLine = lines[lineIndex];
+            const replacement = replaceAssignmentValue(currentLine.text, key, value);
+            if (replacement !== currentLine.text) {
+                lines[lineIndex] = { text: replacement, newline: currentLine.newline };
+                changed = true;
+            }
+            insertionIndex = lineIndex + 1;
+            if (key === "token") {
+                tokenLineFound = true;
+            }
+            continue;
         }
 
-        lines[tokenLineIndex] = { text: replacement, newline: currentLine.newline };
-        return {
-            text: joinLines(lines),
-            changed: true,
-            targetFound: true,
-            tokenLineFound: true,
-        };
+        lines.splice(insertionIndex, 0, { text: assignmentLine(key, value), newline });
+        insertionIndex += 1;
+        sectionEnd += 1;
+        changed = true;
     }
 
-    lines.splice(sectionIndex + 1, 0, { text: nextTokenLine, newline: newlineForInsert(lines) });
     return {
         text: joinLines(lines),
-        changed: true,
+        changed,
         targetFound: true,
-        tokenLineFound: false,
+        tokenLineFound,
     };
 }
 
@@ -230,7 +244,7 @@ function joinLines(lines) {
 }
 
 function isTargetSectionLine(text) {
-    return /^\s*\[\s*sync\s*\.\s*targets\s*\.\s*sidecar\s*\]\s*(?:#.*)?$/u.test(text);
+    return /^\s*\[\s*sidecar\s*\.\s*sync\s*\]\s*(?:#.*)?$/u.test(text);
 }
 
 function isAnySectionLine(text) {
@@ -247,9 +261,9 @@ function findNextSectionIndex(lines, startIndex) {
     return lines.length;
 }
 
-function findTokenLineIndex(lines, startIndex, endIndex) {
+function findAssignmentLineIndex(lines, startIndex, endIndex, key) {
     for (let index = startIndex; index < endIndex; index += 1) {
-        if (/^\s*token\s*=/u.test(lines[index].text)) {
+        if (new RegExp(`^\\s*${key}\\s*=`, "u").test(lines[index].text)) {
             return index;
         }
     }
@@ -257,18 +271,18 @@ function findTokenLineIndex(lines, startIndex, endIndex) {
     return -1;
 }
 
-function tokenAssignmentLine(token) {
-    return `token = ${JSON.stringify(token)}`;
+function assignmentLine(key, value) {
+    return `${key} = ${JSON.stringify(value)}`;
 }
 
-function replaceTokenValue(line, token) {
-    const replacement = tokenAssignmentLine(token);
-    const match = /^(\s*token\s*=\s*)(?:"(?:\\.|[^"])*"|'[^']*'|[^#\r\n]*)(\s*(?:#.*)?)$/u.exec(line);
+function replaceAssignmentValue(line, key, value) {
+    const replacement = assignmentLine(key, value);
+    const match = new RegExp(`^(\\s*${key}\\s*=\\s*)(?:\"(?:\\\\.|[^\"])*\"|'[^']*'|[^#\\r\\n]*)(\\s*(?:#.*)?)$`, "u").exec(line);
     if (!match) {
         return replacement;
     }
 
-    return `${match[1]}${JSON.stringify(token)}${match[2]}`;
+    return `${match[1]}${JSON.stringify(value)}${match[2]}`;
 }
 
 function newlineForInsert(lines) {

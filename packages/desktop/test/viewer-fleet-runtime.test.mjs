@@ -235,7 +235,7 @@ describe.sequential("viewer fleet runtime", () => {
 
         expect(projectionRequests(page)).toHaveLength(2);
         expect(activityRequests(page)).toHaveLength(1);
-    expect(combatPreviewRequests(page)).toHaveLength(2);
+        expect(combatPreviewRequests(page)).toHaveLength(2);
         expect(page.requests.some((request) => request.includes("/api/events"))).toBe(false);
         expect(page.elements.version.textContent).toBe("v8");
         expect(page.elements.debug.textContent).not.toContain("Event: Never");

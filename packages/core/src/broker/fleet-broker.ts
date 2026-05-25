@@ -1,4 +1,5 @@
 import {
+  buildSidecarFleetRuntimeTelemetryEvents,
   buildFleetRuntimeTelemetryEvents,
   buildFleetTelemetryEvents,
   extractFleetRuntimeMajelEnvelopes,
@@ -6,6 +7,7 @@ import {
   SIDECAR_TELEMETRY_PROTOCOL_VERSION,
   type FleetTelemetryEvent,
   type FleetProjectionSlot,
+  type SidecarFleetRuntimeSnapshotInput,
 } from "./fleet-telemetry.js";
 import { summarizeFleetBrokerError } from "./error-summary.js";
 import type {
@@ -59,6 +61,7 @@ export interface FleetTelemetryBroker {
   readonly backend: FleetBrokerStore["backend"];
   ingestSyncPayload(payload: unknown): Promise<FleetBrokerIngestResult>;
   ingestFleetRuntimePayload(payload: unknown): Promise<FleetBrokerIngestResult>;
+  ingestSidecarFleetRuntimePayload(payload: SidecarFleetRuntimeSnapshotInput | readonly SidecarFleetRuntimeSnapshotInput[]): Promise<FleetBrokerIngestResult>;
   readProjection(): Promise<FleetBrokerReadProjectionResult>;
   listPendingOutbox(limit?: number): Promise<FleetOutboxEntry[]>;
   status(): Promise<FleetBrokerStatusSummary>;
@@ -152,6 +155,29 @@ class FleetTelemetryBrokerImpl implements FleetTelemetryBroker {
         sidecarVersion: this.sidecarVersion,
       });
       return await this.appendTelemetryEvents(events, envelopes.length);
+    } catch (error) {
+      this.lastError = summarizeFleetBrokerError(error);
+      this.lastErrorAt = this.now().toISOString();
+      throw error;
+    }
+  }
+
+  async ingestSidecarFleetRuntimePayload(
+    payload: SidecarFleetRuntimeSnapshotInput | readonly SidecarFleetRuntimeSnapshotInput[],
+  ): Promise<FleetBrokerIngestResult> {
+    try {
+      const snapshots = Array.isArray(payload) ? payload : [payload];
+      const events = buildSidecarFleetRuntimeTelemetryEvents(snapshots, {
+        installId: this.installId,
+        sessionId: this.sessionId,
+        sidecarVersion: this.sidecarVersion,
+        timestamp: this.now().toISOString(),
+        nextSequence: () => {
+          this.sequence += 1;
+          return this.sequence;
+        },
+      });
+      return await this.appendTelemetryEvents(events, snapshots.length);
     } catch (error) {
       this.lastError = summarizeFleetBrokerError(error);
       this.lastErrorAt = this.now().toISOString();

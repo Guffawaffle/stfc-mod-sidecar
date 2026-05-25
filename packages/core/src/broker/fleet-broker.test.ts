@@ -146,6 +146,62 @@ describe("fleet telemetry broker", () => {
     await broker.close();
   });
 
+  it("bridges raw sidecar runtime snapshots into the local projection without touching Majel envelopes", async () => {
+    const store = await createSqlFleetBrokerStore({
+      backend: "sqlite",
+      connection: makeTempPath("fleet-runtime-sidecar.sqlite"),
+    });
+    const broker = await createFleetTelemetryBroker({
+      store,
+      installId: "install-test",
+      sessionId: "viewer-session",
+      sidecarVersion: "0.1.0-test",
+      cloudUploadEnabled: false,
+      now: fixedClock("2026-05-18T12:00:00.000Z"),
+    });
+
+    const ingest = await broker.ingestSidecarFleetRuntimePayload({
+      batchId: "sidecar-batch-17",
+      producedAt: "2026-05-18T12:05:00.000Z",
+      sessionId: "mod-session-1",
+      source: "stfc-community-mod",
+      modVersion: "2.0.1-test",
+      payload: runtimeEnvelope().payload,
+    });
+    const projection = await broker.readProjection();
+
+    expect(ingest).toMatchObject({
+      ok: true,
+      received: 1,
+      accepted: 1,
+      rawStored: 1,
+      projectionAdvanced: 1,
+      projectionStale: 0,
+      cloudUploadEnabled: false,
+    });
+    expect(projection.projection).toMatchObject({
+      installId: "install-test",
+      sessionId: "mod-session-1",
+      stateVersion: 1,
+      slotCount: 10,
+      updatedAt: "2026-05-18T12:05:00.000Z",
+    });
+
+    const slots = projection.projection?.slots ?? [];
+    expect(slots.find((slot) => slot.slotKey === "slot-3")).toMatchObject({
+      assignmentKind: "player_ship",
+      state: "warping",
+      shipType: "hull:Discovery",
+      hullSpecId: 1307832955,
+      shipIdentityId: "2667207912673592502",
+    });
+    expect(slots[0]).not.toHaveProperty("token");
+    expect(slots[0]).not.toHaveProperty("rawJson");
+    expect(slots[0]).not.toHaveProperty("coordinates");
+
+    await broker.close();
+  });
+
   it("reports projection diagnostic timing for advanced, no-op, and stale runtime snapshots", async () => {
     const store = await createSqlFleetBrokerStore({
       backend: "sqlite",

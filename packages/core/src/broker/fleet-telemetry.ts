@@ -130,6 +130,15 @@ export interface FleetRuntimeMajelEnvelope {
   payload: FleetRuntimeSnapshotPayload;
 }
 
+export interface SidecarFleetRuntimeSnapshotInput {
+  batchId: string;
+  producedAt: string;
+  sessionId: string;
+  source: string;
+  modVersion: string;
+  payload: FleetRuntimeSnapshotPayload;
+}
+
 export function normalizeFleetSyncPayload(payload: unknown): FleetSyncItem[] {
   const items = Array.isArray(payload) ? payload : [payload];
   return items.filter((item): item is FleetSyncItem => isFleetSyncItem(item));
@@ -187,6 +196,15 @@ export function buildFleetRuntimeTelemetryEvents(
 ): FleetTelemetryEvent[] {
   return envelopes
     .map((envelope) => fleetRuntimeEnvelopeToSnapshotEvent(envelope, context))
+    .filter(isDefined);
+}
+
+export function buildSidecarFleetRuntimeTelemetryEvents(
+  snapshots: readonly SidecarFleetRuntimeSnapshotInput[],
+  context: FleetTelemetryBuildContext,
+): FleetTelemetryEvent[] {
+  return snapshots
+    .map((snapshot) => sidecarFleetRuntimeToSnapshotEvent(snapshot, context))
     .filter(isDefined);
 }
 
@@ -296,6 +314,40 @@ function fleetRuntimeEnvelopeToSnapshotEvent(
     slots,
     capabilities: { fleetProjection: true, battleSummary: true },
     coalesceKey: `${context.installId}:fleet.snapshot:${envelope.sessionId}`,
+  };
+}
+
+function sidecarFleetRuntimeToSnapshotEvent(
+  snapshot: SidecarFleetRuntimeSnapshotInput,
+  context: FleetTelemetryBuildContext,
+): FleetSnapshotEvent | null {
+  const slots = snapshot.payload.slots
+    .map((slot) => fleetRuntimeSlotToProjectionSlot(slot, snapshot.producedAt, snapshot.payload.fleetBarTracked !== false))
+    .filter(isDefined);
+  if (slots.length === 0) {
+    return null;
+  }
+
+  const version = context.nextSequence();
+  const fleetCount = slots.filter((slot) => slot.assignmentKind === "player_ship").length;
+  return {
+    protocolVersion: SIDECAR_TELEMETRY_PROTOCOL_VERSION,
+    schemaVersion: FLEET_SNAPSHOT_SCHEMA_VERSION,
+    type: "fleet.snapshot",
+    timestamp: snapshot.producedAt,
+    installId: context.installId,
+    sessionId: snapshot.sessionId,
+    source: SOURCE,
+    classification: CLASSIFICATION,
+    idempotencyKey: `sidecar:fleet.snapshot:${shaHex(`${snapshot.batchId}:${version}:${snapshot.producedAt}`).slice(0, 48)}`,
+    snapshotId: `sidecar-runtime-${shaHex(snapshot.batchId).slice(0, 24)}`,
+    snapshotVersion: version,
+    observedAt: snapshot.producedAt,
+    sidecarVersion: context.sidecarVersion,
+    fleetCount,
+    slots,
+    capabilities: { fleetProjection: true, battleSummary: true },
+    coalesceKey: `${context.installId}:fleet.snapshot:${snapshot.sessionId}`,
   };
 }
 

@@ -60,6 +60,7 @@ import { buildFleetActivitySnapshot } from "./server/fleet-activity.mjs";
 import { createFeedWatcher } from "./server/feed-watcher.mjs";
 import { fleetProjectionStreamSummary, shouldNotifyFleetProjectionChanged } from "./server/fleet-stream-events.mjs";
 import { ingestAcceptedMajelPayload } from "./server/majel-ingest-bridge.mjs";
+import { ingestSidecarEnvelope } from "./server/sidecar-ingest.mjs";
 import { handleDevRoutes } from "./server/routes/dev-routes.mjs";
 import { handleDiagnosticsRoutes } from "./server/routes/diagnostics-routes.mjs";
 import { handleEventRoutes } from "./server/routes/event-routes.mjs";
@@ -69,6 +70,7 @@ import { handleMajelRoutes } from "./server/routes/majel-routes.mjs";
 import { handleModInstallRoutes } from "./server/routes/mod-install-routes.mjs";
 import { handleModUninstallRoutes } from "./server/routes/mod-uninstall-routes.mjs";
 import { handleSettingsRoutes } from "./server/routes/settings-routes.mjs";
+import { handleSidecarRoutes } from "./server/routes/sidecar-routes.mjs";
 import { resolvePublicAsset, sendFile, sendJson, sendText } from "./server/static-files.mjs";
 
 const DEFAULT_GAME_DIR = "C:\\Games\\Star Trek Fleet Command\\default\\game";
@@ -245,6 +247,12 @@ const server = createServer(async (request, response) => {
         handleFleetStream,
         readFleetProjection,
         readFleetShipCombatPreview,
+    })) {
+        return;
+    }
+
+    if (await handleSidecarRoutes(request, response, requestUrl, {
+        handleSidecarIngest,
     })) {
         return;
     }
@@ -659,11 +667,15 @@ async function reconcileRuntimeSurfacesWithVariantGate() {
 }
 
 function sendEventStoreUnavailable(response) {
-    return sendJson(response, 503, {
+    return sendJson(response, 503, unavailableEventStorePayload());
+}
+
+function unavailableEventStorePayload() {
+    return {
         ok: false,
         error: "Event store is unavailable for the active Community Mod variant gate.",
         retryAfterSeconds: 5,
-    });
+    };
 }
 
 async function withCommunityModOperationLock(response, operation, handler) {
@@ -1432,6 +1444,51 @@ async function handleFleetSyncIngest(request, response) {
         await maybeBroadcastFleetProjectionChanged("fleet-sync", result);
         const queueDepth = await readFleetBrokerQueueDepth();
         return sendJson(response, 202, buildCompatibleFleetSyncSuccessPayload(result, { queueDepth }));
+    } catch (error) {
+        return sendJson(response, 400, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+}
+
+async function handleSidecarIngest(request, response) {
+    if (!isAuthorizedSyncRequest(request)) {
+        return sendJson(response, 401, { ok: false, error: "Unauthorized sidecar sync request" });
+    }
+
+    try {
+        const payload = await readJsonBody(request);
+        const result = await ingestSidecarEnvelope(payload, {
+            developerMode,
+            developerModeRequiredPayload,
+            isDeveloperEvent,
+            normalizeBattleEvents: normalizeIncomingEvents,
+            battleUnavailablePayload: unavailableEventStorePayload,
+            appendBattleEvents: eventStore ? async (events) => {
+                const result = await eventStore.append(events);
+                broadcastEventUpdate("ingest", { appended: result.appended ?? events.length });
+                return {
+                    backend: eventStore.backend,
+                    ...result,
+                };
+            } : null,
+            fleetUnavailablePayload: unavailableFleetProjection,
+            ingestFleetRuntimePayload: fleetBroker ? async (runtimePayload, envelope) => {
+                const ingestResult = await fleetBroker.ingestSidecarFleetRuntimePayload({
+                    batchId: envelope.batchId,
+                    producedAt: envelope.producedAt,
+                    sessionId: envelope.sessionId,
+                    source: envelope.source,
+                    modVersion: envelope.modVersion,
+                    payload: runtimePayload,
+                });
+                await maybeBroadcastFleetProjectionChanged("sidecar-runtime", ingestResult);
+                const queueDepth = await readFleetBrokerQueueDepth();
+                return buildCompatibleFleetSyncSuccessPayload(ingestResult, { queueDepth });
+            } : null,
+        });
+        return sendJson(response, result.statusCode, result.body);
     } catch (error) {
         return sendJson(response, 400, {
             ok: false,
