@@ -50,9 +50,15 @@
       </section>
 
       <section class="detail-column fleet-panel">
-        <div class="panel-heading">
-          <h2>Observed Rows</h2>
-          <p>Current fleet and slot observations from the projection API.</p>
+        <div class="panel-heading fleet-panel__heading">
+          <div>
+            <h2>Observed Rows</h2>
+            <p>Current fleet and slot observations from the projection API.</p>
+          </div>
+          <div class="fleet-panel__controls" aria-label="ship summary controls">
+            <button id="expand-all-ship-combat-button" class="button-secondary" type="button">Expand all</button>
+            <button id="collapse-all-ship-combat-button" class="button-secondary" type="button">Collapse all</button>
+          </div>
         </div>
         <p id="projection-note" class="detail-note fleet-status-note">Waiting for the local fleet projection.</p>
         <p id="projection-debug" class="detail-note fleet-status-note fleet-debug-stamps">Fetch: Never | SSE: Never | Event: Never | Render: Never | Version: No projection</p>

@@ -19,6 +19,8 @@ describe("viewer fleet markup", () => {
         expect(fleetHtml).toContain("Projection surface");
         expect(fleetHtml).toContain("Observed Rows");
         expect(fleetHtml).toContain("Show empty slots");
+        expect(fleetHtml).toContain('id="expand-all-ship-combat-button"');
+        expect(fleetHtml).toContain('id="collapse-all-ship-combat-button"');
         expect(fleetHtml).toContain("Recent Activity (preview)");
         expect(fleetHtml).toContain('id="fleet-activity-view"');
         expect(fleetHtml).toContain('href="/diagnostics/"');
@@ -30,12 +32,14 @@ describe("viewer fleet markup", () => {
     test("orders Fleet Watch controls with help last and activity below observed rows", () => {
         expect(fleetHtml.indexOf('id="refresh-button"')).toBeLessThan(fleetHtml.indexOf('id="toggle-empty-slots-button"'));
         expect(fleetHtml.indexOf('id="toggle-empty-slots-button"')).toBeLessThan(fleetHtml.indexOf('aria-label="About Fleet Watch"'));
+        expect(fleetHtml.indexOf('id="expand-all-ship-combat-button"')).toBeLessThan(fleetHtml.indexOf('id="collapse-all-ship-combat-button"'));
         expect(fleetHtml.indexOf("Observed Rows")).toBeLessThan(fleetHtml.indexOf("Recent Activity (preview)"));
     });
 
     test("reads only narrow fleet routes and keeps explicit unavailable, empty, stale, and current copy", () => {
         expect(fleetApp).toContain('fetch("/api/fleet/projection"');
         expect(fleetApp).toContain('fetch("/api/fleet/activity?limit=6"');
+        expect(fleetApp).toContain('fetch("/api/fleet/ship-combat-preview"');
         expect(fleetApp).not.toContain("/api/events");
         expect(fleetApp).not.toContain("Raw JSON");
         expect(fleetApp).toContain("Projection unavailable.");
@@ -44,5 +48,6 @@ describe("viewer fleet markup", () => {
         expect(fleetApp).toContain("Current:");
         expect(fleetApp).toContain("Show empty slots");
         expect(fleetApp).toContain("No recent activity preview is available yet.");
+        expect(fleetApp).toContain("Recent combat");
     });
 });

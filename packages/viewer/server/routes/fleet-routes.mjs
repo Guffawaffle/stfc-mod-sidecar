@@ -34,6 +34,17 @@ export async function handleFleetRoutes(request, response, requestUrl, context) 
         return true;
     }
 
+    if (requestUrl.pathname === "/api/fleet/ship-combat-preview") {
+        if (request.method && request.method !== "GET") {
+            sendJson(response, 405, { ok: false, error: "Method not allowed" });
+            return true;
+        }
+
+        const preview = await context.readFleetShipCombatPreview();
+        sendJson(response, preview.ok ? 200 : preview.statusCode ?? 500, preview);
+        return true;
+    }
+
     if (requestUrl.pathname === "/api/fleet/stream") {
         if (request.method && request.method !== "GET") {
             sendJson(response, 405, { ok: false, error: "Method not allowed" });

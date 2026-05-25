@@ -98,6 +98,40 @@ describe("viewer fleet routes", () => {
         });
     });
 
+    it("returns exact-ID ship combat preview from the dedicated Fleet preview path", async () => {
+        const response = captureResponse();
+        const context = baseContext({
+            readFleetShipCombatPreview: vi.fn(async () => ({
+                ok: true,
+                source: "fleet.ship_recent_combat.preview",
+                preview: {
+                    schema: "stfc.fleet.ship_recent_combat.preview.v1",
+                    provisional: true,
+                    matches: [{ slotKey: "slot-0", shipId: "2682548280591992155", recentBattles: [{ source: "battle.report" }] }],
+                    unmatchedBattles: [],
+                    unmatchedFleetRows: [],
+                },
+            })),
+        });
+
+        await expect(handleFleetRoutes(
+            { method: "GET" },
+            response,
+            new URL("http://127.0.0.1/api/fleet/ship-combat-preview"),
+            context,
+        )).resolves.toBe(true);
+
+        expect(context.readFleetShipCombatPreview).toHaveBeenCalledTimes(1);
+        expect(response.statusCode).toBe(200);
+        expect(JSON.parse(response.body)).toMatchObject({
+            ok: true,
+            source: "fleet.ship_recent_combat.preview",
+            preview: {
+                matches: [{ slotKey: "slot-0", shipId: "2682548280591992155" }],
+            },
+        });
+    });
+
     it("delegates fleet projection stream requests", async () => {
         const context = baseContext();
         const response = captureResponse();
@@ -144,6 +178,16 @@ describe("viewer fleet routes", () => {
         expect(activityResponse.statusCode).toBe(405);
         expect(JSON.parse(activityResponse.body)).toEqual({ ok: false, error: "Method not allowed" });
 
+        const combatPreviewResponse = captureResponse();
+        await handleFleetRoutes(
+            { method: "POST" },
+            combatPreviewResponse,
+            new URL("http://127.0.0.1/api/fleet/ship-combat-preview"),
+            baseContext(),
+        );
+        expect(combatPreviewResponse.statusCode).toBe(405);
+        expect(JSON.parse(combatPreviewResponse.body)).toEqual({ ok: false, error: "Method not allowed" });
+
         const streamResponse = captureResponse();
         await handleFleetRoutes(
             { method: "POST" },
@@ -189,6 +233,17 @@ function baseContext(overrides = {}) {
             response.end("stream");
         }),
         readFleetActivity: vi.fn(async () => ({ ok: true, provisional: true, items: [] })),
+        readFleetShipCombatPreview: vi.fn(async () => ({
+            ok: true,
+            source: "fleet.ship_recent_combat.preview",
+            preview: {
+                schema: "stfc.fleet.ship_recent_combat.preview.v1",
+                provisional: true,
+                matches: [],
+                unmatchedBattles: [],
+                unmatchedFleetRows: [],
+            },
+        })),
         readFleetProjection: vi.fn(async () => ({ ok: true, available: false, projection: null })),
         ...overrides,
     };

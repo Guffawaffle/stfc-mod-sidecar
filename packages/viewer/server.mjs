@@ -85,6 +85,9 @@ const POLL_HINT_MS = 2000;
 const STREAM_KEEPALIVE_MS = 30000;
 const SHUTDOWN_GRACE_MS = 5000;
 const BATTLE_EVENT_TYPES = Object.freeze(["battle.event", "battle.capture", "battle.analytics", "battle.report", "catalog.snapshot"]);
+const SHIP_COMBAT_PREVIEW_SOURCE = "fleet.ship_recent_combat.preview";
+const SHIP_COMBAT_PREVIEW_LIMIT = 3;
+const SHIP_COMBAT_PREVIEW_EVENT_WINDOW = 60;
 const DEVELOPER_EVENT_TYPE_LIST = Object.freeze(["debug.event", "hook.event", "session.event", "integration.event"]);
 const ALL_EVENT_TYPES = Object.freeze([...BATTLE_EVENT_TYPES, ...DEVELOPER_EVENT_TYPE_LIST]);
 const DEVELOPER_EVENT_TYPES = new Set(DEVELOPER_EVENT_TYPE_LIST);
@@ -139,9 +142,11 @@ let applyCommunityModNotificationSettingsPatch;
 let buildCommunityModDiagnosticSettingsSnapshot;
 let buildCommunityModHotkeySettingsSnapshot;
 let buildCommunityModNotificationSettingsSnapshot;
+let buildFleetShipRecentCombatPreview;
 let normalizeCommunityModSettingsProfile;
 let isSidecarEvent;
 let parseEventJsonLine;
+let summarizeBattleReportEventForRecentCombat;
 try {
     ({
         applyCommunityModDiagnosticSettingsPatch,
@@ -150,11 +155,13 @@ try {
         buildCommunityModDiagnosticSettingsSnapshot,
         buildCommunityModHotkeySettingsSnapshot,
         buildCommunityModNotificationSettingsSnapshot,
+        buildFleetShipRecentCombatPreview,
         countFleetRuntimeMajelEnvelopes,
         createFleetTelemetryBroker,
         createSqlFleetBrokerStore,
         createSqlSidecarEventStore,
         summarizeFleetBrokerError,
+        summarizeBattleReportEventForRecentCombat,
         isSidecarEvent,
         normalizeCommunityModSettingsProfile,
         parseEventJsonLine,
@@ -237,6 +244,7 @@ const server = createServer(async (request, response) => {
         handleFleetSyncIngest,
         handleFleetStream,
         readFleetProjection,
+        readFleetShipCombatPreview,
     })) {
         return;
     }
@@ -1460,6 +1468,41 @@ async function readFleetActivity(limit) {
     return buildFleetActivitySnapshot(snapshot, { limit });
 }
 
+async function readFleetShipCombatPreview() {
+    const generatedAt = new Date().toISOString();
+    const projection = await readFleetProjection();
+    const slots = Array.isArray(projection?.projection?.slots) ? projection.projection.slots : [];
+
+    let snapshot = emptyEventsSnapshot({ includeDetails: true });
+    if (communityModCapabilities.battleLog) {
+        snapshot = await readEventsSnapshot(SHIP_COMBAT_PREVIEW_EVENT_WINDOW, {
+            includeDetails: true,
+            eventTypes: ["battle.report"],
+        });
+    }
+
+    const recentBattles = fleetShipCombatBattlesFromSnapshot(snapshot);
+    const preview = limitFleetShipCombatPreview(
+        buildFleetShipRecentCombatPreview(slots, recentBattles),
+        SHIP_COMBAT_PREVIEW_LIMIT,
+    );
+
+    return {
+        ok: true,
+        source: SHIP_COMBAT_PREVIEW_SOURCE,
+        generatedAt,
+        battleLogEnabled: communityModCapabilities.battleLog,
+        projectionAvailable: projection?.ok === true && projection?.available === true,
+        dataSource: {
+            source: snapshot.source ?? "store",
+            storageBackend: snapshot.storageBackend ?? null,
+            detail: snapshot.detail ?? "full",
+            exists: snapshot.exists !== false,
+        },
+        preview,
+    };
+}
+
 async function handleMajelIngest(request, response) {
     if (!isAuthorizedSyncRequest(request)) {
         return sendJson(response, 401, { ok: false, error: "Unauthorized Majel sync request" });
@@ -1781,6 +1824,43 @@ function emptyEventsSnapshot(options = {}) {
         totalLines: 0,
         returnedLines: 0,
         events: [],
+    };
+}
+
+function fleetShipCombatBattlesFromSnapshot(snapshot) {
+    const events = Array.isArray(snapshot?.events) ? snapshot.events : [];
+    const battles = [];
+
+    for (const entry of events) {
+        if (entry?.parsed !== true || entry?.event?.type !== "battle.report") {
+            continue;
+        }
+
+        const battle = summarizeBattleReportEventForRecentCombat(entry.event, {
+            localId: Number.isFinite(entry.lineNumber) ? entry.lineNumber : undefined,
+        });
+        if (battle) {
+            battles.push(battle);
+        }
+    }
+
+    return battles;
+}
+
+function limitFleetShipCombatPreview(preview, limit) {
+    return {
+        ...preview,
+        matches: Array.isArray(preview?.matches)
+            ? preview.matches.map((match) => ({
+                ...match,
+                recentBattles: Array.isArray(match.recentBattles)
+                    ? match.recentBattles.slice(0, limit)
+                    : [],
+            }))
+            : [],
+        unmatchedBattles: Array.isArray(preview?.unmatchedBattles)
+            ? preview.unmatchedBattles.slice(0, limit)
+            : [],
     };
 }
 
