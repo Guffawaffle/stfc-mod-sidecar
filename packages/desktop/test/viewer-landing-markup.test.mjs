@@ -68,4 +68,12 @@ describe("viewer landing page markup", () => {
         expect(diagnosticsHtml).toContain('/diagnostics/app.js');
         expect(diagnosticsHtml).toContain('/shared/shell.js');
     });
+
+    test("keeps Diagnostics detail controls as the final ordered row action", () => {
+        expect(diagnosticsHtml.indexOf('href="/battle-log/"')).toBeLessThan(diagnosticsHtml.indexOf('aria-controls="diagnostic-detail-battle-log"'));
+        expect(diagnosticsHtml.indexOf('data-capability-card-fallback hidden disabled>Open</button>')).toBeLessThan(diagnosticsHtml.indexOf('aria-controls="diagnostic-detail-battle-log"'));
+        expect(diagnosticsHtml.indexOf('href="/battle-log/workbench/"')).toBeLessThan(diagnosticsHtml.indexOf('aria-controls="diagnostic-detail-workbench"'));
+        expect(diagnosticsHtml.indexOf('href="/diagnostics/cloud-sync/"')).toBeLessThan(diagnosticsHtml.indexOf('aria-controls="diagnostic-detail-cloud"'));
+        expect(diagnosticsHtml.indexOf('href="/settings/#diagnostics"')).toBeLessThan(diagnosticsHtml.indexOf('aria-controls="diagnostic-detail-controls"'));
+    });
 });

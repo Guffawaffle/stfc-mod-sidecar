@@ -4,21 +4,30 @@ import { classifyProjectionPayload } from "./projection-view-state.js";
 const STALE_PROJECTION_MS = 5 * 60 * 1000;
 const FALLBACK_REFRESH_MS = 15000;
 const FLEET_PAGE_ENTER_EVENT = "stfc:viewer-page-enter";
+const MAX_SHIP_COMBAT_PREVIEW_BATTLES = 3;
 
 let refreshSequence = 0;
 let activeRefreshPromise = null;
 let fallbackRefreshTimer = null;
 let fleetEventSource = null;
 let lastProjectionPayload = null;
+let activeActivityRefreshPromise = null;
+let activeCombatPreviewRefreshPromise = null;
+let lastCombatPreviewPayload = null;
 let lastProjectionFetchAt = null;
 let lastSseConnectedAt = null;
 let lastSseEventAt = null;
 let lastRenderAt = null;
 let currentRenderedStateVersion = "No projection";
 let showEmptySlots = false;
+let expandedShipCombatSlotKeys = new Set();
+let shipCombatDomTokenBySlotKey = new Map();
+let shipCombatSlotKeyByDomToken = new Map();
 
 const elements = {
+  collapseAllShipCombatButton: document.querySelector("#collapse-all-ship-combat-button"),
   endpoint: document.querySelector("#projection-endpoint"),
+  expandAllShipCombatButton: document.querySelector("#expand-all-ship-combat-button"),
   rowCount: document.querySelector("#projection-row-count"),
   updated: document.querySelector("#projection-updated"),
   version: document.querySelector("#projection-version"),
@@ -28,11 +37,12 @@ const elements = {
   refreshButton: document.querySelector("#refresh-button"),
   toggleEmptySlotsButton: document.querySelector("#toggle-empty-slots-button"),
   debug: document.querySelector("#projection-debug"),
+  activityView: document.querySelector("#fleet-activity-view"),
 };
 
 const bridgeStatus = createBridgeStatus(elements.status);
 
-elements.refreshButton?.addEventListener("click", () => refreshProjection({ announce: true }));
+elements.refreshButton?.addEventListener("click", () => refreshFleetPage({ announce: true }));
 elements.toggleEmptySlotsButton?.addEventListener("click", () => {
   showEmptySlots = !showEmptySlots;
   updateEmptySlotsToggle();
@@ -40,23 +50,42 @@ elements.toggleEmptySlotsButton?.addEventListener("click", () => {
     renderProjection(lastProjectionPayload);
   }
 });
+elements.expandAllShipCombatButton?.addEventListener("click", () => expandAllShipCombatSummaries());
+elements.collapseAllShipCombatButton?.addEventListener("click", () => collapseAllShipCombatSummaries());
+elements.view?.addEventListener("click", (event) => {
+  const target = event?.target;
+  if (!target || typeof target.closest !== "function") {
+    return;
+  }
+
+  const closeButton = target.closest("[data-ship-combat-close]");
+  if (closeButton) {
+    toggleShipCombatSummary(shipCombatSlotKeyFromDomToken(closeButton.getAttribute("data-slot-token")));
+    return;
+  }
+
+  const row = target.closest("[data-ship-combat-row]");
+  if (row) {
+    toggleShipCombatSummary(shipCombatSlotKeyFromDomToken(row.getAttribute("data-slot-token")));
+  }
+});
 window.addEventListener("pageshow", () => {
   if (!fleetEventSource) {
     startLiveUpdateLoop();
   }
-  return refreshProjection({ announce: false });
+  return refreshFleetPage({ announce: false });
 });
-window.addEventListener("focus", () => refreshProjection({ announce: false }));
+window.addEventListener("focus", () => refreshFleetPage({ announce: false }));
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
-    return refreshProjection({ announce: false });
+    return refreshFleetPage({ announce: false });
   }
 
   return undefined;
 });
 window.addEventListener(FLEET_PAGE_ENTER_EVENT, (event) => {
   if (event.detail?.page === "fleet") {
-    return refreshProjection({ announce: false });
+    return refreshFleetPage({ announce: false });
   }
 
   return undefined;
@@ -64,15 +93,65 @@ window.addEventListener(FLEET_PAGE_ENTER_EVENT, (event) => {
 window.addEventListener("pagehide", closeLiveUpdateLoop);
 window.addEventListener("beforeunload", closeLiveUpdateLoop);
 
-await refreshProjection({ announce: true });
+await refreshFleetPage({ announce: true });
 startLiveUpdateLoop();
 
 export function fleetProjectionPageEnterEvent() {
   return FLEET_PAGE_ENTER_EVENT;
 }
 
+export function toggleShipCombatSummary(slotKey) {
+  const normalized = String(slotKey ?? "").trim();
+  if (!normalized) {
+    return;
+  }
+
+  const visibleSlotKeys = new Set(visibleShipCombatSummarySlotKeys());
+  if (!visibleSlotKeys.has(normalized)) {
+    return;
+  }
+
+  const next = new Set(expandedShipCombatSlotKeys);
+  if (next.has(normalized)) {
+    next.delete(normalized);
+  } else {
+    next.add(normalized);
+  }
+
+  expandedShipCombatSlotKeys = next;
+  if (lastProjectionPayload) {
+    renderProjection(lastProjectionPayload);
+  }
+}
+
+export function expandAllShipCombatSummaries() {
+  expandedShipCombatSlotKeys = new Set(visibleShipCombatSummarySlotKeys());
+  if (lastProjectionPayload) {
+    renderProjection(lastProjectionPayload);
+  }
+}
+
+export function collapseAllShipCombatSummaries() {
+  if (expandedShipCombatSlotKeys.size === 0) {
+    return;
+  }
+
+  expandedShipCombatSlotKeys = new Set();
+  if (lastProjectionPayload) {
+    renderProjection(lastProjectionPayload);
+  }
+}
+
 updateEmptySlotsToggle();
 renderDebugStamps();
+
+async function refreshFleetPage(options = {}) {
+  await Promise.all([
+    refreshProjection(options),
+    refreshActivity(),
+    refreshCombatPreview(),
+  ]);
+}
 
 async function refreshProjection(options = {}) {
   if (activeRefreshPromise) {
@@ -119,6 +198,111 @@ async function refreshProjection(options = {}) {
   }
 }
 
+async function refreshActivity() {
+  if (!elements.activityView) {
+    return undefined;
+  }
+
+  if (activeActivityRefreshPromise) {
+    return activeActivityRefreshPromise;
+  }
+
+  const refreshPromise = (async () => {
+    try {
+      const response = await fetch("/api/fleet/activity?limit=6", { cache: "no-store" });
+      const payload = await response.json();
+      renderActivity(payload);
+    } catch {
+      renderActivityUnavailable();
+    }
+  })();
+
+  activeActivityRefreshPromise = refreshPromise;
+  try {
+    return await refreshPromise;
+  } finally {
+    if (activeActivityRefreshPromise === refreshPromise) {
+      activeActivityRefreshPromise = null;
+    }
+  }
+}
+
+async function refreshCombatPreview() {
+  if (activeCombatPreviewRefreshPromise) {
+    return activeCombatPreviewRefreshPromise;
+  }
+
+  const refreshPromise = (async () => {
+    try {
+      const response = await fetch("/api/fleet/ship-combat-preview", { cache: "no-store" });
+      lastCombatPreviewPayload = await response.json();
+    } catch {
+      lastCombatPreviewPayload = {
+        ok: false,
+        error: "Ship combat preview is currently unavailable.",
+      };
+    }
+
+    if (lastProjectionPayload) {
+      renderProjection(lastProjectionPayload);
+    }
+  })();
+
+  activeCombatPreviewRefreshPromise = refreshPromise;
+  try {
+    return await refreshPromise;
+  } finally {
+    if (activeCombatPreviewRefreshPromise === refreshPromise) {
+      activeCombatPreviewRefreshPromise = null;
+    }
+  }
+}
+
+function renderActivity(payload) {
+  if (!elements.activityView) {
+    return;
+  }
+
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  if (payload?.ok === false) {
+    renderActivityUnavailable(payload.error);
+    return;
+  }
+
+  if (items.length === 0) {
+    elements.activityView.innerHTML = '<div class="empty-state">No recent activity preview is available yet.</div>';
+    return;
+  }
+
+  elements.activityView.innerHTML = items.map(renderActivityRow).join("");
+}
+
+function renderActivityUnavailable(message) {
+  if (!elements.activityView) {
+    return;
+  }
+
+  elements.activityView.innerHTML = `<div class="empty-state">${escapeHtml(message || "Recent activity preview is unavailable.")}</div>`;
+}
+
+function renderActivityRow(item) {
+  const chips = Array.isArray(item.chips) ? item.chips.slice(0, 4) : [];
+  const chipMarkup = chips.map((chip) => `<span>${escapeHtml(chip)}</span>`).join("");
+  const lineBadge = Number.isFinite(item.lineNumber) ? `<span class="line-badge">L${item.lineNumber}</span>` : "";
+
+  return `
+    <article class="fleet-activity-row">
+      <div class="fleet-activity-row__top">
+        <div class="chip-row">${chipMarkup}</div>
+        ${lineBadge}
+      </div>
+      <strong>${escapeHtml(item.title || "Activity")}</strong>
+      <p>${escapeHtml(item.subtitle || item.eventType || "Local sidecar activity")}</p>
+      <time>${escapeHtml(item.timestamp ? formatDateTime(item.timestamp) : "No timestamp")}</time>
+    </article>
+  `;
+}
+
 function startLiveUpdateLoop() {
   closeLiveUpdateLoop();
 
@@ -133,7 +317,10 @@ function startLiveUpdateLoop() {
   fleetEventSource.addEventListener("fleet-projection-changed", () => {
     lastSseEventAt = new Date().toISOString();
     renderDebugStamps();
-    void refreshProjection({ announce: false, activityLabel: "Updating" });
+    void Promise.all([
+      refreshProjection({ announce: false, activityLabel: "Updating" }),
+      refreshCombatPreview(),
+    ]);
   });
   fleetEventSource.addEventListener("error", () => {
     bridgeStatus.disconnected();
@@ -225,11 +412,19 @@ function renderEmpty(payload) {
 
 function renderRows(payload, options = {}) {
   const projection = payload.projection;
-  const rows = Array.isArray(projection?.slots) ? projection.slots.map(viewModelForSlot).sort(compareRows) : [];
+  const combatPreviewBySlotKey = recentCombatPreviewBySlotKey(lastCombatPreviewPayload);
+  const rows = Array.isArray(projection?.slots)
+    ? projection.slots.map((slot) => viewModelForSlot(slot, combatPreviewBySlotKey.get(String(slot?.slotKey ?? "")))).sort(compareRows)
+    : [];
   const visibleRows = showEmptySlots ? rows : rows.filter((row) => !row.isEmpty);
+  const combatSummarySlotKeys = visibleRows.filter((row) => row.canShowCombatSummary).map((row) => row.slotKey);
   const hiddenEmptyCount = rows.length - visibleRows.length;
   const updatedAt = projection?.updatedAt ?? projection?.observedAt ?? "";
   const stale = Boolean(options.stale);
+
+  rebuildShipCombatDomTokenMaps(visibleRows);
+  pruneExpandedShipCombatSlotKeys(combatSummarySlotKeys);
+  updateShipCombatSummaryControls(combatSummarySlotKeys);
 
   elements.endpoint.textContent = "/api/fleet/projection";
   elements.rowCount.textContent = `${visibleRows.length}`;
@@ -258,25 +453,7 @@ function renderRows(payload, options = {}) {
           </tr>
         </thead>
         <tbody>
-          ${visibleRows.map((row) => `
-            <tr>
-              <td><div class="fleet-table__cell"><strong>${escapeHtml(row.fleetLabel)}</strong></div></td>
-              <td><div class="fleet-table__cell"><strong>${escapeHtml(row.slotLabel)}</strong></div></td>
-              <td><div class="fleet-table__cell"><strong>${escapeHtml(row.stateLabel)}</strong></div></td>
-              <td><div class="fleet-table__cell"><span>${escapeHtml(row.assignmentLabel)}</span></div></td>
-              <td>
-                <div class="fleet-table__cell">
-                  <div class="chip-row">${row.observedSignals.map((signal) => `<span>${escapeHtml(signal)}</span>`).join("")}</div>
-                </div>
-              </td>
-              <td>
-                <div class="fleet-table__cell">
-                  <strong>${escapeHtml(formatDateTime(row.updatedAt))}</strong>
-                  <span class="fleet-table__secondary">${escapeHtml(formatAge(row.updatedAt))}</span>
-                </div>
-              </td>
-            </tr>
-          `).join("")}
+          ${visibleRows.map(renderFleetRow).join("")}
         </tbody>
       </table>
     </div>
@@ -297,6 +474,97 @@ function markProjectionRendered(versionLabel) {
   renderDebugStamps();
 }
 
+function renderFleetRow(row) {
+  const toggleLabel = row.expanded
+    ? "Hide summary"
+    : (row.recentBattleCount > 0
+      ? `Show ${battleCountLabel(row.recentBattleCount)}`
+      : "Show summary");
+  const rowClasses = ["fleet-table__row"];
+  if (row.canShowCombatSummary) {
+    rowClasses.push("fleet-table__row--interactive");
+  }
+  if (row.expanded) {
+    rowClasses.push("fleet-table__row--expanded");
+  }
+
+  return `
+    <tr class="${rowClasses.join(" ")}"${row.canShowCombatSummary ? ` data-ship-combat-row="true" data-slot-token="${escapeHtml(domTokenForShipCombatSlot(row.slotKey))}"` : ""}>
+      <td>
+        <div class="fleet-table__cell">
+          <strong>${escapeHtml(row.fleetLabel)}</strong>
+          ${row.canShowCombatSummary ? `<span class="fleet-table__toggle">${escapeHtml(toggleLabel)}</span>` : ""}
+        </div>
+      </td>
+      <td><div class="fleet-table__cell"><strong>${escapeHtml(row.slotLabel)}</strong></div></td>
+      <td><div class="fleet-table__cell"><strong>${escapeHtml(row.stateLabel)}</strong></div></td>
+      <td>
+        <div class="fleet-table__cell">
+          <span>${escapeHtml(row.assignmentLabel)}</span>
+          ${row.canShowCombatSummary ? `<span class="fleet-table__secondary">${escapeHtml(row.shipCombatStatusLabel)}</span>` : ""}
+        </div>
+      </td>
+      <td>
+        <div class="fleet-table__cell">
+          <div class="chip-row">${row.observedSignals.map((signal) => `<span>${escapeHtml(signal)}</span>`).join("")}</div>
+        </div>
+      </td>
+      <td>
+        <div class="fleet-table__cell">
+          <strong>${escapeHtml(formatDateTime(row.updatedAt))}</strong>
+          <span class="fleet-table__secondary">${escapeHtml(formatAge(row.updatedAt))}</span>
+        </div>
+      </td>
+    </tr>
+    ${row.expanded ? renderShipCombatSummaryRow(row) : ""}
+  `;
+}
+
+function renderShipCombatSummaryRow(row) {
+  const battles = Array.isArray(row.recentBattles)
+    ? row.recentBattles.slice(0, MAX_SHIP_COMBAT_PREVIEW_BATTLES)
+    : [];
+  const summaryBody = battles.length > 0
+    ? `<div class="fleet-combat-preview__list">${battles.map(renderShipCombatBattle).join("")}</div>`
+    : `<p class="fleet-combat-preview__empty">${escapeHtml(shipCombatEmptyMessage(row))}</p>`;
+
+  return `
+    <tr class="fleet-combat-preview__row">
+      <td colspan="6">
+        <section class="fleet-combat-preview">
+          <div class="fleet-combat-preview__header">
+            <div class="fleet-combat-preview__copy">
+              <strong>Recent combat</strong>
+              <span class="fleet-table__secondary">${escapeHtml(row.shipCombatDetailLabel)}</span>
+            </div>
+             <button type="button" class="button-secondary fleet-combat-preview__close" data-ship-combat-close="true" data-slot-token="${escapeHtml(domTokenForShipCombatSlot(row.slotKey))}">Close</button>
+          </div>
+          ${summaryBody}
+        </section>
+      </td>
+    </tr>
+  `;
+}
+
+function renderShipCombatBattle(battle) {
+  const chips = [
+    formatCombatOutcome(battle.outcome),
+    battle.rounds ? `${battle.rounds} ${battle.rounds === 1 ? "round" : "rounds"}` : "",
+    battle.opponentType ? titleCase(String(battle.opponentType).replace(/[_-]+/gu, " ")) : "",
+  ].filter(Boolean);
+  const subtitle = [formatDateTime(battle.observedAt), formatAge(battle.observedAt), titleCase(String(battle.source ?? "battle.report").replace(/[._-]+/gu, " "))]
+    .filter(Boolean)
+    .join(" • ");
+
+  return `
+    <article class="fleet-combat-preview__item">
+      <div class="chip-row fleet-combat-preview__chips">${chips.map((chip) => `<span>${escapeHtml(chip)}</span>`).join("")}</div>
+      <strong>${escapeHtml(formatCombatOpponent(battle))}</strong>
+      <p>${escapeHtml(subtitle)}</p>
+    </article>
+  `;
+}
+
 function renderDebugStamps() {
   if (!elements.debug) {
     return;
@@ -311,14 +579,29 @@ function renderDebugStamps() {
   ].join(" | ");
 }
 
-function viewModelForSlot(slot) {
+function viewModelForSlot(slot, recentCombatMatch) {
+  const assignmentKind = String(slot.assignmentKind ?? "").trim().toLowerCase();
+  const shipId = exactShipId(slot.shipIdentityId);
+  const recentBattles = Array.isArray(recentCombatMatch?.recentBattles)
+    ? recentCombatMatch.recentBattles.slice(0, MAX_SHIP_COMBAT_PREVIEW_BATTLES)
+    : [];
+  const canShowCombatSummary = assignmentKind === "player_ship" && !isEmptyState(slot.state);
+
   return {
+    slotKey: String(slot.slotKey ?? ""),
     fleetLabel: safeOpaqueLabel("Fleet", slot.fleetKey),
     slotLabel: safeOpaqueLabel("Slot", slot.slotKey),
     slotOrder: slotOrderForSlot(slot),
     stateLabel: formatState(slot.state),
     assignmentLabel: formatAssignment(slot.assignmentKind),
     observedSignals: observedSignals(slot),
+    shipId,
+    canShowCombatSummary,
+    recentBattles,
+    recentBattleCount: recentBattles.length,
+    expanded: canShowCombatSummary && expandedShipCombatSlotKeys.has(String(slot.slotKey ?? "")),
+    shipCombatStatusLabel: shipCombatStatusLabel({ canShowCombatSummary, recentBattles, shipId }),
+    shipCombatDetailLabel: shipCombatDetailLabel({ recentBattles, shipId }),
     isEmpty: isEmptyState(slot.state),
     updatedAt: String(slot.updatedAt ?? ""),
   };
@@ -346,6 +629,145 @@ function slotOrderForSlot(slot) {
 
 function isEmptyState(value) {
   return String(value ?? "").trim().toLowerCase() === "empty";
+}
+
+function visibleShipCombatSummarySlotKeys() {
+  const projection = lastProjectionPayload?.projection;
+  const combatPreviewBySlotKey = recentCombatPreviewBySlotKey(lastCombatPreviewPayload);
+  const rows = Array.isArray(projection?.slots)
+    ? projection.slots.map((slot) => viewModelForSlot(slot, combatPreviewBySlotKey.get(String(slot?.slotKey ?? "")))).sort(compareRows)
+    : [];
+  const visibleRows = showEmptySlots ? rows : rows.filter((row) => !row.isEmpty);
+  return visibleRows.filter((row) => row.canShowCombatSummary).map((row) => row.slotKey);
+}
+
+function rebuildShipCombatDomTokenMaps(visibleRows) {
+  shipCombatDomTokenBySlotKey = new Map();
+  shipCombatSlotKeyByDomToken = new Map();
+
+  let index = 0;
+  for (const row of visibleRows) {
+    if (!row.canShowCombatSummary) {
+      continue;
+    }
+
+    index += 1;
+    const token = `ship-row-${index}`;
+    shipCombatDomTokenBySlotKey.set(row.slotKey, token);
+    shipCombatSlotKeyByDomToken.set(token, row.slotKey);
+  }
+}
+
+function domTokenForShipCombatSlot(slotKey) {
+  return shipCombatDomTokenBySlotKey.get(slotKey) ?? "";
+}
+
+function shipCombatSlotKeyFromDomToken(token) {
+  return shipCombatSlotKeyByDomToken.get(String(token ?? "").trim()) ?? "";
+}
+
+function pruneExpandedShipCombatSlotKeys(visibleSlotKeys) {
+  const visible = new Set(visibleSlotKeys);
+  expandedShipCombatSlotKeys = new Set(
+    [...expandedShipCombatSlotKeys].filter((slotKey) => visible.has(slotKey)),
+  );
+}
+
+function updateShipCombatSummaryControls(visibleSlotKeys) {
+  const total = visibleSlotKeys.length;
+  const expandedCount = [...expandedShipCombatSlotKeys].filter((slotKey) => visibleSlotKeys.includes(slotKey)).length;
+
+  if (elements.expandAllShipCombatButton) {
+    elements.expandAllShipCombatButton.disabled = total === 0 || expandedCount === total;
+  }
+
+  if (elements.collapseAllShipCombatButton) {
+    elements.collapseAllShipCombatButton.disabled = expandedCount === 0;
+  }
+}
+
+function recentCombatPreviewBySlotKey(payload) {
+  const matches = Array.isArray(payload?.preview?.matches) ? payload.preview.matches : [];
+  const bySlotKey = new Map();
+
+  for (const match of matches) {
+    const slotKey = String(match?.slotKey ?? "").trim();
+    if (!slotKey) {
+      continue;
+    }
+
+    bySlotKey.set(slotKey, {
+      recentBattles: Array.isArray(match.recentBattles)
+        ? match.recentBattles.slice(0, MAX_SHIP_COMBAT_PREVIEW_BATTLES)
+        : [],
+    });
+  }
+
+  return bySlotKey;
+}
+
+function shipCombatStatusLabel({ canShowCombatSummary, recentBattles, shipId }) {
+  if (!canShowCombatSummary) {
+    return "";
+  }
+
+  if (recentBattles.length > 0) {
+    return `${battleCountLabel(recentBattles.length)} available`;
+  }
+
+  if (shipId) {
+    return "No recent exact-ID match";
+  }
+
+  return "Exact ship ID unavailable";
+}
+
+function shipCombatDetailLabel({ recentBattles, shipId }) {
+  if (recentBattles.length > 0) {
+    return `Matched by exact ship ID. Showing ${battleCountLabel(recentBattles.length)}.`;
+  }
+
+  if (shipId) {
+    return "No recent battle report in the local exact-ID window has matched this ship yet.";
+  }
+
+  return "This row does not currently expose an exact ship ID, so no combat join is shown.";
+}
+
+function shipCombatEmptyMessage(row) {
+  if (!row.shipId) {
+    return "Exact ship ID is not available for this row yet.";
+  }
+
+  return "No recent combat summary is available for this ship in the current local battle window.";
+}
+
+function battleCountLabel(count) {
+  return `${count} recent ${count === 1 ? "battle" : "battles"}`;
+}
+
+function formatCombatOutcome(value) {
+  const normalized = String(value ?? "").trim();
+  return normalized ? titleCase(normalized.replace(/[._-]+/gu, " ")) : "Outcome unavailable";
+}
+
+function formatCombatOpponent(battle) {
+  const opponentName = String(battle?.opponentName ?? "").trim();
+  if (opponentName) {
+    return opponentName;
+  }
+
+  const opponentType = String(battle?.opponentType ?? "").trim();
+  if (opponentType) {
+    return titleCase(opponentType.replace(/[._-]+/gu, " "));
+  }
+
+  return "Opponent unavailable";
+}
+
+function exactShipId(value) {
+  const normalized = String(value ?? "").trim();
+  return /^\d+$/u.test(normalized) ? normalized : "";
 }
 
 function updateEmptySlotsToggle() {

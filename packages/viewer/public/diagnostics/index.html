@@ -30,9 +30,9 @@
             <span class="command-chip command-chip--ready" data-capability-card-eyebrow data-capability-card-enabled-label="READY" data-capability-card-review-label="REVIEW" data-capability-card-disabled-label="LOCKED">READY</span>
           </div>
           <div class="diagnostic-tool-row__actions">
-            <button class="button-secondary diagnostic-detail-toggle" type="button" aria-expanded="false" aria-controls="diagnostic-detail-battle-log" data-detail-toggle>Details</button>
             <a class="link-button" href="/battle-log/" data-capability-card-primary data-capability-card-open-label="Open" data-capability-card-review-action-label="Open with warning">Open</a>
             <button class="link-button link-button--disabled" type="button" data-capability-card-fallback hidden disabled>Open</button>
+            <button class="button-secondary diagnostic-detail-toggle" type="button" aria-expanded="false" aria-controls="diagnostic-detail-battle-log" data-detail-toggle>Details</button>
           </div>
           <div id="diagnostic-detail-battle-log" class="diagnostic-tool-row__detail" data-detail-panel hidden>
             <p>Inspect raw battle/activity events, decoded battle detail, catalog coverage, and analytics evidence.</p>
@@ -48,12 +48,12 @@
             <span class="command-chip" data-capability-card-eyebrow data-capability-card-enabled-label="DEV" data-capability-card-review-label="REVIEW" data-capability-card-disabled-label="LOCKED">DEV</span>
           </div>
           <div class="diagnostic-tool-row__actions">
-            <button class="button-secondary diagnostic-detail-toggle" type="button" aria-expanded="false" aria-controls="diagnostic-detail-workbench" data-detail-toggle>Details</button>
             <a class="link-button link-button--secondary" href="/battle-log/workbench/" data-capability-card-primary data-capability-card-open-label="Open" data-capability-card-review-action-label="Open with warning" data-developer-only hidden>Open</a>
             <button class="link-button link-button--disabled" type="button" data-capability-card-fallback hidden disabled>Open</button>
             <div class="diagnostic-tool-row__fallback" data-developer-unavailable hidden>
               <p>Developer mode required.</p>
             </div>
+            <button class="button-secondary diagnostic-detail-toggle" type="button" aria-expanded="false" aria-controls="diagnostic-detail-workbench" data-detail-toggle>Details</button>
           </div>
           <div id="diagnostic-detail-workbench" class="diagnostic-tool-row__detail" data-detail-panel hidden>
             <p>Evidence-heavy battle diagnostics with combatant/reward breakdowns, decoded segments, and source-token evidence.</p>
@@ -69,11 +69,11 @@
             <span class="command-chip">DEV</span>
           </div>
           <div class="diagnostic-tool-row__actions">
-            <button class="button-secondary diagnostic-detail-toggle" type="button" aria-expanded="false" aria-controls="diagnostic-detail-cloud" data-detail-toggle>Details</button>
             <a class="link-button link-button--secondary" href="/diagnostics/cloud-sync/" data-developer-only hidden>Open</a>
             <div class="diagnostic-tool-row__fallback" data-developer-unavailable hidden>
               <p>Developer mode required.</p>
             </div>
+            <button class="button-secondary diagnostic-detail-toggle" type="button" aria-expanded="false" aria-controls="diagnostic-detail-cloud" data-detail-toggle>Details</button>
           </div>
           <div id="diagnostic-detail-cloud" class="diagnostic-tool-row__detail" data-detail-panel hidden>
             <p>Monitor accepted and rejected cloud-safe envelopes, endpoint state, and payload detail.</p>
@@ -107,11 +107,11 @@
             <span class="command-chip">DEV</span>
           </div>
           <div class="diagnostic-tool-row__actions">
-            <button class="button-secondary diagnostic-detail-toggle" type="button" aria-expanded="false" aria-controls="diagnostic-detail-controls" data-detail-toggle>Details</button>
             <a class="link-button link-button--secondary" href="/settings/#diagnostics" data-developer-only hidden>Open</a>
             <div class="diagnostic-tool-row__fallback" data-developer-unavailable hidden>
               <p>Developer mode required.</p>
             </div>
+            <button class="button-secondary diagnostic-detail-toggle" type="button" aria-expanded="false" aria-controls="diagnostic-detail-controls" data-detail-toggle>Details</button>
           </div>
           <div id="diagnostic-detail-controls" class="diagnostic-tool-row__detail" data-detail-panel hidden>
             <p>Trace level, replay retention, and local capture controls remain in Settings.</p>

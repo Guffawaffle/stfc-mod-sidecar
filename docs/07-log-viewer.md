@@ -1,11 +1,11 @@
 # Log Viewer
 
-The sidecar includes a multipage local viewer for battle events emitted by `stfc-mod`. The preferred runtime path is HTTP ingest into the sidecar-owned SQL event store. JSONL remains a local fallback/debug source when fallback capture is explicitly enabled.
+The sidecar includes a multipage local viewer for battle events emitted by `stfc-mod`. The canonical runtime path is authenticated local `POST /api/sidecar/ingest` into the sidecar-owned SQL event store. JSONL remains available only for diagnostics, evidence capture, and replay/import workflows when explicitly enabled.
 
 ## What It Does
 
 - Reads the local sidecar SQL event store first.
-- Uses the mod feed file only when SQL storage is unavailable and JSONL fallback capture is explicitly enabled.
+- Can read an explicit JSONL evidence or replay source when that source is present.
 - Uses `/` as a viewer home page and `/battle-log/` as the dedicated battle-log tool route.
 - Shows the most recent battle events in a browser.
 - Highlights `battle.capture`, `battle.report`, `battle.analytics`, and `catalog.snapshot` payloads with focused detail panels plus raw JSON.
@@ -20,13 +20,15 @@ Desktop launches set `STFC_SIDECAR_STORE_CONNECTION` to the Electron `userData` 
 
 The viewer server still supports overriding this with `STFC_SIDECAR_STORE_CONNECTION`, and `STFC_SIDECAR_STORE_BACKEND=postgres` can point at `STFC_SIDECAR_STORE_CONNECTION` or `DATABASE_URL` for shared-store development.
 
-## Fallback Feed Path
+Accepted `battle.events` payloads from `/api/sidecar/ingest` land here first; this is the durable runtime store used by the normal Companion flow.
 
-When JSONL fallback is enabled, the default feed path is:
+## Optional JSONL Evidence Or Replay Path
+
+When explicit JSONL evidence capture or replay is in use, the default feed path is:
 
 `C:\Games\Star Trek Fleet Command\default\game\community_patch_battle_feed.jsonl`
 
-That is the structured feed written by the battle-log decoder path in `stfc-mod` when `sync.sidecar_jsonl` is enabled. Preferred durable export remains ingress-first through sidecar or another configured consumer.
+That file is written by `stfc-mod` only when local JSONL logging is explicitly enabled under `[sidecar.logging]`. The viewer can also use JSONL sample files for replay/import-style workflows, but normal runtime data should arrive through `/api/sidecar/ingest` and persist in the sidecar-owned SQL store.
 
 ## Start The Viewer
 
@@ -111,12 +113,12 @@ npm run viewer
 
 ## Basic Operating Flow
 
-1. Make sure `stfc-mod` is running with `[battle_log_decoder].enabled = true` and `emit_feed = true`.
+1. Make sure `stfc-mod` is configured for local `[sidecar.sync]` ingest and is running with `[battle_log_decoder].enabled = true` plus `emit_feed = true` if you want richer decoded battle records.
 2. Start the viewer with `npm run viewer`.
-3. Use `npm run server:status` to confirm the managed pid, port, and feed path.
+3. Use `npm run server:status` to confirm the managed pid, port, and selected local paths. `/api/health` also reports the active event-store backend.
 4. Open the Battle Log page from the home page, or jump directly to `/battle-log/`.
 5. Kill hostiles or trigger battle activity in STFC.
-6. Watch new `battle.capture`, `battle.report`, `battle.analytics`, and `catalog.snapshot` lines appear in the event list.
+6. Watch new `battle.capture`, `battle.report`, `battle.analytics`, and `catalog.snapshot` records appear in the event list.
 7. Click an event to inspect tokens, participants, rewards, CSV parity rows, catalog coverage, and raw JSON.
 
 ## Multipage Direction
@@ -146,10 +148,10 @@ npm run viewer:run
 
 ## Notes
 
-- The Battle Log page uses `GET /api/events/stream` for live update hints; the
-  server watches the JSONL feed and tells the page when to refresh its snapshot.
+- The Battle Log page uses `GET /api/events/stream` for live update hints; accepted
+  `/api/sidecar/ingest` batches broadcast refresh hints immediately, and the server also watches any configured JSONL evidence/replay source when that source is in use.
 - If browser EventSource support or the stream connection fails, the page keeps
   a slow fallback refresh so the viewer degrades without returning to the old
   two-second polling loop.
 - The page only displays the latest window of lines that you request in the control bar.
-- Invalid or non-sidecar JSONL lines are kept visible with an error note instead of being dropped silently.
+- Invalid or non-sidecar JSONL lines are kept visible with an error note instead of being dropped silently during diagnostics or replay work.

@@ -352,6 +352,7 @@ function projectionSlot(overrides: Partial<FleetSnapshotEvent["slots"][number]> 
   return {
     slotKey: "ship-alpha",
     fleetKey: "fleet-alpha",
+    shipIdentityId: "2682548280591992155",
     shipKeyHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     state: "observed",
     assignmentKind: "player_ship",

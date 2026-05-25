@@ -1,4 +1,5 @@
 import { sendJson } from "../static-files.mjs";
+import { resolveFleetActivityLimit } from "../fleet-activity.mjs";
 
 export async function handleFleetRoutes(request, response, requestUrl, context) {
     if (requestUrl.pathname === "/api/fleet/sync") {
@@ -11,6 +12,17 @@ export async function handleFleetRoutes(request, response, requestUrl, context) 
         return true;
     }
 
+    if (requestUrl.pathname === "/api/fleet/activity") {
+        if (request.method && request.method !== "GET") {
+            sendJson(response, 405, { ok: false, error: "Method not allowed" });
+            return true;
+        }
+
+        const activity = await context.readFleetActivity(resolveFleetActivityLimit(requestUrl.searchParams.get("limit")));
+        sendJson(response, activity.ok ? 200 : activity.statusCode ?? 500, activity);
+        return true;
+    }
+
     if (requestUrl.pathname === "/api/fleet/projection") {
         if (request.method && request.method !== "GET") {
             sendJson(response, 405, { ok: false, error: "Method not allowed" });
@@ -19,6 +31,17 @@ export async function handleFleetRoutes(request, response, requestUrl, context) 
 
         const projection = await context.readFleetProjection();
         sendJson(response, projection.ok ? 200 : projection.statusCode ?? 500, projection);
+        return true;
+    }
+
+    if (requestUrl.pathname === "/api/fleet/ship-combat-preview") {
+        if (request.method && request.method !== "GET") {
+            sendJson(response, 405, { ok: false, error: "Method not allowed" });
+            return true;
+        }
+
+        const preview = await context.readFleetShipCombatPreview();
+        sendJson(response, preview.ok ? 200 : preview.statusCode ?? 500, preview);
         return true;
     }
 

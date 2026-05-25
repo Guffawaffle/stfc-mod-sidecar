@@ -28,6 +28,7 @@ describe("local sidecar config", () => {
         expect(config.exists).toBe(false);
         expect(config.path).toBe(localSidecarConfigPath(tempDir));
         expect(config.unsafeAllowUnrecognizedInstalledDll).toBe(false);
+        expect(config.recognizedInstalledDlls).toEqual([]);
     });
 
     test("enables the unsafe override only for literal boolean true", async () => {
@@ -63,13 +64,50 @@ describe("local sidecar config", () => {
         expect(config.ok).toBe(false);
         expect(config.exists).toBe(true);
         expect(config.unsafeAllowUnrecognizedInstalledDll).toBe(false);
+        expect(config.recognizedInstalledDlls).toEqual([]);
+    });
+
+    test("parses valid recognized installed DLL overrides", async () => {
+        tempDir = await mkdtemp(path.join(os.tmpdir(), "sidecar-local-config-"));
+        await writeLocalConfig(tempDir, {
+            recognizedInstalledDlls: [{
+                dllSha256: "A".repeat(64),
+                profile: "waffle-advanced",
+                label: "local-ax-cycle",
+            }],
+        });
+
+        const config = await readLocalSidecarConfig(tempDir);
+
+        expect(config.recognizedInstalledDlls).toEqual([{
+            dllSha256: "A".repeat(64),
+            profile: "waffle-advanced",
+            label: "local-ax-cycle",
+        }]);
+    });
+
+    test("ignores invalid recognized installed DLL overrides", async () => {
+        tempDir = await mkdtemp(path.join(os.tmpdir(), "sidecar-local-config-"));
+        await writeLocalConfig(tempDir, {
+            recognizedInstalledDlls: [
+                { dllSha256: "short", profile: "waffle-advanced" },
+                { dllSha256: "A".repeat(64), profile: "unknown" },
+                { dllSha256: "B".repeat(64), profile: "waffle-advanced", label: "ok" },
+            ],
+        });
+
+        const config = await readLocalSidecarConfig(tempDir);
+
+        expect(config.recognizedInstalledDlls).toEqual([
+            { dllSha256: "B".repeat(64), profile: "waffle-advanced", label: "ok" },
+        ]);
     });
 
     test("ships an explicit unsafe override example with the safe default", async () => {
         const examplePath = path.resolve(import.meta.dirname, "../../../examples/sidecar-local-config.example.json");
         const example = JSON.parse(await readFile(examplePath, "utf8"));
 
-        expect(example).toEqual({ unsafeAllowUnrecognizedInstalledDll: false });
+        expect(example).toEqual({ unsafeAllowUnrecognizedInstalledDll: false, recognizedInstalledDlls: [] });
         expect(examplePath.endsWith(path.join("examples", LOCAL_SIDECAR_CONFIG_FILE.replace(".json", ".example.json")))).toBe(true);
     });
 });

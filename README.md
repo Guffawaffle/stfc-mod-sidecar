@@ -78,7 +78,7 @@ This path preserves your existing `community_patch_settings.toml` unless you exp
 
 ### Advanced User: Waffle Advanced Plus Realtime Battle Log
 
-Use this path when you want the Waffle fork and are willing to enable incomplete sidecar-facing features manually.
+Use this path when you want the Waffle fork and are willing to enable the local sidecar ingest path manually.
 
 1. Install or replace the mod with the `Waffle Advanced` profile first.
 2. Choose a local sync token. For a packaged Companion run, set it as a Windows user environment variable and restart the Companion:
@@ -97,15 +97,12 @@ npm run desktop:dev
 3. Edit `community_patch_settings.toml` in the selected STFC game directory and add or update this block:
 
 ```toml
-[sync]
-sidecar_jsonl = true
-sidecar_jsonl_recent_logs = 300
-
-[sync.targets.sidecar]
+[sidecar.sync]
+enabled = true
 token = "choose-a-long-local-token"
-url = "http://127.0.0.1:43127/api/events"
-battlelogs = false
+url = "http://127.0.0.1:43127/api/sidecar/ingest"
 battlelogs_realtime = true
+fleet_runtime = true
 ```
 
 4. Optional: enable richer decoded battle records. Without this, the mod can still emit `battle.capture` events for the sidecar contract, but report/catalog/analytics output stays off.
@@ -117,14 +114,23 @@ emit_segments = true
 emit_feed = true
 ```
 
-5. Keep the Companion running, then start STFC.
-6. Open the Companion `Battle Log` page after battles resolve.
+5. Optional: enable local JSONL evidence capture only when you explicitly want local diagnostics or replay/import input in addition to the normal runtime path.
 
-`sidecar_jsonl = true` keeps the zero-service JSONL fallback at `community_patch_battle_feed.jsonl`. `battlelogs_realtime = true` sends canonical battle events to the local Companion ingest API while the Companion is running. This advanced path is local-only, token-protected, and still evolving.
+```toml
+[sidecar.logging]
+jsonl = true
+jsonl_replay_seconds = 30
+jsonl_recent_logs = 300
+```
+
+6. Keep the Companion running, then start STFC.
+7. Open the Companion `Battle Log` page after battles resolve.
+
+`/api/sidecar/ingest` is the canonical native-to-Companion runtime path. The Companion persists accepted battle events in its sidecar-owned SQL event store while it is running. `community_patch_battle_feed.jsonl` is optional diagnostics/evidence/import-replay capture only when `[sidecar.logging].jsonl = true`; it is not the normal runtime architecture.
 
 ### Advanced User: Experimental Fleet Telemetry To Majel
 
-Fleet telemetry reuses the mod's existing async `ships`/`slots` sync workers and posts only to the local Companion. Cloud upload is opt-in from the Companion process and targets Majel's strict `POST /api/sidecar/telemetry` route. This release uses an in-memory upload queue for advanced testing; it is not the durable telemetry outbox design yet.
+Fleet telemetry now enters the Companion through the same local authenticated sidecar ingest surface. Cloud upload is opt-in from the Companion process and targets Majel's strict `POST /api/sidecar/telemetry` route. This release uses an in-memory upload queue for advanced testing; it is not the durable telemetry outbox design yet.
 
 Set the local sync token and Majel upload values before launching the Companion:
 
@@ -135,19 +141,18 @@ $env:STFC_SIDECAR_CLOUD_TELEMETRY_TOKEN = "choose-a-long-cloud-telemetry-token"
 npm run desktop:dev
 ```
 
-Add a separate sync target in `community_patch_settings.toml`:
+Add or update the local sidecar sync block in `community_patch_settings.toml`:
 
 ```toml
-[sync.targets.sidecar_fleet]
+[sidecar.sync]
+enabled = true
 token = "choose-a-long-local-token"
-url = "http://127.0.0.1:43127/api/fleet/sync"
-battlelogs = false
+url = "http://127.0.0.1:43127/api/sidecar/ingest"
 battlelogs_realtime = false
-ships = true
-slots = true
+fleet_runtime = true
 ```
 
-The Companion hashes ship identifiers locally, converts sync items to `stfc.telemetry.v1` events, and uploads batches only when both the URL and cloud token are configured. The mod never receives commands or cloud data.
+The Companion hashes ship identifiers locally, converts accepted local fleet-runtime payloads to `stfc.telemetry.v1` events, and uploads batches only when both the URL and cloud token are configured. The mod never receives commands or cloud data.
 
 ## Install Community Mod
 

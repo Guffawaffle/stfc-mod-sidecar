@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, test } from "vitest";
 
+const FLEET_PROJECTION_ROUTE = "/api/fleet/projection";
+const FLEET_ACTIVITY_ROUTE = "/api/fleet/activity?limit=6";
+const FLEET_SHIP_COMBAT_PREVIEW_ROUTE = "/api/fleet/ship-combat-preview";
+const INITIAL_FLEET_REQUESTS = [FLEET_PROJECTION_ROUTE, FLEET_ACTIVITY_ROUTE, FLEET_SHIP_COMBAT_PREVIEW_ROUTE];
+
 let importSequence = 0;
 let restoreActiveGlobals = null;
 
@@ -15,7 +20,7 @@ describe.sequential("viewer fleet runtime", () => {
             projection: null,
         });
 
-        expect(page.requests).toEqual(["/api/fleet/projection"]);
+        expect(page.requests).toEqual(INITIAL_FLEET_REQUESTS);
         expect(page.requests).not.toContain("/api/events");
         expect(page.elements.status.textContent).toBe("Unavailable");
         expect(page.elements.note.textContent).toBe("Projection unavailable. The local broker did not return a current projection.");
@@ -114,11 +119,11 @@ describe.sequential("viewer fleet runtime", () => {
             },
         });
 
-        expect(page.requests).toEqual(["/api/fleet/projection"]);
+        expect(page.requests).toEqual(INITIAL_FLEET_REQUESTS);
 
         await page.clickToggleEmptySlots();
 
-        expect(page.requests).toEqual(["/api/fleet/projection"]);
+        expect(page.requests).toEqual(INITIAL_FLEET_REQUESTS);
         expect(page.elements.rowCount.textContent).toBe("2");
         expect(page.elements.toggleEmptySlotsButton.textContent).toBe("Hide empty slots");
         expect(page.elements.view.innerHTML).toContain("Slot 2");
@@ -133,6 +138,33 @@ describe.sequential("viewer fleet runtime", () => {
         });
 
         expect(page.requests).toContain("/api/fleet/projection");
+        expect(page.requests).toContain("/api/fleet/activity?limit=6");
+        expect(page.requests.some((request) => request.includes("/api/events"))).toBe(false);
+    });
+
+    test("renders recent activity preview without raw event evidence", async () => {
+        const page = await loadFleetPage(
+            projectionPayload({ stateVersion: 7, updatedAt: "2026-05-18T12:00:00.000Z" }),
+            {
+                activityPayload: activityPayload([{
+                    id: "battle-42",
+                    lineNumber: 42,
+                    eventType: "battle.report",
+                    title: "Interceptor Hostile",
+                    subtitle: "Guffawaffle",
+                    chips: ["battle.report", "battleType 8", "initiator_victory"],
+                    timestamp: "2026-05-24T19:59:00.000Z",
+                    rawJson: "must not render",
+                }]),
+            },
+        );
+
+        expect(page.requests).toEqual(INITIAL_FLEET_REQUESTS);
+        expect(page.elements.activityView.innerHTML).toContain("Interceptor Hostile");
+        expect(page.elements.activityView.innerHTML).toContain("battle.report");
+        expect(page.elements.activityView.innerHTML).toContain("L42");
+        expect(page.elements.activityView.innerHTML).not.toContain("must not render");
+        expect(page.elements.activityView.innerHTML).not.toContain("Raw JSON");
         expect(page.requests.some((request) => request.includes("/api/events"))).toBe(false);
     });
 
@@ -142,14 +174,13 @@ describe.sequential("viewer fleet runtime", () => {
             projectionPayload({ stateVersion: 8, updatedAt: "2026-05-18T12:01:00.000Z" }),
         ]);
 
-        expect(page.requests).toEqual(["/api/fleet/projection"]);
+        expect(page.requests).toEqual(INITIAL_FLEET_REQUESTS);
 
         await page.clickRefresh();
 
-        expect(page.requests).toEqual([
-            "/api/fleet/projection",
-            "/api/fleet/projection",
-        ]);
+        expect(projectionRequests(page)).toHaveLength(2);
+        expect(activityRequests(page)).toHaveLength(2);
+        expect(combatPreviewRequests(page)).toHaveLength(2);
         expect(page.elements.version.textContent).toBe("v8");
     });
 
@@ -162,22 +193,19 @@ describe.sequential("viewer fleet runtime", () => {
 
         page.setVisibilityState("hidden");
         await page.dispatchDocumentEvent("visibilitychange");
-        expect(page.requests).toEqual(["/api/fleet/projection"]);
+        expect(page.requests).toEqual(INITIAL_FLEET_REQUESTS);
 
         page.setVisibilityState("visible");
         await page.dispatchDocumentEvent("visibilitychange");
-        expect(page.requests).toEqual([
-            "/api/fleet/projection",
-            "/api/fleet/projection",
-        ]);
+        expect(projectionRequests(page)).toHaveLength(2);
+        expect(activityRequests(page)).toHaveLength(2);
+        expect(combatPreviewRequests(page)).toHaveLength(2);
         expect(page.elements.version.textContent).toBe("v8");
 
         await page.dispatchWindowEvent("focus");
-        expect(page.requests).toEqual([
-            "/api/fleet/projection",
-            "/api/fleet/projection",
-            "/api/fleet/projection",
-        ]);
+        expect(projectionRequests(page)).toHaveLength(3);
+        expect(activityRequests(page)).toHaveLength(3);
+        expect(combatPreviewRequests(page)).toHaveLength(3);
         expect(page.elements.version.textContent).toBe("v9");
         expect(page.setIntervalCalls).toBe(0);
     });
@@ -188,7 +216,7 @@ describe.sequential("viewer fleet runtime", () => {
             projectionPayload({ stateVersion: 8, updatedAt: "2026-05-18T12:01:00.000Z" }),
         ]);
 
-        expect(page.requests).toEqual(["/api/fleet/projection"]);
+        expect(page.requests).toEqual(INITIAL_FLEET_REQUESTS);
         expect(page.eventSources).toHaveLength(1);
         expect(page.eventSources[0].url).toBe("/api/fleet/stream");
 
@@ -205,10 +233,9 @@ describe.sequential("viewer fleet runtime", () => {
         });
         await page.flushAsync();
 
-        expect(page.requests).toEqual([
-            "/api/fleet/projection",
-            "/api/fleet/projection",
-        ]);
+        expect(projectionRequests(page)).toHaveLength(2);
+        expect(activityRequests(page)).toHaveLength(1);
+        expect(combatPreviewRequests(page)).toHaveLength(2);
         expect(page.requests.some((request) => request.includes("/api/events"))).toBe(false);
         expect(page.elements.version.textContent).toBe("v8");
         expect(page.elements.debug.textContent).not.toContain("Event: Never");
@@ -235,22 +262,94 @@ describe.sequential("viewer fleet runtime", () => {
 
         const routeEvent = page.module.fleetProjectionPageEnterEvent();
         await page.dispatchWindowEvent(routeEvent, { detail: { page: "about" } });
-        expect(page.requests).toEqual(["/api/fleet/projection"]);
+        expect(page.requests).toEqual(INITIAL_FLEET_REQUESTS);
 
         await page.dispatchWindowEvent(routeEvent, { detail: { page: "fleet" } });
-        expect(page.requests).toEqual([
-            "/api/fleet/projection",
-            "/api/fleet/projection",
-        ]);
+        expect(projectionRequests(page)).toHaveLength(2);
+        expect(activityRequests(page)).toHaveLength(2);
+        expect(combatPreviewRequests(page)).toHaveLength(2);
         expect(page.elements.version.textContent).toBe("v8");
 
         await page.dispatchWindowEvent(routeEvent, { detail: { page: "fleet" } });
-        expect(page.requests).toEqual([
-            "/api/fleet/projection",
-            "/api/fleet/projection",
-            "/api/fleet/projection",
-        ]);
+        expect(projectionRequests(page)).toHaveLength(3);
+        expect(activityRequests(page)).toHaveLength(3);
+        expect(combatPreviewRequests(page)).toHaveLength(3);
         expect(page.elements.version.textContent).toBe("v9");
+    });
+
+    test("toggles a compact recent combat summary per ship row using the exact-ID preview", async () => {
+        const now = "2026-05-24T19:59:00.000Z";
+        const page = await loadFleetPage(
+            projectionPayload({
+                stateVersion: 12,
+                updatedAt: now,
+                slots: [{
+                    fleetKey: "fleet:ALPHA-1234567890",
+                    slotKey: "slot-0",
+                    state: "assigned",
+                    assignmentKind: "player_ship",
+                    shipIdentityId: "2682548280591992155",
+                    shipType: "hull:USS Relativity",
+                    updatedAt: now,
+                }],
+            }),
+            {
+                combatPreviewPayload: combatPreviewPayload([
+                    {
+                        slotKey: "slot-0",
+                        shipId: "2682548280591992155",
+                        recentBattles: [{
+                            observedAt: now,
+                            outcome: "initiator_victory",
+                            opponentName: "Klingon Patrol",
+                            opponentType: "hostile",
+                            rounds: 8,
+                            source: "battle.report",
+                        }],
+                    },
+                ]),
+            },
+        );
+
+        expect(page.elements.view.innerHTML).not.toContain("Recent combat");
+
+        page.module.toggleShipCombatSummary("slot-0");
+
+        expect(page.elements.view.innerHTML).toContain("Recent combat");
+        expect(page.elements.view.innerHTML).toContain("Klingon Patrol");
+        expect(page.elements.view.innerHTML).toContain("Initiator Victory");
+    });
+
+    test("expand all and collapse all control ship combat summaries without extra fetches", async () => {
+        const now = "2026-05-24T19:59:00.000Z";
+        const page = await loadFleetPage(
+            projectionPayload({
+                stateVersion: 12,
+                updatedAt: now,
+                slots: [
+                    { fleetKey: "fleet:A", slotKey: "slot-0", state: "assigned", assignmentKind: "player_ship", shipIdentityId: "111", updatedAt: now },
+                    { fleetKey: "fleet:B", slotKey: "slot-1", state: "assigned", assignmentKind: "player_ship", shipIdentityId: "222", updatedAt: now },
+                ],
+            }),
+            {
+                combatPreviewPayload: combatPreviewPayload([
+                    { slotKey: "slot-0", shipId: "111", recentBattles: [{ observedAt: now, outcome: "victory", opponentName: "Hostile One", source: "battle.report" }] },
+                    { slotKey: "slot-1", shipId: "222", recentBattles: [{ observedAt: now, outcome: "defeat", opponentName: "Hostile Two", source: "battle.report" }] },
+                ]),
+            },
+        );
+
+        expect(page.requests).toEqual(INITIAL_FLEET_REQUESTS);
+
+        await page.clickExpandAllShipCombat();
+        expect(page.requests).toEqual(INITIAL_FLEET_REQUESTS);
+        expect(page.elements.view.innerHTML).toContain("Hostile One");
+        expect(page.elements.view.innerHTML).toContain("Hostile Two");
+
+        await page.clickCollapseAllShipCombat();
+        expect(page.requests).toEqual(INITIAL_FLEET_REQUESTS);
+        expect(page.elements.view.innerHTML).not.toContain("Hostile One");
+        expect(page.elements.view.innerHTML).not.toContain("Hostile Two");
     });
 });
 
@@ -268,7 +367,13 @@ async function loadFleetPage(payload, options = {}) {
     const dom = createFleetDom();
     const eventSources = [];
     const requests = [];
-    const responses = Array.isArray(payload) ? [...payload] : [payload];
+    const projectionResponses = Array.isArray(payload) ? [...payload] : [payload];
+    const configuredActivityPayload = options.activityPayload ?? activityPayload();
+    const activityResponses = Array.isArray(configuredActivityPayload) ? [...configuredActivityPayload] : [configuredActivityPayload];
+    const configuredCombatPreviewPayload = options.combatPreviewPayload ?? combatPreviewPayload();
+    const combatPreviewResponses = Array.isArray(configuredCombatPreviewPayload)
+        ? [...configuredCombatPreviewPayload]
+        : [configuredCombatPreviewPayload];
     let setIntervalCalls = 0;
     const MockEventSource = createMockEventSourceClass(eventSources);
     const windowMock = createEventTarget({
@@ -292,8 +397,12 @@ async function loadFleetPage(payload, options = {}) {
     globalThis.Event = MockEvent;
     globalThis.CustomEvent = MockCustomEvent;
     globalThis.fetch = async (input) => {
-        requests.push(String(input));
-        const currentPayload = responses.length > 1 ? responses.shift() : responses[0];
+        const request = String(input);
+        requests.push(request);
+        const responseSet = request.startsWith("/api/fleet/activity")
+            ? activityResponses
+            : (request === FLEET_SHIP_COMBAT_PREVIEW_ROUTE ? combatPreviewResponses : projectionResponses);
+        const currentPayload = responseSet.length > 1 ? responseSet.shift() : responseSet[0];
         return {
             async json() {
                 return currentPayload;
@@ -314,6 +423,8 @@ async function loadFleetPage(payload, options = {}) {
     const moduleUrl = new URL(`../../viewer/public/fleet/app.js?test=${importSequence += 1}`, import.meta.url);
     const module = await import(moduleUrl.href);
     return {
+        clickCollapseAllShipCombat: () => dispatchElementEvent(dom.elements.collapseAllShipCombatButton, "click"),
+        clickExpandAllShipCombat: () => dispatchElementEvent(dom.elements.expandAllShipCombatButton, "click"),
         clickRefresh: () => dispatchElementEvent(dom.elements.refreshButton, "click"),
         clickToggleEmptySlots: () => dispatchElementEvent(dom.elements.toggleEmptySlotsButton, "click"),
         dispatchDocumentEvent: (type, init) => dom.document.dispatchEvent(new MockEvent(type, init)),
@@ -330,10 +441,25 @@ async function loadFleetPage(payload, options = {}) {
     };
 }
 
+function projectionRequests(page) {
+    return page.requests.filter((request) => request === FLEET_PROJECTION_ROUTE);
+}
+
+function activityRequests(page) {
+    return page.requests.filter((request) => request === FLEET_ACTIVITY_ROUTE);
+}
+
+function combatPreviewRequests(page) {
+    return page.requests.filter((request) => request === FLEET_SHIP_COMBAT_PREVIEW_ROUTE);
+}
+
 function createFleetDom() {
     const elements = {
+        activityView: new MockElement({ innerHTML: '<div class="empty-state">Loading recent activity preview...</div>' }),
+        collapseAllShipCombatButton: new MockElement(),
         debug: new MockElement(),
         endpoint: new MockElement(),
+        expandAllShipCombatButton: new MockElement(),
         note: new MockElement(),
         refreshButton: new MockElement(),
         rowCount: new MockElement(),
@@ -344,6 +470,9 @@ function createFleetDom() {
         view: new MockElement({ innerHTML: '<div class="empty-state">Loading current fleet projection...</div>' }),
     };
     const selectors = new Map([
+        ["#fleet-activity-view", elements.activityView],
+        ["#collapse-all-ship-combat-button", elements.collapseAllShipCombatButton],
+        ["#expand-all-ship-combat-button", elements.expandAllShipCombatButton],
         ["#projection-debug", elements.debug],
         ["#projection-endpoint", elements.endpoint],
         ["#projection-note", elements.note],
@@ -476,6 +605,30 @@ function projectionPayload(projection) {
         projection: {
             slots: [],
             ...projection,
+        },
+    };
+}
+
+function activityPayload(items = []) {
+    return {
+        ok: true,
+        source: "fleet.activity.preview",
+        provisional: true,
+        stability: "preview",
+        items,
+    };
+}
+
+function combatPreviewPayload(matches = [], options = {}) {
+    return {
+        ok: true,
+        source: "fleet.ship_recent_combat.preview",
+        preview: {
+            schema: "stfc.fleet.ship_recent_combat.preview.v1",
+            provisional: true,
+            matches,
+            unmatchedBattles: options.unmatchedBattles ?? [],
+            unmatchedFleetRows: options.unmatchedFleetRows ?? [],
         },
     };
 }

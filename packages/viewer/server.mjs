@@ -56,9 +56,11 @@ import {
 import { installBoundedConsoleLogSync } from "./bounded-log-file.mjs";
 import { createMajelIngestStore } from "./majel-ingest-store.mjs";
 import { buildCompatibleFleetSyncSuccessPayload, buildUnavailableFleetBrokerSummary } from "./server/fleet-broker-contract.mjs";
+import { buildFleetActivitySnapshot } from "./server/fleet-activity.mjs";
 import { createFeedWatcher } from "./server/feed-watcher.mjs";
 import { fleetProjectionStreamSummary, shouldNotifyFleetProjectionChanged } from "./server/fleet-stream-events.mjs";
 import { ingestAcceptedMajelPayload } from "./server/majel-ingest-bridge.mjs";
+import { ingestSidecarEnvelope } from "./server/sidecar-ingest.mjs";
 import { handleDevRoutes } from "./server/routes/dev-routes.mjs";
 import { handleDiagnosticsRoutes } from "./server/routes/diagnostics-routes.mjs";
 import { handleEventRoutes } from "./server/routes/event-routes.mjs";
@@ -68,6 +70,7 @@ import { handleMajelRoutes } from "./server/routes/majel-routes.mjs";
 import { handleModInstallRoutes } from "./server/routes/mod-install-routes.mjs";
 import { handleModUninstallRoutes } from "./server/routes/mod-uninstall-routes.mjs";
 import { handleSettingsRoutes } from "./server/routes/settings-routes.mjs";
+import { handleSidecarRoutes } from "./server/routes/sidecar-routes.mjs";
 import { resolvePublicAsset, sendFile, sendJson, sendText } from "./server/static-files.mjs";
 
 const DEFAULT_GAME_DIR = "C:\\Games\\Star Trek Fleet Command\\default\\game";
@@ -84,6 +87,9 @@ const POLL_HINT_MS = 2000;
 const STREAM_KEEPALIVE_MS = 30000;
 const SHUTDOWN_GRACE_MS = 5000;
 const BATTLE_EVENT_TYPES = Object.freeze(["battle.event", "battle.capture", "battle.analytics", "battle.report", "catalog.snapshot"]);
+const SHIP_COMBAT_PREVIEW_SOURCE = "fleet.ship_recent_combat.preview";
+const SHIP_COMBAT_PREVIEW_LIMIT = 3;
+const SHIP_COMBAT_PREVIEW_EVENT_WINDOW = 60;
 const DEVELOPER_EVENT_TYPE_LIST = Object.freeze(["debug.event", "hook.event", "session.event", "integration.event"]);
 const ALL_EVENT_TYPES = Object.freeze([...BATTLE_EVENT_TYPES, ...DEVELOPER_EVENT_TYPE_LIST]);
 const DEVELOPER_EVENT_TYPES = new Set(DEVELOPER_EVENT_TYPE_LIST);
@@ -138,9 +144,11 @@ let applyCommunityModNotificationSettingsPatch;
 let buildCommunityModDiagnosticSettingsSnapshot;
 let buildCommunityModHotkeySettingsSnapshot;
 let buildCommunityModNotificationSettingsSnapshot;
+let buildFleetShipRecentCombatPreview;
 let normalizeCommunityModSettingsProfile;
 let isSidecarEvent;
 let parseEventJsonLine;
+let summarizeBattleReportEventForRecentCombat;
 try {
     ({
         applyCommunityModDiagnosticSettingsPatch,
@@ -149,11 +157,13 @@ try {
         buildCommunityModDiagnosticSettingsSnapshot,
         buildCommunityModHotkeySettingsSnapshot,
         buildCommunityModNotificationSettingsSnapshot,
+        buildFleetShipRecentCombatPreview,
         countFleetRuntimeMajelEnvelopes,
         createFleetTelemetryBroker,
         createSqlFleetBrokerStore,
         createSqlSidecarEventStore,
         summarizeFleetBrokerError,
+        summarizeBattleReportEventForRecentCombat,
         isSidecarEvent,
         normalizeCommunityModSettingsProfile,
         parseEventJsonLine,
@@ -177,8 +187,8 @@ const fleetBrokerInstallId = normalizeBrokerIdentifier(process.env.STFC_SIDECAR_
     || `sidecar-${shaHex(gameDir).slice(0, 32)}`;
 const fleetBrokerSessionId = normalizeBrokerIdentifier(process.env.STFC_SIDECAR_SESSION_ID)
     || `session-${Date.now()}`;
-let communityModInstallStatus = await readCommunityModInstallStatus();
 let localSidecarConfig = await readLocalSidecarConfig(gameDir);
+let communityModInstallStatus = await readCommunityModInstallStatus(localSidecarConfig);
 let communityModVariantGate = buildCommunityModVariantGateContext({
     install: communityModInstallStatus,
     selectedProfile: communityModSettingsProfile,
@@ -232,9 +242,17 @@ const server = createServer(async (request, response) => {
     }
 
     if (await handleFleetRoutes(request, response, requestUrl, {
+        readFleetActivity,
         handleFleetSyncIngest,
         handleFleetStream,
         readFleetProjection,
+        readFleetShipCombatPreview,
+    })) {
+        return;
+    }
+
+    if (await handleSidecarRoutes(request, response, requestUrl, {
+        handleSidecarIngest,
     })) {
         return;
     }
@@ -586,6 +604,8 @@ function variantGateReasonLabel(capability, reason) {
                 return "Installed Basic DLL does not include Battle Log.";
             case "installed_dll_unknown":
                 return "Installed DLL is unknown.";
+            case "installed_dll_hash_unavailable":
+                return "Installed DLL hash is unavailable.";
             case "installed_dll_missing":
                 return "No Community Mod DLL is installed.";
             default:
@@ -607,8 +627,8 @@ function variantGateLabel(value) {
 }
 
 async function refreshCommunityModVariantGate() {
-    communityModInstallStatus = await readCommunityModInstallStatus();
     localSidecarConfig = await readLocalSidecarConfig(gameDir);
+    communityModInstallStatus = await readCommunityModInstallStatus(localSidecarConfig);
     communityModVariantGate = buildCommunityModVariantGateContext({
         install: communityModInstallStatus,
         selectedProfile: communityModSettingsProfile,
@@ -647,11 +667,15 @@ async function reconcileRuntimeSurfacesWithVariantGate() {
 }
 
 function sendEventStoreUnavailable(response) {
-    return sendJson(response, 503, {
+    return sendJson(response, 503, unavailableEventStorePayload());
+}
+
+function unavailableEventStorePayload() {
+    return {
         ok: false,
         error: "Event store is unavailable for the active Community Mod variant gate.",
         retryAfterSeconds: 5,
-    });
+    };
 }
 
 async function withCommunityModOperationLock(response, operation, handler) {
@@ -677,15 +701,27 @@ async function withCommunityModOperationLock(response, operation, handler) {
     }
 }
 
-async function readCommunityModInstallStatus() {
+async function readCommunityModInstallStatus(localConfig = localSidecarConfig) {
     try {
-        return await detectCommunityModInstall(gameDir);
+        return await detectCommunityModInstall(gameDir, { localConfig });
     } catch (error) {
         return {
             ok: false,
             state: "error",
             classification: "unknown",
             profile: "unknown",
+            dllMatch: {
+                state: "error",
+                status: "hash_unavailable",
+                profile: "unknown",
+                effectiveProfile: "unknown",
+                confidence: "low",
+                matchSource: "error",
+                dllSha256: "",
+                configOverrideLabel: "",
+                configOverrideConfigPath: localConfig?.path ?? "",
+                unsafeOverrideActive: false,
+            },
             error: error instanceof Error ? error.message : String(error),
             generatedAt: new Date().toISOString(),
         };
@@ -1416,6 +1452,51 @@ async function handleFleetSyncIngest(request, response) {
     }
 }
 
+async function handleSidecarIngest(request, response) {
+    if (!isAuthorizedSyncRequest(request)) {
+        return sendJson(response, 401, { ok: false, error: "Unauthorized sidecar sync request" });
+    }
+
+    try {
+        const payload = await readJsonBody(request);
+        const result = await ingestSidecarEnvelope(payload, {
+            developerMode,
+            developerModeRequiredPayload,
+            isDeveloperEvent,
+            normalizeBattleEvents: normalizeIncomingEvents,
+            battleUnavailablePayload: unavailableEventStorePayload,
+            appendBattleEvents: eventStore ? async (events) => {
+                const result = await eventStore.append(events);
+                broadcastEventUpdate("ingest", { appended: result.appended ?? events.length });
+                return {
+                    backend: eventStore.backend,
+                    ...result,
+                };
+            } : null,
+            fleetUnavailablePayload: unavailableFleetProjection,
+            ingestFleetRuntimePayload: fleetBroker ? async (runtimePayload, envelope) => {
+                const ingestResult = await fleetBroker.ingestSidecarFleetRuntimePayload({
+                    batchId: envelope.batchId,
+                    producedAt: envelope.producedAt,
+                    sessionId: envelope.sessionId,
+                    source: envelope.source,
+                    modVersion: envelope.modVersion,
+                    payload: runtimePayload,
+                });
+                await maybeBroadcastFleetProjectionChanged("sidecar-runtime", ingestResult);
+                const queueDepth = await readFleetBrokerQueueDepth();
+                return buildCompatibleFleetSyncSuccessPayload(ingestResult, { queueDepth });
+            } : null,
+        });
+        return sendJson(response, result.statusCode, result.body);
+    } catch (error) {
+        return sendJson(response, 400, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+}
+
 async function readFleetProjection() {
     if (!fleetBroker) {
         return unavailableFleetProjection();
@@ -1430,6 +1511,53 @@ async function readFleetProjection() {
             error: error instanceof Error ? error.message : String(error),
         };
     }
+}
+
+async function readFleetActivity(limit) {
+    if (!communityModCapabilities.battleLog) {
+        return buildFleetActivitySnapshot(emptyEventsSnapshot({ includeDetails: false }), { limit });
+    }
+
+    const snapshot = await readEventsSnapshot(limit, {
+        includeDetails: false,
+        eventTypes: BATTLE_EVENT_TYPES,
+    });
+    return buildFleetActivitySnapshot(snapshot, { limit });
+}
+
+async function readFleetShipCombatPreview() {
+    const generatedAt = new Date().toISOString();
+    const projection = await readFleetProjection();
+    const slots = Array.isArray(projection?.projection?.slots) ? projection.projection.slots : [];
+
+    let snapshot = emptyEventsSnapshot({ includeDetails: true });
+    if (communityModCapabilities.battleLog) {
+        snapshot = await readEventsSnapshot(SHIP_COMBAT_PREVIEW_EVENT_WINDOW, {
+            includeDetails: true,
+            eventTypes: ["battle.report"],
+        });
+    }
+
+    const recentBattles = fleetShipCombatBattlesFromSnapshot(snapshot);
+    const preview = limitFleetShipCombatPreview(
+        buildFleetShipRecentCombatPreview(slots, recentBattles),
+        SHIP_COMBAT_PREVIEW_LIMIT,
+    );
+
+    return {
+        ok: true,
+        source: SHIP_COMBAT_PREVIEW_SOURCE,
+        generatedAt,
+        battleLogEnabled: communityModCapabilities.battleLog,
+        projectionAvailable: projection?.ok === true && projection?.available === true,
+        dataSource: {
+            source: snapshot.source ?? "store",
+            storageBackend: snapshot.storageBackend ?? null,
+            detail: snapshot.detail ?? "full",
+            exists: snapshot.exists !== false,
+        },
+        preview,
+    };
 }
 
 async function handleMajelIngest(request, response) {
@@ -1753,6 +1881,43 @@ function emptyEventsSnapshot(options = {}) {
         totalLines: 0,
         returnedLines: 0,
         events: [],
+    };
+}
+
+function fleetShipCombatBattlesFromSnapshot(snapshot) {
+    const events = Array.isArray(snapshot?.events) ? snapshot.events : [];
+    const battles = [];
+
+    for (const entry of events) {
+        if (entry?.parsed !== true || entry?.event?.type !== "battle.report") {
+            continue;
+        }
+
+        const battle = summarizeBattleReportEventForRecentCombat(entry.event, {
+            localId: Number.isFinite(entry.lineNumber) ? entry.lineNumber : undefined,
+        });
+        if (battle) {
+            battles.push(battle);
+        }
+    }
+
+    return battles;
+}
+
+function limitFleetShipCombatPreview(preview, limit) {
+    return {
+        ...preview,
+        matches: Array.isArray(preview?.matches)
+            ? preview.matches.map((match) => ({
+                ...match,
+                recentBattles: Array.isArray(match.recentBattles)
+                    ? match.recentBattles.slice(0, limit)
+                    : [],
+            }))
+            : [],
+        unmatchedBattles: Array.isArray(preview?.unmatchedBattles)
+            ? preview.unmatchedBattles.slice(0, limit)
+            : [],
     };
 }
 

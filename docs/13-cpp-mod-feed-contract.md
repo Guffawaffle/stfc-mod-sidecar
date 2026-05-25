@@ -1,21 +1,39 @@
-# C++ Mod Feed Contract
+# C++ Mod Ingest And Replay Contract
 
 This contract defines the boundary between the production C++ community mod and the sidecar.
 
-The sidecar must not depend on C++ implementation details. The C++ mod must not depend on sidecar UI internals. Both sides meet at documented local files and event schemas.
+The sidecar must not depend on C++ implementation details. The C++ mod must not depend on sidecar UI internals. The canonical runtime boundary is the local authenticated ingest API, and any JSONL files are optional diagnostics/evidence/replay artifacts rather than the normal runtime path.
 
-The wider architectural boundary is [docs/22-producer-consumer-security-contract.md](22-producer-consumer-security-contract.md): the C++ mod is a best-effort producer and the sidecar is the potentially expensive consumer. This file narrows that contract to the current feed shape.
+The wider architectural boundary is [docs/22-producer-consumer-security-contract.md](22-producer-consumer-security-contract.md): the C++ mod is a best-effort producer and the sidecar is the potentially expensive consumer. This file narrows that contract to the current local ingest payloads and optional replay feed shape.
 
-## Producer And Consumer
+## Runtime Producer And Consumer
 
 - Producer: STFC Community Mod C++ runtime.
-- Consumer: STFC Mod Sidecar core, viewer, replay tests, and future local services.
-- Contract type: append-only newline-delimited JSON events.
-- Stability target: additive changes within `protocolVersion: "stfc.sidecar.events.v0"`.
+- Runtime consumer: STFC Mod Sidecar local ingest API, event store, fleet broker, viewer, and future local services.
+- Canonical runtime contract: authenticated local `POST /api/sidecar/ingest`.
+- Durable runtime store: sidecar-owned SQL storage, currently SQLite by default.
+- Optional replay/evidence contract: append-only newline-delimited JSON events when explicit local JSONL logging is enabled.
 
-## Required Files
+## Canonical Runtime Ingest
 
-### Battle Feed
+Default local endpoint:
+
+```text
+http://127.0.0.1:43127/api/sidecar/ingest
+```
+
+Rules:
+
+- The mod authenticates with the local sidecar sync token.
+- The outer runtime envelope uses `protocolVersion: "stfc.sidecar.ingest.v1"`.
+- `kind: "battle.events"` carries arrays of sidecar battle events with `payloadProtocol: "stfc.sidecar.events.v0"`.
+- `kind: "fleet.runtime"` carries fleet runtime snapshots with `payloadProtocol: "stfc.fleet.runtime_snapshot.v1"`.
+- The sidecar persists accepted runtime payloads in sidecar-owned SQL storage.
+- The mod must not write sidecar SQL or SQLite files directly.
+
+## Optional Files
+
+### JSONL Evidence Or Replay Feed
 
 Default Windows path:
 
@@ -27,10 +45,11 @@ Rules:
 
 - One complete JSON object per line.
 - UTF-8 text.
-- Append-only during a game session.
+- Append-only during a game session when explicit local JSONL logging is enabled.
 - Empty lines may be ignored by consumers.
 - Invalid lines must remain visible to diagnostics instead of being silently dropped.
 - The file may be absent before the mod emits its first battle event.
+- This file is for diagnostics, evidence capture, and replay/import workflows; it is not the canonical runtime boundary.
 
 ### Runtime Log
 
@@ -42,9 +61,9 @@ C:\Games\Star Trek Fleet Command\default\game\community_patch.log
 
 The log is not the structured data contract, but passive live-smoke tooling may use it to verify mod load, config parsing, hook installation, and feed emission status.
 
-## Event Envelope
+## Battle Event Shape
 
-Every structured feed line must satisfy the envelope in [docs/02-event-protocol.md](02-event-protocol.md):
+Every individual sidecar battle event inside `battle.events` payloads, and every optional JSONL evidence line, must satisfy the envelope in [docs/02-event-protocol.md](02-event-protocol.md):
 
 - `protocolVersion`
 - `type`
@@ -57,7 +76,7 @@ Events that belong to a versioned payload family must also include `schemaVersio
 
 ## Current Battle Event Families
 
-The sidecar currently recognizes these battle feed families:
+The sidecar currently recognizes these battle event families:
 
 - `battle.capture` with `schemaVersion: "stfc.battle.capture.v1"`
 - `battle.report` with `schemaVersion: "stfc.sidecar.battle-report.v0"`
@@ -90,7 +109,9 @@ JSON numbers are acceptable for human-scale counters and metrics such as:
 
 The sidecar must:
 
-- parse each line independently
+- accept canonical runtime ingest through `/api/sidecar/ingest`
+- persist accepted runtime payloads in sidecar-owned storage
+- parse each optional JSONL line independently during diagnostics or replay/import workflows
 - keep invalid/unrecognized lines visible with an error
 - ignore unknown additive fields
 - avoid assuming every event family exists for every battle
@@ -103,6 +124,7 @@ The sidecar must:
 
 The C++ mod should:
 
+- use `/api/sidecar/ingest` as the normal local runtime delivery path
 - emit `battle.capture` whenever the raw source battle payload is available
 - emit `battle.report` only as a compatibility/convenience bundle
 - emit `battle.analytics` only when derived data is reviewable and provenance is included
@@ -110,7 +132,7 @@ The C++ mod should:
 - keep unknown or unresolved catalog entries explicit instead of guessing
 - prefer additive fields over renames or type changes
 - treat sidecar export as optional and best-effort
-- bound retries, queues, payload size, and JSONL retention
+- bound retries, queues, payload size, and optional JSONL retention
 - drop, sample, or defer optional diagnostics rather than blocking gameplay-critical hooks
 
 ## Security Boundary
@@ -132,7 +154,7 @@ If an event needs to refer to a credential context later, use safe metadata such
 
 `examples/sample-battle-events.jsonl` is the current replay fixture for this contract.
 
-The core package must be able to parse every non-empty line in that fixture, and the fixture should include at least one representative event for each currently supported battle feed family.
+The core package must be able to parse every non-empty line in that fixture, and the fixture should include at least one representative event for each currently supported battle event family.
 
 Run replay validation with:
 
@@ -148,6 +170,6 @@ Before changing the C++ feed shape:
 
 1. Update the event protocol or canonical schema docs.
 2. Add or update a sample JSONL fixture.
-3. Add or update replay validation.
+3. Add or update replay validation and any ingest validation that depends on the changed shape.
 4. Verify the sidecar viewer still renders the changed event family.
 5. Keep old additive fields until consumers no longer need them.

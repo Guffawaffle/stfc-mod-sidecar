@@ -3,6 +3,7 @@ export * from "./events/schema.js";
 export * from "./storage/sql-event-store.js";
 export * from "./broker/error-summary.js";
 export * from "./broker/fleet-telemetry.js";
+export * from "./broker/fleet-ship-recent-combat.js";
 export * from "./broker/sql-broker-store.js";
 export * from "./broker/fleet-broker.js";
 export * from "./battle-log/parser.js";
