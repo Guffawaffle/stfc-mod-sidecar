@@ -1105,7 +1105,7 @@ button {
 }
 
 .fleet-table__row--expanded {
-  background: rgba(179, 74, 47, 0.05);
+  background: rgba(255, 157, 46, 0.06);
 }
 
 .fleet-table__toggle {
@@ -1122,9 +1122,12 @@ button {
   display: grid;
   gap: 12px;
   padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: rgba(255, 251, 242, 0.92);
+  border: 1px solid rgba(124, 214, 255, 0.16);
+  border-left: 10px solid var(--lcars-orange);
+  border-radius: 0 18px 18px 0;
+  color: var(--ink);
+  background: linear-gradient(180deg, rgba(17, 21, 36, 0.96), rgba(9, 11, 20, 0.94));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .fleet-combat-preview__header {
@@ -1139,8 +1142,23 @@ button {
   gap: 4px;
 }
 
+.fleet-combat-preview__copy strong,
+.fleet-combat-preview__item strong {
+  color: var(--ink);
+}
+
 .fleet-combat-preview__close {
   min-width: 88px;
+  border: 1px solid rgba(255, 203, 128, 0.22);
+  color: var(--ink);
+  background: rgba(17, 21, 36, 0.92);
+  box-shadow: none;
+}
+
+.fleet-combat-preview__close:hover,
+.fleet-combat-preview__close:focus-visible {
+  color: var(--ink);
+  background: rgba(255, 157, 46, 0.16);
 }
 
 .fleet-combat-preview__list {
@@ -1152,18 +1170,38 @@ button {
   display: grid;
   gap: 6px;
   padding: 12px 14px;
-  border-radius: 14px;
-  background: rgba(179, 74, 47, 0.08);
+  border: 1px solid rgba(255, 203, 128, 0.18);
+  border-left: 8px solid rgba(255, 204, 153, 0.72);
+  border-radius: 0 16px 16px 0;
+  background: rgba(5, 6, 9, 0.34);
 }
 
 .fleet-combat-preview__item p,
 .fleet-combat-preview__empty {
   margin: 0;
-  color: var(--muted);
+  color: rgba(255, 248, 217, 0.72);
 }
 
 .fleet-combat-preview__chips {
   margin: 0;
+}
+
+.fleet-combat-preview__chips span {
+  border: 1px solid rgba(255, 157, 46, 0.22);
+  border-radius: 0 999px 999px 0;
+  color: var(--lcars-peach);
+  background: rgba(255, 157, 46, 0.14);
+  font-weight: 700;
+}
+
+.fleet-combat-preview a {
+  color: var(--lcars-blue);
+  text-decoration-color: rgba(124, 214, 255, 0.4);
+}
+
+.fleet-combat-preview a:hover,
+.fleet-combat-preview a:focus-visible {
+  color: #b6ecff;
 }
 
 .control--wide {
