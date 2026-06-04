@@ -41,11 +41,11 @@ await refreshSnapshot({ activityLabel: "Refreshing" });
 updateRefreshLoop();
 
 async function refreshSnapshot(options = {}) {
-    bridgeStatus.begin(options.activityLabel ?? "Writing");
+    bridgeStatus.begin(options.activityLabel ?? "Loading index");
 
     try {
         const limit = Number.parseInt(elements.lineLimit.value, 10) || 200;
-        const response = await fetch(`/api/events?limit=${limit}&detail=summary`, { cache: "no-store" });
+        const response = await fetch(`/api/battles?limit=${limit}`, { cache: "no-store" });
         const snapshot = await response.json();
 
         state.snapshot = snapshot;
@@ -92,7 +92,12 @@ function updateRefreshLoop() {
         state.eventSource = new EventSource("/api/events/stream");
         state.eventSource.addEventListener("open", () => markLiveUpdatesConnected());
         state.eventSource.addEventListener("ready", () => markLiveUpdatesConnected());
-        state.eventSource.addEventListener("events-updated", () => void refreshSnapshot({ activityLabel: "Writing" }));
+        state.eventSource.addEventListener("events-updated", (event) => {
+            const update = parseStreamPayload(event);
+            applyBattleIndexUpdates(update?.battleIndexUpdates);
+            bridgeStatus.begin(update?.reason === "ingest" ? "Ingested" : "Updating index");
+            void refreshSnapshot({ activityLabel: "Updating index" });
+        });
         state.eventSource.addEventListener("error", () => {
             bridgeStatus.disconnected();
             ensureFallbackRefresh();
@@ -124,8 +129,8 @@ function ensureFallbackRefresh() {
 
 function renderStatus(snapshot) {
     elements.feedPath.textContent = dataSourceLabel(snapshot);
-    elements.eventCount.textContent = `${snapshot.returnedLines ?? 0} / ${snapshot.totalLines ?? 0}`;
-    elements.battleCount.textContent = `${state.battleGroups.length}`;
+    elements.eventCount.textContent = `${snapshot.scannedEvents ?? snapshot.returnedLines ?? 0} / ${snapshot.totalEvents ?? snapshot.totalLines ?? 0}`;
+    elements.battleCount.textContent = `${snapshot.returnedBattles ?? state.battleGroups.length} / ${snapshot.totalBattles ?? state.battleGroups.length}`;
 }
 
 function dataSourceLabel(snapshot) {
@@ -141,61 +146,24 @@ function dataSourceLabel(snapshot) {
 }
 
 function buildBattleGroups(snapshot) {
-    if (!snapshot?.ok || !Array.isArray(snapshot.events)) {
+    if (!snapshot?.ok || !Array.isArray(snapshot.battles)) {
         return [];
     }
 
-    const groups = new Map();
-
-    for (const entry of snapshot.events) {
-        if (!entry.parsed) {
-            continue;
-        }
-
-        const eventType = entryEventType(entry);
-        if (!eventType.startsWith("battle.") && eventType !== "catalog.snapshot") {
-            continue;
-        }
-
-        const hydratedEntry = state.detailsByLine.get(entry.lineNumber) ?? entry;
-        const key = entryBattleKey(hydratedEntry);
-        const group = groups.get(key) ?? {
-            key,
-            lineNumber: entry.lineNumber,
-            entries: [],
-            title: entry.summary?.title ?? `Battle ${key}`,
-            timestamp: entry.timestamp ?? entry.summary?.timestamp ?? "",
-            captureEntry: null,
-            reportEntry: null,
-            analyticsEntry: null,
-            catalogEntry: null,
-        };
-
-        group.entries.push(hydratedEntry);
-        group.lineNumber = Math.max(group.lineNumber, entry.lineNumber);
-        group.title = entry.summary?.title ?? group.title;
-        group.timestamp = entry.timestamp ?? entry.summary?.timestamp ?? group.timestamp;
-
-        if (eventType === "battle.capture" && (!group.captureEntry || hydratedEntry.lineNumber > group.captureEntry.lineNumber)) {
-            group.captureEntry = hydratedEntry;
-        }
-
-        if (eventType === "battle.report" && (!group.reportEntry || hydratedEntry.lineNumber > group.reportEntry.lineNumber)) {
-            group.reportEntry = hydratedEntry;
-        }
-
-        if (eventType === "battle.analytics" && (!group.analyticsEntry || hydratedEntry.lineNumber > group.analyticsEntry.lineNumber)) {
-            group.analyticsEntry = hydratedEntry;
-        }
-
-        if (eventType === "catalog.snapshot" && (!group.catalogEntry || hydratedEntry.lineNumber > group.catalogEntry.lineNumber)) {
-            group.catalogEntry = hydratedEntry;
-        }
-
-        groups.set(key, group);
-    }
-
-    return [...groups.values()].sort((left, right) => right.lineNumber - left.lineNumber);
+    return snapshot.battles.map((battle) => ({
+        key: String(battle.battleId ?? battle.key ?? ""),
+        lineNumber: Number(battle.lineNumber ?? 0),
+        entries: [],
+        title: battle.title ?? `Battle ${battle.battleId ?? battle.key ?? ""}`,
+        timestamp: battle.timestamp ?? "",
+        completeness: battle.completeness ?? {},
+        participantNames: Array.isArray(battle.participantNames) ? battle.participantNames : [],
+        captureEntry: null,
+        reportEntry: null,
+        analyticsEntry: null,
+        catalogEntry: null,
+        detailLoaded: false,
+    })).filter((battle) => battle.key);
 }
 
 function entryEventType(entry) {
@@ -265,7 +233,7 @@ async function renderReport() {
     }
 
     const selectedBattleKey = state.selectedBattleKey;
-    if (group.entries.some((entry) => entry.parsed && !entry.event)) {
+    if (!group.detailLoaded) {
         const html = `<div class="empty-state">Loading selected battle detail...</div>`;
         if (html !== state.lastReportHtml) {
             elements.reportView.innerHTML = html;
@@ -346,7 +314,19 @@ async function renderReport() {
 }
 
 async function hydrateBattleGroup(group) {
-    group.entries = await Promise.all(group.entries.map((entry) => loadEntryDetail(entry)));
+    const cachedEntries = state.detailsByLine.get(`battle:${group.key}`);
+    if (cachedEntries) {
+        group.entries = cachedEntries;
+    } else {
+        const response = await fetch(`/api/battles/${encodeURIComponent(group.key)}`, { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok || !Array.isArray(payload.events)) {
+            throw new Error(payload.error ?? `Unable to load battle ${group.key}.`);
+        }
+        group.entries = payload.events;
+        state.detailsByLine.set(`battle:${group.key}`, group.entries);
+    }
+    group.detailLoaded = true;
     group.captureEntry = null;
     group.reportEntry = null;
     group.analyticsEntry = null;
@@ -366,6 +346,48 @@ async function hydrateBattleGroup(group) {
         if (eventType === "catalog.snapshot" && (!group.catalogEntry || entry.lineNumber > group.catalogEntry.lineNumber)) {
             group.catalogEntry = entry;
         }
+    }
+}
+
+function applyBattleIndexUpdates(updates) {
+    if (!Array.isArray(updates) || updates.length === 0 || !state.snapshot?.ok) {
+        return;
+    }
+
+    const byKey = new Map(state.battleGroups.map((group) => [group.key, group]));
+    for (const update of updates) {
+        const key = String(update.battleId ?? update.key ?? "");
+        if (!key) {
+            continue;
+        }
+        const existing = byKey.get(key);
+        byKey.set(key, {
+            ...(existing ?? {}),
+            key,
+            lineNumber: Math.max(Number(existing?.lineNumber ?? 0), Number(update.lineNumber ?? 0)),
+            title: update.title ?? existing?.title ?? `Battle ${key}`,
+            timestamp: update.timestamp ?? existing?.timestamp ?? "",
+            completeness: update.completeness ?? existing?.completeness ?? {},
+            participantNames: Array.isArray(update.participantNames) ? update.participantNames : existing?.participantNames ?? [],
+            entries: existing?.entries ?? [],
+            captureEntry: existing?.captureEntry ?? null,
+            reportEntry: existing?.reportEntry ?? null,
+            analyticsEntry: existing?.analyticsEntry ?? null,
+            catalogEntry: existing?.catalogEntry ?? null,
+            detailLoaded: false,
+        });
+        state.detailsByLine.delete(`battle:${key}`);
+    }
+    state.battleGroups = [...byKey.values()].sort((left, right) => right.lineNumber - left.lineNumber);
+    renderStatus(state.snapshot);
+    renderBattleSelect();
+}
+
+function parseStreamPayload(event) {
+    try {
+        return JSON.parse(event.data ?? "{}");
+    } catch {
+        return {};
     }
 }
 

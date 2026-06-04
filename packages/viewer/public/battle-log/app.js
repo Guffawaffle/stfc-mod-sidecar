@@ -40,7 +40,7 @@ await refreshSnapshot({ announce: true });
 updateRefreshLoop();
 
 async function refreshSnapshot(options = {}) {
-  beginBridgeActivity(options.activityLabel ?? (options.announce ? "Refreshing" : "Writing"));
+  beginBridgeActivity(options.activityLabel ?? (options.announce ? "Refreshing" : "Loading index"));
 
   try {
     const limit = Number.parseInt(elements.lineLimit.value, 10) || 150;
@@ -84,7 +84,10 @@ function updateRefreshLoop() {
     state.eventSource = new EventSource("/api/events/stream");
     state.eventSource.addEventListener("open", () => markLiveUpdatesConnected());
     state.eventSource.addEventListener("ready", () => markLiveUpdatesConnected());
-    state.eventSource.addEventListener("events-updated", () => void refreshSnapshot({ announce: false, activityLabel: "Writing" }));
+    state.eventSource.addEventListener("events-updated", (event) => {
+      const update = parseStreamPayload(event);
+      void refreshSnapshot({ announce: false, activityLabel: update?.reason === "ingest" ? "Ingested" : "Updating index" });
+    });
     state.eventSource.addEventListener("error", () => {
       bridgeStatus.disconnected();
       ensureFallbackRefresh();
@@ -217,6 +220,14 @@ function beginBridgeActivity(text) {
 
 function finishBridgeActivity() {
   bridgeStatus.finish({ paused: !elements.autoRefresh.checked });
+}
+
+function parseStreamPayload(event) {
+  try {
+    return JSON.parse(event.data ?? "{}");
+  } catch {
+    return {};
+  }
 }
 
 function renderEventList(snapshot) {
@@ -355,10 +366,31 @@ function renderDetailEntry(detailEntry, options = {}) {
     </section>
     ${battlePanels}
     <section class="detail-panel raw-panel">
-      <h3>Raw JSON</h3>
+      <div class="detail-panel__heading">
+        <h3>Raw JSON</h3>
+        <button type="button" class="copy-button" data-copy-raw-json>Copy JSON</button>
+      </div>
       <pre>${escapeHtml(JSON.stringify(event, null, 2))}</pre>
     </section>
   `;
+
+  elements.detailView.querySelector("[data-copy-raw-json]")?.addEventListener("click", (clickEvent) => {
+    void copyRawJson(clickEvent.currentTarget, JSON.stringify(detailEntry.event, null, 2));
+  });
+}
+
+async function copyRawJson(button, text) {
+  const originalText = button.textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    button.textContent = "Copied";
+  } catch {
+    button.textContent = "Copy failed";
+  } finally {
+    window.setTimeout(() => {
+      button.textContent = originalText;
+    }, 1200);
+  }
 }
 
 async function loadEntryDetail(entry) {

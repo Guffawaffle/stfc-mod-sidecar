@@ -20,4 +20,14 @@ describe("viewer LCARS style primitives", () => {
     test("keeps motion restrained for reduced-motion users", () => {
         expect(styles).toContain("@media (prefers-reduced-motion: reduce)");
     });
+
+    test("lets Battle Workbench content panels use viewport height without trapping the whole report", () => {
+        expect(styles).toContain("min-height: clamp(640px, calc(100vh - 255px), 1180px);");
+        expect(styles).toContain(".catalog-band,\n.csv-parity-band,\n.combatant-detail-band,\n.data-dive-band");
+        expect(styles).toContain("min-height: clamp(420px, 52vh, 820px);");
+        expect(styles).toContain("max-height: none;\n  overflow: visible;");
+        expect(styles).toContain("max-height: clamp(340px, 48vh, 720px);");
+        expect(styles).toContain("scrollbar-gutter: stable;");
+        expect(styles).not.toContain("max-height: min(1040px, calc(100vh - 250px));");
+    });
 });
