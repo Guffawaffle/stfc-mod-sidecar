@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createSqlSidecarEventStore, deriveSidecarEventKey } from "./sql-event-store.js";
-import { BATTLE_CAPTURE_SCHEMA_VERSION, SIDECAR_EVENT_PROTOCOL_VERSION, type BattleCaptureEvent, type DebugEvent } from "../events/types.js";
+import { BATTLE_CAPTURE_SCHEMA_VERSION, BATTLE_REPORT_SCHEMA_VERSION, SIDECAR_EVENT_PROTOCOL_VERSION, type BattleCaptureEvent, type BattleReportEvent, type DebugEvent } from "../events/types.js";
 
 const tempDirs: string[] = [];
 
@@ -65,6 +65,32 @@ describe("sql sidecar event store", () => {
 
         await store.close();
     });
+
+    it("loads complete battle groups by battle id or journal id in sqlite", async () => {
+        const store = await createSqlSidecarEventStore({
+            backend: "sqlite",
+            connection: makeTempPath("events.sqlite"),
+        });
+
+        await store.append([
+            sampleCaptureEvent({ battleId: "battle-lookup", journalId: "journal-lookup" }),
+            sampleReportEvent({
+                battleId: "battle-lookup",
+                journalId: "journal-lookup",
+                timestamp: "2026-04-28T00:00:02.000Z",
+            }),
+            sampleCaptureEvent({ battleId: "other-battle", journalId: "other-journal" }),
+        ]);
+
+        const byBattleId = await store.listByBattleKey("battle-lookup");
+        expect(byBattleId.map((entry) => entry.event.battleId)).toEqual(["battle-lookup", "battle-lookup"]);
+        expect(byBattleId.map((entry) => entry.sequenceId)).toEqual([1, 2]);
+
+        const byJournalId = await store.listByBattleKey("journal-lookup");
+        expect(byJournalId.map((entry) => entry.event.journalId)).toEqual(["journal-lookup", "journal-lookup"]);
+
+        await store.close();
+    });
 });
 
 function makeTempPath(fileName: string): string {
@@ -73,7 +99,7 @@ function makeTempPath(fileName: string): string {
     return path.join(dir, fileName);
 }
 
-function sampleCaptureEvent(): BattleCaptureEvent {
+function sampleCaptureEvent(overrides: Partial<BattleCaptureEvent> = {}): BattleCaptureEvent {
     return {
         protocolVersion: SIDECAR_EVENT_PROTOCOL_VERSION,
         type: "battle.capture",
@@ -93,6 +119,29 @@ function sampleCaptureEvent(): BattleCaptureEvent {
                 tokens: ["-96", "111"],
             },
         },
+        ...overrides,
+    };
+}
+
+function sampleReportEvent(overrides: Partial<BattleReportEvent> = {}): BattleReportEvent {
+    return {
+        protocolVersion: SIDECAR_EVENT_PROTOCOL_VERSION,
+        type: "battle.report",
+        schemaVersion: BATTLE_REPORT_SCHEMA_VERSION,
+        timestamp: "2026-04-28T00:00:01.000Z",
+        source: "stfc-community-mod",
+        journalId: "sample-journal-001",
+        battleId: "sample-battle-001",
+        capturedAtUnixMs: 1777334400000,
+        report: {
+            summary: { outcome: "initiator_victory" },
+            rewards: [],
+            fleets: [],
+            events: [],
+            decode: {},
+            parity: {},
+        },
+        ...overrides,
     };
 }
 

@@ -44,6 +44,7 @@ export interface SidecarEventStore {
     countByTypes(eventTypes: readonly string[]): Promise<number>;
     listRecent(limit: number): Promise<SidecarStoredEvent[]>;
     listRecentByTypes(eventTypes: readonly string[], limit: number): Promise<SidecarStoredEvent[]>;
+    listByBattleKey(battleKey: string): Promise<SidecarStoredEvent[]>;
     getBySequenceId(sequenceId: number): Promise<SidecarStoredEvent | null>;
     close(): Promise<void>;
 }
@@ -82,6 +83,7 @@ interface SqlDialect {
     insertStatement(tableName: string): string;
     listRecentStatement(tableName: string): string;
     listRecentByTypesStatement(tableName: string, eventTypePlaceholders: string, limitPlaceholder: string): string;
+    listByBattleKeyStatement(tableName: string): string;
     getBySequenceIdStatement(tableName: string): string;
     countStatement(tableName: string): string;
     countByTypesStatement(tableName: string, eventTypePlaceholders: string): string;
@@ -181,6 +183,16 @@ class SqlSidecarEventStore implements SidecarEventStore {
         return result.rows.map(deserializeStoredEventRow);
     }
 
+    async listByBattleKey(battleKey: string): Promise<SidecarStoredEvent[]> {
+        const normalizedKey = battleKey.trim();
+        if (!normalizedKey) {
+            return [];
+        }
+
+        const result = await this.executor.query(this.dialect.listByBattleKeyStatement(this.tableName), [normalizedKey, normalizedKey]);
+        return result.rows.map(deserializeStoredEventRow);
+    }
+
     async getBySequenceId(sequenceId: number): Promise<SidecarStoredEvent | null> {
         const result = await this.executor.query(this.dialect.getBySequenceIdStatement(this.tableName), [sequenceId]);
         const row = result.rows[0];
@@ -275,6 +287,9 @@ const sqliteDialect: SqlDialect = {
     listRecentByTypesStatement(tableName, eventTypePlaceholders, limitPlaceholder) {
         return `SELECT sequence_id, event_key, payload_json AS raw_json FROM ${tableName} WHERE event_type IN (${eventTypePlaceholders}) ORDER BY sequence_id DESC LIMIT ${limitPlaceholder}`;
     },
+    listByBattleKeyStatement(tableName) {
+        return `SELECT sequence_id, event_key, payload_json AS raw_json FROM ${tableName} WHERE battle_id = ?1 OR journal_id = ?2 ORDER BY sequence_id ASC`;
+    },
     getBySequenceIdStatement(tableName) {
         return `SELECT sequence_id, event_key, payload_json AS raw_json FROM ${tableName} WHERE sequence_id = ?1`;
     },
@@ -324,6 +339,9 @@ const postgresDialect: SqlDialect = {
     },
     listRecentByTypesStatement(tableName, eventTypePlaceholders, limitPlaceholder) {
         return `SELECT sequence_id, event_key, payload_json::text AS raw_json FROM ${tableName} WHERE event_type IN (${eventTypePlaceholders}) ORDER BY sequence_id DESC LIMIT ${limitPlaceholder}`;
+    },
+    listByBattleKeyStatement(tableName) {
+        return `SELECT sequence_id, event_key, payload_json::text AS raw_json FROM ${tableName} WHERE battle_id = $1 OR journal_id = $2 ORDER BY sequence_id ASC`;
     },
     getBySequenceIdStatement(tableName) {
         return `SELECT sequence_id, event_key, payload_json::text AS raw_json FROM ${tableName} WHERE sequence_id = $1`;

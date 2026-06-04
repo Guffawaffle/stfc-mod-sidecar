@@ -55,6 +55,7 @@ import {
 } from "./community-mod-uninstall-execution.mjs";
 import { installBoundedConsoleLogSync } from "./bounded-log-file.mjs";
 import { createMajelIngestStore } from "./majel-ingest-store.mjs";
+import { battleIndexUpdatesFromEvents, buildBattleDetailSnapshot, buildBattleIndexSnapshot } from "./server/battle-log-access.mjs";
 import { buildCompatibleFleetSyncSuccessPayload, buildUnavailableFleetBrokerSummary } from "./server/fleet-broker-contract.mjs";
 import { buildFleetActivitySnapshot } from "./server/fleet-activity.mjs";
 import { createFeedWatcher } from "./server/feed-watcher.mjs";
@@ -235,6 +236,8 @@ const server = createServer(async (request, response) => {
         developerModeRequiredPayload,
         handleEventIngest,
         handleEventStream,
+        readBattleDetail,
+        readBattleIndex,
         readEventDetail,
         readEventsSnapshot,
     })) {
@@ -1415,7 +1418,12 @@ async function handleEventIngest(request, response) {
         }
 
         const result = await store.append(events);
-        broadcastEventUpdate("ingest", { appended: result.appended ?? events.length });
+        broadcastEventUpdate("ingest", {
+            appended: result.stored ?? result.appended ?? events.length,
+            received: result.received ?? events.length,
+            battleIndexUpdates: battleIndexUpdatesFromEvents(events),
+            storeStatus: "idle",
+        });
         return sendJson(response, 202, {
             ok: true,
             backend: store.backend,
@@ -1467,7 +1475,12 @@ async function handleSidecarIngest(request, response) {
             battleUnavailablePayload: unavailableEventStorePayload,
             appendBattleEvents: eventStore ? async (events) => {
                 const result = await eventStore.append(events);
-                broadcastEventUpdate("ingest", { appended: result.appended ?? events.length });
+                broadcastEventUpdate("ingest", {
+                    appended: result.stored ?? result.appended ?? events.length,
+                    received: result.received ?? events.length,
+                    battleIndexUpdates: battleIndexUpdatesFromEvents(events),
+                    storeStatus: "idle",
+                });
                 return {
                     backend: eventStore.backend,
                     ...result,
@@ -1733,6 +1746,71 @@ async function readEventsSnapshot(limit, options = {}) {
     }
 
     return emptyEventsSnapshot(options);
+}
+
+async function readBattleIndex(limit) {
+    const battleLimit = Math.min(Math.max(limit, 1), 100);
+    const eventScanLimit = Math.min(Math.max(battleLimit * 8, 50), 500);
+    const snapshot = await readEventsSnapshot(eventScanLimit, {
+        includeDetails: false,
+        eventTypes: BATTLE_EVENT_TYPES,
+    });
+    return buildBattleIndexSnapshot(snapshot, { limit: battleLimit });
+}
+
+async function readBattleDetail(battleKey) {
+    const normalizedKey = String(battleKey ?? "").trim();
+    if (!normalizedKey) {
+        return {
+            ok: false,
+            source: "store",
+            detail: "battle-detail",
+            statusCode: 400,
+            error: "Battle id is required.",
+        };
+    }
+
+    const store = eventStore;
+    const storeRevision = eventStoreRevision;
+    if (store) {
+        try {
+            const storedEvents = typeof store.listByBattleKey === "function"
+                ? await store.listByBattleKey(normalizedKey)
+                : [];
+            if (store !== eventStore || storeRevision !== eventStoreRevision) {
+                return readBattleDetail(normalizedKey);
+            }
+            if (storedEvents.length > 0) {
+                return buildBattleDetailSnapshot({
+                    ok: true,
+                    source: "store",
+                    storageBackend: store.backend,
+                    exists: true,
+                    detail: "full",
+                    generatedAt: new Date().toISOString(),
+                    totalLines: storedEvents.length,
+                    returnedLines: storedEvents.length,
+                    events: storedEvents.map((entry) => normalizeLine(entry.rawJson, entry.sequenceId)),
+                }, normalizedKey);
+            }
+            return {
+                ok: false,
+                source: "store",
+                storageBackend: store.backend,
+                exists: true,
+                detail: "battle-detail",
+                statusCode: 404,
+                battleId: normalizedKey,
+                events: [],
+                error: "Battle detail not available in the local event store",
+            };
+        } catch (error) {
+            console.warn(`[sidecar-viewer] stored battle detail unavailable: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    const fallback = await battleFeed.readFeedSnapshot(500, { includeDetails: true });
+    return buildBattleDetailSnapshot(fallback, normalizedKey);
 }
 
 async function readEventDetail(lineNumber, options = {}) {

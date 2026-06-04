@@ -17,6 +17,31 @@ const DEVELOPER_EVENT_TYPES = Object.freeze([
 const KNOWN_EVENT_TYPES = new Set([...BATTLE_EVENT_TYPES, ...DEVELOPER_EVENT_TYPES]);
 
 export async function handleEventRoutes(request, response, requestUrl, context) {
+    if (requestUrl.pathname === "/api/battles") {
+        if (request.method && request.method !== "GET") {
+            sendJson(response, 405, { ok: false, error: "Method not allowed" });
+            return true;
+        }
+
+        const limitValue = Number.parseInt(requestUrl.searchParams.get("limit") ?? `${context.defaultLimit}`, 10);
+        const index = await context.readBattleIndex(Number.isFinite(limitValue) ? limitValue : context.defaultLimit);
+        sendJson(response, index.ok ? 200 : index.statusCode ?? 500, index);
+        return true;
+    }
+
+    const battleMatch = /^\/api\/battles\/([^/]+)$/.exec(requestUrl.pathname);
+    if (battleMatch) {
+        if (request.method && request.method !== "GET") {
+            sendJson(response, 405, { ok: false, error: "Method not allowed" });
+            return true;
+        }
+
+        const battleKey = decodeURIComponent(battleMatch[1] ?? "");
+        const detail = await context.readBattleDetail(battleKey);
+        sendJson(response, detail.ok ? 200 : detail.statusCode ?? 404, detail);
+        return true;
+    }
+
     if (requestUrl.pathname === "/api/events") {
         if (request.method === "POST") {
             await context.handleEventIngest(request, response);

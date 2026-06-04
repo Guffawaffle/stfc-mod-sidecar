@@ -3,6 +3,52 @@ import { describe, expect, it, vi } from "vitest";
 import { handleEventRoutes } from "../../viewer/server/routes/event-routes.mjs";
 
 describe("viewer event routes", () => {
+    it("serves lightweight battle indexes and lazy battle details", async () => {
+        const context = baseContext({
+            readBattleIndex: vi.fn(async () => ({
+                ok: true,
+                detail: "battle-index",
+                battles: [{
+                    battleId: "battle-1",
+                    completeness: { hasCapture: true, hasReport: true, hasCatalog: false, hasAnalytics: false },
+                }],
+            })),
+            readBattleDetail: vi.fn(async (battleId) => ({
+                ok: true,
+                detail: "battle-detail",
+                battleId,
+                events: [{ event: { type: "battle.capture", capture: { battleLog: { tokens: ["1"] } } } }],
+            })),
+        });
+
+        const indexResponse = captureResponse();
+        await expect(handleEventRoutes(
+            { method: "GET" },
+            indexResponse,
+            new URL("http://127.0.0.1/api/battles?limit=25"),
+            context,
+        )).resolves.toBe(true);
+        expect(context.readBattleIndex).toHaveBeenCalledWith(25);
+        expect(indexResponse.statusCode).toBe(200);
+        const indexPayload = JSON.parse(indexResponse.body);
+        expect(indexPayload.detail).toBe("battle-index");
+        expect(indexPayload.battles[0]).not.toHaveProperty("event");
+        expect(indexPayload.battles[0]).not.toHaveProperty("rawJson");
+
+        const detailResponse = captureResponse();
+        await handleEventRoutes(
+            { method: "GET" },
+            detailResponse,
+            new URL("http://127.0.0.1/api/battles/battle-1"),
+            context,
+        );
+        expect(context.readBattleDetail).toHaveBeenCalledWith("battle-1");
+        expect(detailResponse.statusCode).toBe(200);
+        const detailPayload = JSON.parse(detailResponse.body);
+        expect(detailPayload.detail).toBe("battle-detail");
+        expect(detailPayload.events[0].event.capture.battleLog.tokens).toEqual(["1"]);
+    });
+
     it("serves event snapshots with existing limit and detail semantics", async () => {
         const context = baseContext();
         const response = captureResponse();
@@ -157,6 +203,8 @@ function baseContext(overrides = {}) {
         }),
         readEventDetail: vi.fn(async () => ({ ok: false, statusCode: 404 })),
         readEventsSnapshot: vi.fn(async () => ({ ok: true, route: "events" })),
+        readBattleIndex: vi.fn(async () => ({ ok: true, detail: "battle-index", battles: [] })),
+        readBattleDetail: vi.fn(async () => ({ ok: false, detail: "battle-detail", statusCode: 404 })),
         ...overrides,
     };
 }
