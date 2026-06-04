@@ -142,6 +142,10 @@ Keep this list intentionally small:
 - `/api/viewer-config` if fully redacted
 - `GET /api/events?detail=summary` and `GET /api/events/stream` while they
   remain read-only summary snapshots or update hints for the local viewer
+- `GET /api/battles?limit=N` while it remains a lightweight battle index without
+  full raw battle payloads
+- `GET /api/battles/{battleId}` for the local developer Workbench detail route
+  while the Workbench surface itself remains gated by runtime mode
 - `/api/diagnostics/bundle` only while it remains redacted, GET-only, and free
   of raw local paths, tokens, credentials, and raw event payloads
 
@@ -152,7 +156,6 @@ Everything else should require the local capability token unless there is a stro
 Examples:
 
 - `POST /api/events`
-- `/api/battles/*`
 - `/api/integrations/*`
 - `/api/diagnostics/*`
 - `/api/credentials/*`
@@ -183,6 +186,8 @@ If richer live streaming becomes necessary:
 The current Battle Log live update channel uses server-sent events at
 `GET /api/events/stream`. It sends only update hints (`ready` and
 `events-updated`) and relies on the existing snapshot/detail routes for data.
+It must not push full raw battlelogs by default; use route-level lazy detail
+fetches such as `/api/battles/{battleId}` when a user selects a battle.
 If the stream begins carrying event payloads, cursors, or sensitive status, move
 it behind the local capability token.
 

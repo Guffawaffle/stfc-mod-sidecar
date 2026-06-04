@@ -102,10 +102,13 @@ enabled = true
 token = "choose-a-long-local-token"
 url = "http://127.0.0.1:43127/api/sidecar/ingest"
 battlelogs_realtime = true
+battlelog_enrichment = true
 fleet_runtime = true
 ```
 
-4. Optional: enable richer decoded battle records. Without this, the mod can still emit `battle.capture` events for the sidecar contract, but report/catalog/analytics output stays off.
+`battlelogs_realtime = true` enables raw/capture battle transport. `battlelog_enrichment = true` enables the enriched `battle.report`, `catalog.snapshot`, and `battle.analytics` events. `fleet_runtime = true` enables fleet projection updates. Existing legacy native `[sync]` categories remain separate; `[sidecar.sync]` is the local Companion ingest path and does not replace those older categories.
+
+4. Optional: keep the native battle-log decoder enabled for richer local evidence.
 
 ```toml
 [battle_log_decoder]
@@ -127,6 +130,10 @@ jsonl_recent_logs = 300
 7. Open the Companion `Battle Log` page after battles resolve.
 
 `/api/sidecar/ingest` is the canonical native-to-Companion runtime path. The Companion persists accepted battle events in its sidecar-owned SQL event store while it is running. `community_patch_battle_feed.jsonl` is optional diagnostics/evidence/import-replay capture only when `[sidecar.logging].jsonl = true`; it is not the normal runtime architecture.
+
+Validate local ingest with `/api/health`, `/api/events`, `/api/battles`, `/battle-log/`, `/battle-log/workbench/`, and `/fleet/`. The Cloud Sync Monitor is for Majel/cloud envelope monitoring and is not required for local Battle Log, Workbench, or Fleet validation.
+
+`/api/battles?limit=N` returns a lightweight battle index for the Workbench dropdown/list. `/api/battles/{battleId}` lazily returns full battle detail only after a battle is selected. Browser live updates use `GET /api/events/stream` server-sent events for lightweight update/invalidation notices; the SSE stream must not carry full raw battlelogs by default.
 
 ### Advanced User: Experimental Fleet Telemetry To Majel
 
@@ -217,6 +224,8 @@ Run the desktop shell in development:
 ```bash
 npm run desktop:dev
 ```
+
+For now this command stops any currently managed browser-mode viewer server before launching the Electron desktop shell. If a compatible desktop sidecar is already running on `http://127.0.0.1:43127`, Electron may reuse it; otherwise it starts a desktop-owned sidecar.
 
 Browser smoke tests exercise the local viewer server and settings APIs, but native setup controls such as profile, Developer Tools mode, and game directory require the Electron desktop bridge. To test the browser surface with a real game directory and Waffle profile:
 

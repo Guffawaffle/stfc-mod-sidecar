@@ -23,7 +23,8 @@ describe("viewer fleet markup", () => {
         expect(fleetHtml).toContain('id="collapse-all-ship-combat-button"');
         expect(fleetHtml).toContain("Recent Activity (preview)");
         expect(fleetHtml).toContain('id="fleet-activity-view"');
-        expect(fleetHtml).toContain('href="/diagnostics/"');
+        expect(fleetHtml).toContain('href="/diagnostics/cloud-sync/"');
+        expect(fleetHtml).toContain(">Sync Monitor</a>");
         expect(fleetHtml).toContain('id="projection-debug"');
         expect(fleetHtml).toContain("fleet-debug-stamps");
         expect(fleetHtml).toContain('/fleet/app.js');

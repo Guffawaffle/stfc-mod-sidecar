@@ -26,6 +26,8 @@ After adding the desktop dependencies with `npm install`, run:
 npm run desktop:dev
 ```
 
+The root `desktop:dev` script stops any currently managed browser-mode viewer server before launching Electron. The desktop shell reuses a compatible desktop sidecar on the standard local port when one is already running, or starts one when needed.
+
 ## Packaging
 
 Directory package for inspection:
