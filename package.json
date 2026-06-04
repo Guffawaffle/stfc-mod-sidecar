@@ -22,7 +22,7 @@
     "smoke:mod-install": "node ./scripts/community-mod-install-smoke.mjs",
     "smoke:mod-dev-reinstall": "node ./scripts/community-mod-dev-reinstall-smoke.mjs",
     "smoke:mod-dev-reinstall:waffle": "node ./scripts/community-mod-dev-reinstall-smoke.mjs --profile waffle-advanced",
-    "desktop:dev": "npm run dev --workspace @stfc-mod-sidecar/desktop",
+    "desktop:dev": "node ./scripts/desktop-dev.mjs",
     "desktop:pack": "npm run pack --workspace @stfc-mod-sidecar/desktop",
     "desktop:dist": "npm run dist --workspace @stfc-mod-sidecar/desktop",
     "desktop:dist:win": "node ./scripts/ax.mjs dist:win",

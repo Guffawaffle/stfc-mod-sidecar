@@ -7,7 +7,7 @@
   "type": "module",
   "main": "src/main.mjs",
   "scripts": {
-    "dev": "npm run build --workspace @stfc-mod-sidecar/core && electron ./src/main.mjs",
+    "dev": "node ../../scripts/desktop-dev.mjs --skip-stop",
     "pack": "node ../../scripts/desktop-packaging-guard.mjs && npm run build --workspace @stfc-mod-sidecar/core && electron-builder --dir --config electron-builder.config.cjs",
     "dist": "npm run build --workspace @stfc-mod-sidecar/core && electron-builder --config electron-builder.config.cjs",
     "dist:win": "node ../../scripts/desktop-packaging-guard.mjs && npm run build --workspace @stfc-mod-sidecar/core && electron-builder --win --config electron-builder.config.cjs",
