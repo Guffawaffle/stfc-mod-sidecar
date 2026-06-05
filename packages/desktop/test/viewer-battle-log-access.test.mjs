@@ -70,6 +70,12 @@ describe("viewer battle log access helpers", () => {
         expect(explorerApp).toContain("navigator.clipboard.writeText");
         expect(explorerApp).toContain("fetch(`/api/events/${entry.lineNumber}`");
         expect(explorerApp).toContain("new EventSource(\"/api/events/stream\")");
+        expect(explorerApp).toContain("Open Battle Workbench");
+        expect(explorerApp).toContain("derived explanation surface");
+        expect(explorerApp).not.toContain("unknownScalarA");
+        expect(explorerApp).not.toContain("unknownScalarB");
+        expect(workbenchApp).not.toContain("unknownScalarA");
+        expect(workbenchApp).not.toContain("unknownScalarB");
     });
 });
 

@@ -482,6 +482,9 @@ function renderBattleAnalyticsPanels(event) {
     ["Ability Rows", coverage.abilityRowCount],
     ["Catalog Resolved", coverage.catalogResolved],
   ]);
+  const workbenchNote = event.battleId
+    ? `<p class="detail-note">Battle Workbench is the derived explanation surface for this battle, including runtime-effect hydration and name provenance. <a href="/battle-log/workbench/">Open Battle Workbench</a>.</p>`
+    : "";
 
   const noteMarkup = notes.length > 0
     ? `<ul class="note-list">${notes.map((note) => `<li>${escapeHtml(note)}</li>`).join("")}</ul>`
@@ -491,6 +494,7 @@ function renderBattleAnalyticsPanels(event) {
     <section class="detail-panel">
       <h3>Analytics Summary</h3>
       <table class="detail-table">${summaryRows}</table>
+      ${workbenchNote}
     </section>
     <section class="detail-panel">
       <h3>Prime CSV Parity Rows</h3>
