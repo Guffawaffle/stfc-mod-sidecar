@@ -12,6 +12,8 @@ diagnostic-bundles/
 samples/private/
 tmp/
 .sidecar/
+.runtime/
+.logs/
 
 .DS_Store
 Thumbs.db

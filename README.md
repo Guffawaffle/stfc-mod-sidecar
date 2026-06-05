@@ -227,6 +227,17 @@ npm run desktop:dev
 
 For now this command stops any currently managed browser-mode viewer server before launching the Electron desktop shell. If a compatible desktop sidecar is already running on `http://127.0.0.1:43127`, Electron may reuse it; otherwise it starts a desktop-owned sidecar.
 
+Run the desktop shell as a managed background process:
+
+```bash
+npm run desktop:dev:bg
+npm run desktop:dev:status
+npm run desktop:dev:logs
+npm run desktop:dev:stop
+```
+
+The managed background runner records state in `.runtime/desktop-dev.pid` and `.runtime/desktop-dev.json`, writes logs to `.logs/desktop-dev.out.log` and `.logs/desktop-dev.err.log`, checks `/api/health` when it becomes available quickly, and only stops the PID it started.
+
 Browser smoke tests exercise the local viewer server and settings APIs, but native setup controls such as profile, Developer Tools mode, and game directory require the Electron desktop bridge. To test the browser surface with a real game directory and Waffle profile:
 
 ```powershell

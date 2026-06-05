@@ -18,6 +18,10 @@ const COMMAND_METADATA = new Map([
     ["build", { description: "Build all sidecar packages", sideEffects: "write" }],
     ["test", { description: "Run all sidecar package tests", sideEffects: "write" }],
     ["check", { description: "Build and test all sidecar packages", sideEffects: "write" }],
+    ["desktop:start", { description: "Start desktop dev sidecar in the background", sideEffects: "write" }],
+    ["desktop:stop", { description: "Stop the managed desktop dev background process", sideEffects: "write" }],
+    ["desktop:status", { description: "Show managed desktop dev process status", sideEffects: "read" }],
+    ["desktop:logs", { description: "Print recent managed desktop dev logs", sideEffects: "read" }],
     ["dist:win", { description: "Build Windows desktop distribution artifacts", sideEffects: "write" }],
     ["ci", { description: "Build, test, and package Windows distribution artifacts", sideEffects: "write" }],
 ]);
@@ -27,6 +31,10 @@ const COMMANDS = new Map([
     ["build", buildCommand],
     ["test", testCommand],
     ["check", checkCommand],
+    ["desktop:start", desktopStartCommand],
+    ["desktop:stop", desktopStopCommand],
+    ["desktop:status", desktopStatusCommand],
+    ["desktop:logs", desktopLogsCommand],
     ["dist:win", distWinCommand],
     ["ci", ciCommand],
 ]);
@@ -45,7 +53,7 @@ async function main() {
             success: true,
             durationMs: 0,
             commands: commandInventory(),
-            usage: "npm run ax -- <status|build|test|check|dist:win|ci|list>",
+            usage: "npm run ax -- <status|build|test|check|desktop:start|desktop:stop|desktop:status|desktop:logs|dist:win|ci|list>",
         });
         return;
     }
@@ -114,6 +122,30 @@ async function checkCommand() {
     return sequence([
         () => runNpmStep("build", ["run", "build"], { timeoutMs: 180_000 }),
         () => runNpmStep("test", ["test"], { timeoutMs: 180_000 }),
+    ]);
+}
+
+async function desktopStartCommand() {
+    return sequence([
+        () => runNpmStep("desktop:dev:bg", ["run", "desktop:dev:bg"], { timeoutMs: 180_000 }),
+    ]);
+}
+
+async function desktopStopCommand() {
+    return sequence([
+        () => runNpmStep("desktop:dev:stop", ["run", "desktop:dev:stop"], { timeoutMs: 60_000 }),
+    ]);
+}
+
+async function desktopStatusCommand() {
+    return sequence([
+        () => runNpmStep("desktop:dev:status", ["run", "desktop:dev:status"], { timeoutMs: 30_000 }),
+    ]);
+}
+
+async function desktopLogsCommand() {
+    return sequence([
+        () => runNpmStep("desktop:dev:logs", ["run", "desktop:dev:logs"], { timeoutMs: 30_000 }),
     ]);
 }
 
