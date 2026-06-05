@@ -73,8 +73,8 @@ describe.sequential("viewer fleet runtime", () => {
         expect(page.elements.debug.textContent).not.toContain("Fetch: Never");
         expect(page.elements.debug.textContent).not.toContain("Render: Never");
         expect(page.elements.debug.textContent).toContain("Version: v12");
-        expect(page.elements.view.innerHTML).toContain("Fleet ALPHA1");
         expect(page.elements.view.innerHTML).toContain("Slot BRAVO0");
+        expect(page.elements.view.innerHTML).not.toContain("Fleet ALPHA1");
         expect(page.elements.view.innerHTML).not.toContain("fleet:ALPHA-1234567890");
         expect(page.elements.view.innerHTML).not.toContain("slot:BRAVO-0987654321");
     });
@@ -88,7 +88,7 @@ describe.sequential("viewer fleet runtime", () => {
                 stateVersion: 12,
                 updatedAt: now,
                 slots: [
-                    { fleetKey: "fleet:C", slotKey: "slot-10", state: "assigned", assignmentKind: "player_ship", updatedAt: now },
+                    { fleetKey: "fleet:C", slotKey: "slot-9", state: "assigned", assignmentKind: "player_ship", updatedAt: now },
                     { fleetKey: "fleet:B", slotKey: "slot-2", state: "empty", assignmentKind: "slot", updatedAt: now },
                     { fleetKey: "fleet:A", slotKey: "slot-0", state: "assigned", assignmentKind: "player_ship", updatedAt: now },
                 ],
@@ -98,10 +98,12 @@ describe.sequential("viewer fleet runtime", () => {
         expect(page.elements.rowCount.textContent).toBe("2");
         expect(page.elements.toggleEmptySlotsButton.textContent).toBe("Show empty slots");
         expect(page.elements.note.textContent).toContain("1 empty slot is hidden.");
-        expect(page.elements.view.innerHTML).toContain("Slot 0");
+        expect(page.elements.view.innerHTML).toContain("Slot 1");
         expect(page.elements.view.innerHTML).toContain("Slot 10");
-        expect(page.elements.view.innerHTML).not.toContain("Slot 2");
-        expect(page.elements.view.innerHTML.indexOf("Slot 0")).toBeLessThan(page.elements.view.innerHTML.indexOf("Slot 10"));
+        expect(page.elements.view.innerHTML).not.toContain("Slot 3");
+        expect(page.elements.view.innerHTML).not.toContain("<th>Fleet</th>");
+        expect(page.elements.view.innerHTML).not.toContain("<th>Updated</th>");
+        expect(page.elements.view.innerHTML.indexOf("Slot 1")).toBeLessThan(page.elements.view.innerHTML.indexOf("Slot 10"));
     });
 
     test("can show empty slots without refetching", async () => {
@@ -126,7 +128,7 @@ describe.sequential("viewer fleet runtime", () => {
         expect(page.requests).toEqual(INITIAL_FLEET_REQUESTS);
         expect(page.elements.rowCount.textContent).toBe("2");
         expect(page.elements.toggleEmptySlotsButton.textContent).toBe("Hide empty slots");
-        expect(page.elements.view.innerHTML).toContain("Slot 2");
+        expect(page.elements.view.innerHTML).toContain("Slot 3");
         expect(page.elements.view.innerHTML).toContain("Empty");
     });
 

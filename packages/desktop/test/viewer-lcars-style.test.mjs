@@ -21,6 +21,17 @@ describe("viewer LCARS style primitives", () => {
         expect(styles).toContain("@media (prefers-reduced-motion: reduce)");
     });
 
+    test("keeps Fleet Watch previews and Decode Signals surfaces dark", () => {
+        expect(styles).toContain(".fleet-combat-preview");
+        expect(styles).toContain(".fleet-table .chip-row span");
+        expect(styles).toContain(".fleet-activity-row .chip-row span");
+        expect(styles).toContain(".fleet-activity-row .line-badge");
+        expect(styles).toContain(".fleet-combat-preview__chips span");
+        expect(styles).toContain(".report-workbench .chain-item");
+        expect(styles).toContain(".report-workbench .line-badge");
+        expect(styles).toContain(".report-workbench .table-scroll");
+    });
+
     test("lets Battle Workbench content panels use viewport height without trapping the whole report", () => {
         expect(styles).toContain("min-height: clamp(640px, calc(100vh - 255px), 1180px);");
         expect(styles).toContain(".catalog-band,\n.csv-parity-band,\n.combatant-detail-band,\n.data-dive-band");

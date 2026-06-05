@@ -444,12 +444,10 @@ function renderRows(payload, options = {}) {
       <table class="detail-table data-table fleet-table">
         <thead>
           <tr>
-            <th>Fleet</th>
             <th>Slot</th>
             <th>State</th>
             <th>Assignment</th>
             <th>Observed</th>
-            <th>Updated</th>
           </tr>
         </thead>
         <tbody>
@@ -492,11 +490,10 @@ function renderFleetRow(row) {
     <tr class="${rowClasses.join(" ")}"${row.canShowCombatSummary ? ` data-ship-combat-row="true" data-slot-token="${escapeHtml(domTokenForShipCombatSlot(row.slotKey))}"` : ""}>
       <td>
         <div class="fleet-table__cell">
-          <strong>${escapeHtml(row.fleetLabel)}</strong>
+          <strong>${escapeHtml(row.slotLabel)}</strong>
           ${row.canShowCombatSummary ? `<span class="fleet-table__toggle">${escapeHtml(toggleLabel)}</span>` : ""}
         </div>
       </td>
-      <td><div class="fleet-table__cell"><strong>${escapeHtml(row.slotLabel)}</strong></div></td>
       <td><div class="fleet-table__cell"><strong>${escapeHtml(row.stateLabel)}</strong></div></td>
       <td>
         <div class="fleet-table__cell">
@@ -507,12 +504,6 @@ function renderFleetRow(row) {
       <td>
         <div class="fleet-table__cell">
           <div class="chip-row">${row.observedSignals.map((signal) => `<span>${escapeHtml(signal)}</span>`).join("")}</div>
-        </div>
-      </td>
-      <td>
-        <div class="fleet-table__cell">
-          <strong>${escapeHtml(formatDateTime(row.updatedAt))}</strong>
-          <span class="fleet-table__secondary">${escapeHtml(formatAge(row.updatedAt))}</span>
         </div>
       </td>
     </tr>
@@ -530,7 +521,7 @@ function renderShipCombatSummaryRow(row) {
 
   return `
     <tr class="fleet-combat-preview__row">
-      <td colspan="6">
+      <td colspan="4">
         <section class="fleet-combat-preview">
           <div class="fleet-combat-preview__header">
             <div class="fleet-combat-preview__copy">
@@ -590,7 +581,7 @@ function viewModelForSlot(slot, recentCombatMatch) {
   return {
     slotKey: String(slot.slotKey ?? ""),
     fleetLabel: safeOpaqueLabel("Fleet", slot.fleetKey),
-    slotLabel: safeOpaqueLabel("Slot", slot.slotKey),
+    slotLabel: slotLabelForSlot(slot),
     slotOrder: slotOrderForSlot(slot),
     stateLabel: formatState(slot.state),
     assignmentLabel: formatAssignment(slot.assignmentKind),
@@ -609,8 +600,17 @@ function viewModelForSlot(slot, recentCombatMatch) {
 
 function compareRows(left, right) {
   return left.slotOrder - right.slotOrder
-    || left.slotLabel.localeCompare(right.slotLabel)
-    || left.fleetLabel.localeCompare(right.fleetLabel);
+    || left.slotKey.localeCompare(right.slotKey)
+    || left.assignmentLabel.localeCompare(right.assignmentLabel);
+}
+
+function slotLabelForSlot(slot) {
+  const slotOrder = slotOrderForSlot(slot);
+  if (Number.isFinite(slotOrder) && slotOrder !== Number.MAX_SAFE_INTEGER) {
+    return `Slot ${slotOrder + 1}`;
+  }
+
+  return safeOpaqueLabel("Slot", slot.slotKey);
 }
 
 function slotOrderForSlot(slot) {

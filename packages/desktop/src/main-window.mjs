@@ -3,6 +3,30 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { BrowserWindow } = require("electron");
 
+export function attachWindowVisibilityHandlers(window) {
+    let shown = false;
+
+    const showWindow = () => {
+        if (shown || window.isDestroyed()) {
+            return;
+        }
+
+        shown = true;
+        window.show();
+    };
+
+    window.once("ready-to-show", showWindow);
+    window.webContents.once("did-finish-load", () => {
+        setTimeout(() => {
+            if (shown || window.isDestroyed()) {
+                return;
+            }
+
+            showWindow();
+        }, 250);
+    });
+}
+
 export default function createMainWindow(url, options = {}) {
     const window = new BrowserWindow({
         width: 1320,
@@ -20,7 +44,7 @@ export default function createMainWindow(url, options = {}) {
         },
     });
 
-    window.once("ready-to-show", () => window.show());
+    attachWindowVisibilityHandlers(window);
     window.webContents.setWindowOpenHandler(({ url: requestedUrl }) => {
         const requested = new URL(requestedUrl);
         const current = new URL(url);
