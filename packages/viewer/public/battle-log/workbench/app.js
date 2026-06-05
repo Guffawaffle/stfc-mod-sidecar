@@ -162,6 +162,7 @@ function buildBattleGroups(snapshot) {
         reportEntry: null,
         analyticsEntry: null,
         catalogEntry: null,
+        battleExplanation: null,
         detailLoaded: false,
     })).filter((battle) => battle.key);
 }
@@ -261,10 +262,12 @@ async function renderReport() {
     state.selectedCombatantKey = selectedCombatant?.key ?? null;
 
     const html = `
+    ${renderBattleExplanation(model)}
     ${renderBattleDetails(model)}
     ${renderFleetComparison(model)}
     ${renderSignalUptime(model)}
     ${renderCatalogSnapshot(model)}
+    ${renderResolvedRuntimeEffects(model)}
     ${renderCsvParity(model)}
     ${renderCombatantChooser(model, selectedCombatant)}
     ${renderCombatantDetail(model, selectedCombatant)}
@@ -314,9 +317,15 @@ async function renderReport() {
 }
 
 async function hydrateBattleGroup(group) {
-    const cachedEntries = state.detailsByLine.get(`battle:${group.key}`);
-    if (cachedEntries) {
-        group.entries = cachedEntries;
+    const cachedDetail = state.detailsByLine.get(`battle:${group.key}`);
+    if (cachedDetail) {
+        if (Array.isArray(cachedDetail)) {
+            group.entries = cachedDetail;
+            group.battleExplanation = null;
+        } else {
+            group.entries = Array.isArray(cachedDetail.entries) ? cachedDetail.entries : [];
+            group.battleExplanation = cachedDetail.derivedViews?.battleExplanation ?? cachedDetail.battleExplanation ?? null;
+        }
     } else {
         const response = await fetch(`/api/battles/${encodeURIComponent(group.key)}`, { cache: "no-store" });
         const payload = await response.json();
@@ -324,7 +333,11 @@ async function hydrateBattleGroup(group) {
             throw new Error(payload.error ?? `Unable to load battle ${group.key}.`);
         }
         group.entries = payload.events;
-        state.detailsByLine.set(`battle:${group.key}`, group.entries);
+        group.battleExplanation = payload.derivedViews?.battleExplanation ?? payload.battleExplanation ?? null;
+        state.detailsByLine.set(`battle:${group.key}`, {
+            entries: group.entries,
+            battleExplanation: group.battleExplanation,
+        });
     }
     group.detailLoaded = true;
     group.captureEntry = null;
@@ -374,6 +387,7 @@ function applyBattleIndexUpdates(updates) {
             reportEntry: existing?.reportEntry ?? null,
             analyticsEntry: existing?.analyticsEntry ?? null,
             catalogEntry: existing?.catalogEntry ?? null,
+            battleExplanation: existing?.battleExplanation ?? null,
             detailLoaded: false,
         });
         state.detailsByLine.delete(`battle:${key}`);
@@ -431,6 +445,9 @@ function buildReportModel(group) {
     const csvParityColumns = Array.isArray(csvParity.columns) ? csvParity.columns : inferCsvParityColumns(csvParityRows);
     const csvParityCoverage = csvParity.coverage ?? {};
     const csvParityNotes = Array.isArray(csvParity.notes) ? csvParity.notes : [];
+    const resolvedRuntimeEffects = Array.isArray(analytics.resolvedRuntimeEffects) ? analytics.resolvedRuntimeEffects : [];
+    const resolvedRuntimeEffectSummary = analytics.resolvedRuntimeEffectSummary ?? {};
+    const resolvedRuntimeEffectCoverage = analytics.resolvedRuntimeEffectCoverage ?? {};
     const rewards = Array.isArray(report.rewards) ? report.rewards : [];
     const signature = report.decode?.signature ?? deriveCaptureSignature(capture);
     const markerHints = report.decode?.markerHints ?? {};
@@ -447,6 +464,7 @@ function buildReportModel(group) {
         captureEvent,
         analyticsEvent,
         catalogEvent,
+        battleExplanation: group.battleExplanation ?? null,
         catalog,
         summary,
         combatants,
@@ -458,6 +476,9 @@ function buildReportModel(group) {
         csvParityColumns,
         csvParityCoverage,
         csvParityNotes,
+        resolvedRuntimeEffects,
+        resolvedRuntimeEffectSummary,
+        resolvedRuntimeEffectCoverage,
         rewards,
         signature,
         markerHints,
@@ -505,6 +526,201 @@ function normalizeCombatants(reportFleets, captureParticipants) {
             allianceTag: value.alliance_tag ?? value.allianceTag ?? "",
         };
     });
+}
+
+function renderBattleExplanation(model) {
+    const explanation = model.battleExplanation;
+    if (!explanation || typeof explanation !== "object") {
+        return "";
+    }
+
+    const participants = Array.isArray(explanation.participants) ? explanation.participants : [];
+    const weapons = Array.isArray(explanation.weaponSummary) ? explanation.weaponSummary.slice(0, 6) : [];
+    const runtimeEffects = Array.isArray(explanation.runtimeEffects) ? explanation.runtimeEffects.slice(0, 6) : [];
+    const safeClaims = Array.isArray(explanation.safeClaims) ? explanation.safeClaims : [];
+    const nonClaims = Array.isArray(explanation.nonClaims) ? explanation.nonClaims : [];
+    const unresolvedRuntimeRefs = arrayFrom(explanation.unresolved?.runtimeEffectRefs);
+    const unresolvedCatalogRefs = arrayFrom(explanation.unresolved?.catalogRefs);
+    const damageSummary = explanation.damageSummary ?? {};
+    const runtimeEffectsMeta = explanation.runtimeEffectsMeta ?? {};
+    const runtimeNameHydration = runtimeEffectsMeta.nameHydration ?? {};
+    const runtimeEffectNotes = buildRuntimeEffectNotes(runtimeEffectsMeta, runtimeNameHydration);
+
+    return `
+    <section class="report-band battle-explanation-band">
+      <div class="report-band__heading">
+        <div>
+          <p class="eyebrow">Battle Explanation</p>
+          <h2>${escapeHtml(explanation.headline ?? "Battle explanation pending")}</h2>
+        </div>
+        <span class="line-badge">projection</span>
+      </div>
+      <div class="metric-grid metric-grid--inline">
+        ${renderMetric("Winner", explanation.outcome?.winnerSide ? titleCase(explanation.outcome.winnerSide) : "--")}
+        ${renderMetric("Rounds", explanation.outcome?.roundCount ?? "--")}
+        ${renderMetric("Attack Rows", explanation.outcome?.attackRowCount ?? "--")}
+        ${renderMetric("Runtime Groups", Array.isArray(explanation.runtimeEffects) ? explanation.runtimeEffects.length : "--")}
+      </div>
+      <div class="data-dive-grid">
+        <article>
+          <h3>Who Fought</h3>
+          <ul>${participants.map(renderExplanationParticipant).join("") || `<li>No participant labels available.</li>`}</ul>
+        </article>
+        <article>
+          <h3>Damage Dealt</h3>
+          <ul>
+            ${renderExplanationDamage("Initiator", damageSummary.initiator)}
+            ${renderExplanationDamage("Target", damageSummary.target)}
+          </ul>
+        </article>
+        <article>
+          <h3>Safe Claims</h3>
+          <ul>${safeClaims.map((claim) => `<li>${escapeHtml(claim)}</li>`).join("") || `<li>Source data is still incomplete.</li>`}</ul>
+        </article>
+      </div>
+      <div class="report-subsection-heading">
+        <h3>Top Components</h3>
+        <span>${escapeHtml(weapons.length ? "grouped by component ID" : "pending attack rows")}</span>
+      </div>
+      <div class="table-scroll" data-scroll-key="battle-explanation-weapons">
+        <table class="report-table report-table--compact">
+          <thead><tr><th>Side</th><th>Component</th><th class="numeric">Attacks</th><th class="numeric">Crits</th><th class="numeric">Hull</th><th class="numeric">Shield</th><th class="numeric">Isolytic</th></tr></thead>
+          <tbody>${weapons.map(renderExplanationWeaponRow).join("") || `<tr><td colspan="7">No component damage summary available.</td></tr>`}</tbody>
+        </table>
+      </div>
+      <div class="report-subsection-heading">
+        <h3>Observed Runtime Effects</h3>
+        <span>${escapeHtml(runtimeEffects.length ? "structural catalog overlay" : "no candidates")}</span>
+      </div>
+      <ul class="note-list">
+        ${runtimeEffectNotes.map((note) => `<li>${escapeHtml(note)}</li>`).join("")}
+      </ul>
+      <div class="table-scroll" data-scroll-key="battle-explanation-runtime">
+        <table class="report-table report-table--compact">
+          <thead><tr><th>Source</th><th>Effect</th><th>Slot</th><th>Value</th><th class="numeric">Observed</th><th class="numeric">Triggered</th><th>Phases</th><th>Confidence</th><th>Name Source</th><th>Claim</th></tr></thead>
+          <tbody>${runtimeEffects.map(renderExplanationRuntimeRow).join("") || `<tr><td colspan="10">No runtime effect observations available.</td></tr>`}</tbody>
+        </table>
+      </div>
+      <div class="data-dive-grid">
+        <article>
+          <h3>Unresolved Refs</h3>
+          <ul>
+            <li>Runtime: ${escapeHtml(unresolvedRuntimeRefs.join(", ") || "none")}</li>
+            <li>Catalog: ${escapeHtml(unresolvedCatalogRefs.join(", ") || "none")}</li>
+          </ul>
+        </article>
+        <article>
+          <h3>Not Claimed Yet</h3>
+          <ul>${nonClaims.map((claim) => `<li>${escapeHtml(claim)}</li>`).join("")}</ul>
+        </article>
+      </div>
+    </section>
+  `;
+}
+
+function buildRuntimeEffectNotes(runtimeEffectsMeta, runtimeNameHydration) {
+    const notes = [];
+    notes.push(
+        runtimeEffectsMeta.structuralNote
+            ?? "Runtime effects are structurally matched observations, not final proc-rate/math.",
+    );
+
+    const configuredFrom = runtimeNameHydration.configuredFrom;
+    const sourceLabel = runtimeNameHydration.sourceLabel ?? "unavailable";
+    const snapshotVersion = runtimeNameHydration.snapshotVersion;
+    const rootPath = runtimeNameHydration.rootPath;
+
+    if (runtimeNameHydration.status === "loaded") {
+        const sourceSummary = [
+            `Name hydration source: ${sourceLabel}`,
+            configuredFrom ? `(configured via ${configuredFrom})` : "",
+            snapshotVersion ? `version ${snapshotVersion}` : "",
+        ].filter(Boolean).join(" ");
+        notes.push(sourceSummary);
+        if (rootPath) {
+            notes.push(`Snapshot root: ${rootPath}`);
+        }
+    } else {
+        notes.push("Name hydration source: catalog.snapshot when present, otherwise exact refs.");
+        if (configuredFrom && runtimeNameHydration.configuredPath) {
+            notes.push(`Configured snapshot path unavailable: ${runtimeNameHydration.configuredPath} (${configuredFrom})`);
+        }
+    }
+
+    if (runtimeNameHydration.sourceReconciliationNote) {
+        notes.push(runtimeNameHydration.sourceReconciliationNote);
+    }
+
+    return notes;
+}
+
+function renderExplanationParticipant(participant) {
+    const hull = [participant.shipLabel, participant.hullId ? `#${participant.hullId}` : "", participant.hullType].filter(Boolean).join(" ");
+    return `<li><strong>${escapeHtml(titleCase(participant.side))}</strong>: ${escapeHtml(participant.displayName ?? "--")} aboard ${escapeHtml(hull || "--")}</li>`;
+}
+
+function renderExplanationDamage(label, damage) {
+    const summary = damage ?? {};
+    return `<li><strong>${escapeHtml(label)}</strong>: hull ${escapeHtml(summary.hullDamageDisplay ?? "0")}, shield ${escapeHtml(summary.shieldDamageDisplay ?? "0")}, mitigated ${escapeHtml(summary.mitigatedDamageDisplay ?? "0")}, isolytic ${escapeHtml(summary.isolyticDamageDisplay ?? "0")}</li>`;
+}
+
+function renderExplanationWeaponRow(weapon) {
+    const component = weapon.componentName
+        ? `${weapon.componentName} #${weapon.componentId ?? ""}`.trim()
+        : weapon.componentId ?? "--";
+    return `
+    <tr>
+      <td>${escapeHtml(titleCase(weapon.ownerSide ?? "--"))}</td>
+      <td>${escapeHtml(component)}</td>
+      <td class="numeric">${escapeHtml(weapon.attackCount ?? "--")}</td>
+      <td class="numeric">${escapeHtml(weapon.criticalCount ?? "--")}</td>
+      <td class="numeric">${escapeHtml(weapon.hullDamageDisplay ?? "--")}</td>
+      <td class="numeric">${escapeHtml(weapon.shieldDamageDisplay ?? "--")}</td>
+      <td class="numeric">${escapeHtml(weapon.isolyticDamageDisplay ?? "--")}</td>
+    </tr>
+  `;
+}
+
+function renderExplanationRuntimeRow(effect) {
+    const source = effect.sourceName
+        ? `${effect.sourceName} (${effect.sourceRef ?? "--"})`
+        : effect.sourceLocaKey
+            ? `${effect.sourceLabel ?? "--"} [locaKey ${effect.sourceLocaKey}]`
+            : `${effect.sourceLabel ?? "--"}`;
+    const effectLabel = effect.effectName
+        ? `${effect.effectName} (${effect.effectRef ?? "--"})`
+        : `${effect.effectLabel ?? `effect#${effect.effectRef ?? "--"}`}`;
+    const phases = Array.isArray(effect.phases) ? effect.phases.join(", ") : "--";
+    const nameStatus = [
+        effect.sourceNameSource ? `source ${effect.sourceNameResolution ?? "resolved"} via ${effect.sourceNameSource}` : `source ${effect.sourceNameResolution ?? "fallback_ref"}`,
+        effect.effectNameSource ? `effect ${effect.effectNameResolution ?? "resolved"} via ${effect.effectNameSource}` : `effect ${effect.effectNameResolution ?? "fallback_ref"}`,
+    ].join(" | ");
+
+    return `
+    <tr>
+      <td>${escapeHtml(source)}</td>
+      <td>${escapeHtml(effectLabel)}</td>
+      <td>${escapeHtml(slotLabel(effect.effectSlot))}</td>
+      <td>${escapeHtml(effect.valueDisplay ?? "--")}</td>
+      <td class="numeric">${escapeHtml(effect.observedCount ?? "--")}</td>
+      <td class="numeric">${escapeHtml(effect.triggeredCount ?? "--")}</td>
+      <td>${escapeHtml(phases || "--")}</td>
+      <td>${escapeHtml(effect.confidence ?? "--")}</td>
+      <td>${escapeHtml(nameStatus)}</td>
+      <td>${escapeHtml(effect.humanClaim ?? "--")}</td>
+    </tr>
+  `;
+}
+
+function slotLabel(slot) {
+    switch (slot) {
+        case "belowDecksAbilityId": return "below-decks";
+        case "captainManeuverId": return "captain maneuver";
+        case "officerAbilityId": return "officer ability";
+        case "hull_or_ship_effect": return "hull/ship";
+        case "component_effect": return "component";
+        default: return "runtime";
+    }
 }
 
 function renderBattleDetails(model) {
@@ -788,6 +1004,74 @@ function renderCatalogSnapshot(model) {
       </div>
       <div class="catalog-domain-grid">${cards || `<div class="empty-state">Catalog event present but no domains carried IDs.</div>`}</div>
     </section>
+  `;
+}
+
+function renderResolvedRuntimeEffects(model) {
+    const effects = Array.isArray(model.resolvedRuntimeEffects) ? model.resolvedRuntimeEffects : [];
+    const summary = model.resolvedRuntimeEffectSummary ?? {};
+    const coverage = model.resolvedRuntimeEffectCoverage ?? {};
+    const groups = Array.isArray(summary.groups) ? summary.groups : [];
+    const visibleEffects = effects.slice(0, 80);
+    const rows = visibleEffects.map(renderResolvedRuntimeEffectRow).join("");
+
+    return `
+    <section class="report-band runtime-effects-band">
+      <div class="report-band__heading">
+        <div>
+          <p class="eyebrow">Runtime Effect Refs</p>
+          <h2>Catalog Overlay</h2>
+        </div>
+        <span class="line-badge">sidecar derived</span>
+      </div>
+      <div class="metric-grid metric-grid--inline">
+        ${renderMetric("Candidates", (coverage.candidateCount ?? effects.length) || "--")}
+        ${renderMetric("Structural Matches", (coverage.structurallyResolvedCount ?? summary.structurallyResolvedCount) || "--")}
+        ${renderMetric("Unresolved", coverage.unresolvedCount ?? "--")}
+        ${renderMetric("Groups", groups.length || "--")}
+      </div>
+      <div class="table-scroll table-scroll--tall" data-scroll-key="runtime-effects">
+        <table class="report-table report-table--compact report-table--wide">
+          <thead>
+            <tr>
+              <th>Source Ref</th>
+              <th>Domain</th>
+              <th>Effect Ref</th>
+              <th>Slot</th>
+              <th>Value</th>
+              <th>Phase</th>
+              <th>Round</th>
+              <th>Owner Hull</th>
+              <th>Confidence</th>
+            </tr>
+          </thead>
+          <tbody>${rows || `<tr><td colspan="9">No runtime ability/effect candidates are available for catalog overlay.</td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function renderResolvedRuntimeEffectRow(effect) {
+    const round = effect.round != null && effect.subRound != null
+        ? `${effect.round}.${effect.subRound}`
+        : effect.round ?? effect.subRound ?? "--";
+    const ownerHull = effect.ownerHullName
+        ? `${effect.ownerHullName} #${effect.ownerHullId ?? ""}`.trim()
+        : effect.ownerHullId ?? "--";
+
+    return `
+    <tr>
+      <td>${escapeHtml(effect.sourceRef ?? "--")}</td>
+      <td>${escapeHtml(effect.sourceDomain ?? "--")}</td>
+      <td>${escapeHtml(effect.effectRef ?? "--")}</td>
+      <td>${escapeHtml(effect.effectSlot ?? "--")}</td>
+      <td>${escapeHtml(effect.valueDisplay ?? "--")}</td>
+      <td>${escapeHtml(effect.phase ?? "--")}</td>
+      <td>${escapeHtml(round)}</td>
+      <td>${escapeHtml(ownerHull)}</td>
+      <td>${escapeHtml(effect.confidence ?? "--")}</td>
+    </tr>
   `;
 }
 

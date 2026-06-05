@@ -1,3 +1,6 @@
+import { buildBattleExplanation } from "./battle-explanation.mjs";
+import { attachResolvedRuntimeEffectOverlay, buildResolvedRuntimeEffectOverlay } from "./runtime-effect-enrichment.mjs";
+
 const BATTLE_EVENT_TYPES = new Set(["battle.event", "battle.capture", "battle.analytics", "battle.report", "catalog.snapshot"]);
 
 export function buildBattleIndexSnapshot(snapshot = {}, options = {}) {
@@ -42,6 +45,8 @@ export function buildBattleDetailSnapshot(snapshot = {}, battleKey = "") {
         };
     }
 
+    const enrichment = enrichBattleDetailEntries(group);
+
     return {
         ok: true,
         source: snapshot.source ?? "store",
@@ -51,7 +56,11 @@ export function buildBattleDetailSnapshot(snapshot = {}, battleKey = "") {
         generatedAt: snapshot.generatedAt ?? new Date().toISOString(),
         battle: toBattleIndexEntry(group),
         battleId: group.key,
-        events: group.entries,
+        events: enrichment.entries,
+        runtimeEffectOverlay: enrichment.overlay,
+        derivedViews: {
+            battleExplanation: enrichment.explanation,
+        },
     };
 }
 
@@ -156,6 +165,64 @@ function toBattleIndexEntry(group) {
             hasAnalytics: group.hasAnalytics,
         },
     };
+}
+
+function enrichBattleDetailEntries(group) {
+    const captureEntry = latestEntryOfType(group.entries, "battle.capture");
+    const reportEntry = latestEntryOfType(group.entries, "battle.report");
+    const analyticsEntry = latestEntryOfType(group.entries, "battle.analytics");
+    const catalogEntry = latestEntryOfType(group.entries, "catalog.snapshot");
+    if (!analyticsEntry?.event || !catalogEntry?.event || !sameBattleEnvelope(analyticsEntry.event, catalogEntry.event)) {
+        const overlay = buildResolvedRuntimeEffectOverlay(null, null);
+        return {
+            entries: group.entries,
+            overlay,
+            explanation: buildBattleExplanation({
+                battleId: group.key,
+                captureEvent: captureEntry?.event,
+                reportEvent: reportEntry?.event,
+                analyticsEvent: analyticsEntry?.event,
+                catalogSnapshotEvent: catalogEntry?.event,
+                runtimeEffectOverlay: overlay,
+            }),
+        };
+    }
+
+    const { event, overlay } = attachResolvedRuntimeEffectOverlay(analyticsEntry.event, catalogEntry.event);
+    return {
+        entries: group.entries.map((entry) => entry === analyticsEntry ? { ...entry, event } : entry),
+        overlay,
+        explanation: buildBattleExplanation({
+            battleId: group.key,
+            captureEvent: captureEntry?.event,
+            reportEvent: reportEntry?.event,
+            analyticsEvent: event,
+            catalogSnapshotEvent: catalogEntry.event,
+            runtimeEffectOverlay: overlay,
+        }),
+    };
+}
+
+function latestEntryOfType(entries, type) {
+    return entries
+        .filter((entry) => entryEventType(entry) === type)
+        .sort((left, right) => Number(right.lineNumber ?? 0) - Number(left.lineNumber ?? 0))[0] ?? null;
+}
+
+function sameBattleEnvelope(left, right) {
+    const leftBattleId = normalizedEnvelopeId(left?.battleId);
+    const rightBattleId = normalizedEnvelopeId(right?.battleId);
+    if (leftBattleId && rightBattleId && leftBattleId === rightBattleId) {
+        return true;
+    }
+
+    const leftJournalId = normalizedEnvelopeId(left?.journalId);
+    const rightJournalId = normalizedEnvelopeId(right?.journalId);
+    return Boolean(leftJournalId && rightJournalId && leftJournalId === rightJournalId);
+}
+
+function normalizedEnvelopeId(value) {
+    return typeof value === "string" ? value.trim() : "";
 }
 
 function entryEventType(entry) {

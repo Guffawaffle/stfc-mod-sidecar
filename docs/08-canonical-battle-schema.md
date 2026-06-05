@@ -346,3 +346,56 @@ The canonical contract should be layered as:
 - `battle.report` as a compatibility bundle only
 
 That separation keeps the mod focused on efficient data delivery while giving downstream tools a stable place to build richer interpretation.
+
+## Sidecar Derived Views
+
+Canonical battle payloads and catalog snapshots are the exportable source of truth.
+
+- canonical/raw battle data: sparse facts, exact string IDs, deterministic counters, provenance
+- catalog data: names, metadata, loca keys, and ID-to-label mappings
+- sidecar view models: hydrated display or explanation objects built from canonical facts plus catalog
+
+Current rule:
+
+- `battleExplanation` is a sidecar-only derived view model
+- it may appear in local viewer/detail responses under `derivedViews`
+- it is not part of the canonical event schema
+- it must not be written back into `battle.capture`, `battle.analytics`, `battle.report`, or `catalog.snapshot`
+- any hydrated display names in that view must keep exact refs beside them and expose their source, such as `catalog.snapshot`, `local_snapshot`, or ID fallback
+
+The native resolver boundary remains unchanged:
+
+- native runtime resolver probing stays scan-only for safety
+- sidecar joins runtime effect refs against catalog data after ingest
+- CSV ability rows remain unpromoted until semantics are proven
+
+## Future Sparse Export Bundle
+
+If the sidecar later adds an explicit export format, it should be implemented as a separate export/profile seam rather than by reshaping raw stored events or local viewer payloads.
+
+Recommended direction:
+
+```json
+{
+  "schema": "stfc.battle.export_bundle.v0",
+  "battle": {
+    "id": "...",
+    "participants": [],
+    "attacks": [],
+    "runtimeEffects": [],
+    "rounds": []
+  },
+  "catalog": {
+    "hulls": {},
+    "components": {},
+    "officers": {},
+    "systems": {},
+    "players": {},
+    "alliances": {}
+  },
+  "provenance": {},
+  "nonClaims": []
+}
+```
+
+That export should live in a future sidecar export module or route, not in the native mod emitter and not in the canonical event families themselves.

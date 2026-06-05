@@ -43,6 +43,8 @@ describe("viewer battle log access helpers", () => {
             detail: "battle-detail",
             battleId: "battle-1",
         });
+        expect(detail).toHaveProperty("derivedViews.battleExplanation");
+        expect(detail).not.toHaveProperty("battleExplanation");
         expect(detail.events).toHaveLength(4);
         expect(detail.events[0].event.capture.battleLog.tokens).toEqual(["1", "2"]);
         expect(detail.events.map((entry) => entry.event.type)).toEqual([
@@ -59,6 +61,8 @@ describe("viewer battle log access helpers", () => {
         expect(workbenchApp).toContain("fetch(`/api/battles/${encodeURIComponent(group.key)}`");
         expect(workbenchApp).not.toContain("fetch(`/api/events?limit=${limit}&detail=summary`");
         expect(workbenchApp).toContain("window.setInterval");
+        expect(workbenchApp).toContain("Name Source");
+        expect(workbenchApp).toContain("Runtime effects are structurally matched observations, not final proc-rate/math.");
     });
 
     test("adds raw JSON copy without changing Explorer lazy event detail", () => {
