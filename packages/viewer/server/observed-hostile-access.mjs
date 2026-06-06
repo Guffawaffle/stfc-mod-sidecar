@@ -18,6 +18,7 @@ export function buildObservedHostileCatalogSnapshot(snapshot = {}, options = {})
         scannedEvents: entries.length,
         totalEntries: groups.length,
         returnedEntries: limitedEntries.length,
+        probeStatus: options.probeStatus ?? null,
         entries: limitedEntries,
         error: snapshot.ok === false ? snapshot.error ?? "Observed hostile catalog unavailable" : undefined,
     };

@@ -21,6 +21,7 @@ describe("viewer observed hostile catalog markup", () => {
         expect(observedHostileHtml).toContain('id="observed-hostile-auto-refresh"');
         expect(observedHostileHtml).toContain('id="observed-hostile-refresh"');
         expect(observedHostileHtml).toContain('href="/api/events?scope=observed&limit=200"');
+        expect(observedHostileHtml).toContain('id="observed-hostile-runtime-note"');
         expect(observedHostileHtml).toContain('id="observed-hostile-source"');
         expect(observedHostileHtml).toContain('id="observed-hostile-store"');
         expect(observedHostileHtml).toContain('id="observed-hostile-entry-count"');

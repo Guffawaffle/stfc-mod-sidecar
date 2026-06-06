@@ -44,6 +44,7 @@ describe("viewer observed hostile access", () => {
 
         expect(snapshot.ok).toBe(true);
         expect(snapshot.totalEntries).toBe(2);
+        expect(snapshot.probeStatus).toBeNull();
         expect(snapshot.entries[0]).toMatchObject({
             key: "user:mar_special",
             identityKind: "user_id",
@@ -59,6 +60,27 @@ describe("viewer observed hostile access", () => {
             sourceSurfaces: ["prescan_target_widget", "navigation_interaction"],
             hullIds: ["3066099110"],
             hullNames: ["Armada Carrier"],
+        });
+    });
+
+    it("carries probe status metadata into the catalog payload", () => {
+        const snapshot = buildObservedHostileCatalogSnapshot({
+            ok: true,
+            source: "store",
+            storageBackend: "sqlite",
+            totalLines: 0,
+            events: [],
+        }, {
+            limit: 10,
+            probeStatus: {
+                status: "restart_required",
+                summary: "Restart STFC to load the hostile observation probe.",
+            },
+        });
+
+        expect(snapshot.probeStatus).toMatchObject({
+            status: "restart_required",
+            summary: "Restart STFC to load the hostile observation probe.",
         });
     });
 });

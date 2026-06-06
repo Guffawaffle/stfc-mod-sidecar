@@ -20,6 +20,7 @@ const state = {
 };
 
 const elements = {
+    runtimeNote: document.querySelector("#observed-hostile-runtime-note"),
     source: document.querySelector("#observed-hostile-source"),
     store: document.querySelector("#observed-hostile-store"),
     entryCount: document.querySelector("#observed-hostile-entry-count"),
@@ -118,6 +119,7 @@ function renderStatus(snapshot) {
     elements.sightingCount.textContent = `${scannedEvents} / ${totalEvents}`;
     elements.latestSeen.textContent = latest ? formatLocalInstant(latest, { fallback: "Unknown time" }) : "No sightings yet";
     elements.latestSeen.title = latest ? latest : "No hostile sightings have been stored yet.";
+    renderProbeStatus(snapshot);
 
     if (snapshot?.ok === false) {
         elements.feedNote.textContent = snapshot.error ?? "Observed hostile catalog is unavailable.";
@@ -141,7 +143,7 @@ function renderList() {
     }
 
     if (payloadState === "empty") {
-        elements.list.innerHTML = '<div class="empty-state">No observed hostile sightings are stored yet.</div>';
+        elements.list.innerHTML = `<div class="empty-state">${escapeHtml(observedHostileEmptyMessage(state.snapshot))}</div>`;
         return;
     }
 
@@ -195,7 +197,7 @@ function renderDetail() {
     const entry = state.filteredEntries.find((item) => item?.key === state.selectedKey) ?? null;
     if (!entry) {
         const message = payloadState === "empty"
-            ? "No observed hostile sightings are stored yet."
+            ? observedHostileEmptyMessage(state.snapshot)
             : "Select a catalog entry to inspect its grouped hostile evidence.";
         elements.detail.innerHTML = `<div class="empty-state">${escapeHtml(message)}</div>`;
         return;
@@ -333,6 +335,72 @@ function parseStreamPayload(event) {
     } catch {
         return {};
     }
+}
+
+function renderProbeStatus(snapshot) {
+    const probeStatus = asRecord(snapshot?.probeStatus);
+    if (!elements.runtimeNote) {
+        return;
+    }
+
+    if (!probeStatus.status || probeStatus.status === "capture_ready") {
+        elements.runtimeNote.hidden = true;
+        elements.runtimeNote.innerHTML = "";
+        return;
+    }
+
+    const details = Array.isArray(probeStatus.details)
+        ? probeStatus.details.filter((detail) => String(detail ?? "").trim().length > 0)
+        : [];
+    const detailsHtml = details.length > 0
+        ? `<ul class="variant-gate-warning__details">${details.map((detail) => `<li class="variant-gate-warning__detail">${escapeHtml(detail)}</li>`).join("")}</ul>`
+        : "";
+
+    elements.runtimeNote.hidden = false;
+    elements.runtimeNote.innerHTML = `
+      <div class="variant-gate-warning__copy">
+        <p class="eyebrow">Capture Status</p>
+        <div class="variant-gate-warning__headline">
+          <strong>${escapeHtml(observedHostileProbeHeadline(probeStatus.status))}</strong>
+          ${escapeHtml(String(probeStatus.summary ?? "Observed hostile capture needs attention."))}
+        </div>
+        ${detailsHtml}
+      </div>
+    `;
+}
+
+function observedHostileProbeHeadline(status) {
+    switch (status) {
+        case "restart_required":
+            return "Restart required.";
+        case "launch_required":
+            return "Launch required.";
+        case "transport_not_configured":
+            return "Transport not ready.";
+        case "disabled_in_settings":
+            return "Probe disabled.";
+        case "object_tracker_disabled":
+            return "Object tracker disabled.";
+        case "runtime_unavailable":
+            return "Runtime snapshot unavailable.";
+        case "settings_invalid":
+            return "Settings invalid.";
+        case "settings_unavailable":
+            return "Settings unavailable.";
+        case "runtime_invalid":
+            return "Runtime snapshot invalid.";
+        default:
+            return "Capture attention needed.";
+    }
+}
+
+function observedHostileEmptyMessage(snapshot) {
+    const probeStatus = asRecord(snapshot?.probeStatus);
+    if (probeStatus.status && probeStatus.status !== "capture_ready" && String(probeStatus.summary ?? "").trim().length > 0) {
+        return String(probeStatus.summary);
+    }
+
+    return "No observed hostile sightings are stored yet.";
 }
 
 function renderDetailRow(label, value) {

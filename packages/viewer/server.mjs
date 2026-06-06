@@ -62,6 +62,7 @@ import { createFeedWatcher } from "./server/feed-watcher.mjs";
 import { fleetProjectionStreamSummary, shouldNotifyFleetProjectionChanged } from "./server/fleet-stream-events.mjs";
 import { ingestAcceptedMajelPayload } from "./server/majel-ingest-bridge.mjs";
 import { buildObservedHostileCatalogSnapshot } from "./server/observed-hostile-access.mjs";
+import { readObservedHostileProbeStatus } from "./server/observed-hostile-probe-status.mjs";
 import { ingestSidecarEnvelope } from "./server/sidecar-ingest.mjs";
 import { handleDevRoutes } from "./server/routes/dev-routes.mjs";
 import { handleDiagnosticsRoutes } from "./server/routes/diagnostics-routes.mjs";
@@ -1960,11 +1961,21 @@ async function readBattleIndex(limit) {
 async function readObservedHostileCatalog(limit) {
     const catalogLimit = Math.min(Math.max(limit, 1), 250);
     const eventScanLimit = Math.min(Math.max(catalogLimit * 8, 50), 2000);
-    const snapshot = await readEventsSnapshot(eventScanLimit, {
-        includeDetails: true,
-        eventTypes: OBSERVED_HOSTILE_EVENT_TYPES,
+    const [snapshot, probeStatus] = await Promise.all([
+        readEventsSnapshot(eventScanLimit, {
+            includeDetails: true,
+            eventTypes: OBSERVED_HOSTILE_EVENT_TYPES,
+        }),
+        readObservedHostileProbeStatus({
+            gameDir,
+            settingsPath,
+            detectStfcGameProcess,
+        }),
+    ]);
+    return buildObservedHostileCatalogSnapshot(snapshot, {
+        limit: catalogLimit,
+        probeStatus,
     });
-    return buildObservedHostileCatalogSnapshot(snapshot, { limit: catalogLimit });
 }
 
 async function readBattleDetail(battleKey) {
