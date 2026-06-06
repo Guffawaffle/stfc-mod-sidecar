@@ -172,6 +172,8 @@ describe("battle explanation projection", () => {
         }, "battle-1");
 
         expect(detail).not.toHaveProperty("battleExplanation");
+        expect(detail).not.toHaveProperty("runtimeEffectOverlay");
+        expect(detail).toHaveProperty("derivedViews.runtimeEffectOverlay");
         expect(detail.derivedViews.battleExplanation).toMatchObject({
             schema: "stfc.battle.explanation.v0",
             headline: "USS Northcutt defeated Lv.60 L60 Exborg Explorer in 2 rounds.",
@@ -189,6 +191,9 @@ describe("battle explanation projection", () => {
             "battle.analytics",
         ]);
         expect(detail.events[3].event.analytics).not.toHaveProperty("battleExplanation");
+        expect(detail.events[3].event.analytics).not.toHaveProperty("resolvedRuntimeEffects");
+        expect(detail.events[3].event.analytics).not.toHaveProperty("resolvedRuntimeEffectSummary");
+        expect(detail.events[3].event.analytics).not.toHaveProperty("resolvedRuntimeEffectCoverage");
         expect(detail.events[3].event.analytics.csvParity.coverage.abilityRowCount).toBe(0);
     });
 

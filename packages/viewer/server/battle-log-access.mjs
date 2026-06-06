@@ -1,5 +1,5 @@
 import { buildBattleExplanation } from "./battle-explanation.mjs";
-import { attachResolvedRuntimeEffectOverlay, buildResolvedRuntimeEffectOverlay } from "./runtime-effect-enrichment.mjs";
+import { buildResolvedRuntimeEffectOverlay } from "./runtime-effect-enrichment.mjs";
 
 const BATTLE_EVENT_TYPES = new Set(["battle.event", "battle.capture", "battle.analytics", "battle.report", "catalog.snapshot"]);
 
@@ -65,8 +65,8 @@ export function buildBattleDetailSnapshot(snapshot = {}, battleKey = "") {
         battle: toBattleIndexEntry(group),
         battleId: group.key,
         events: enrichment.entries,
-        runtimeEffectOverlay: enrichment.overlay,
         derivedViews: {
+            runtimeEffectOverlay: enrichment.overlay,
             battleExplanation: enrichment.explanation,
             battleTimeline: enrichment.explanation?.battleTimeline ?? null,
         },
@@ -201,15 +201,15 @@ function enrichBattleDetailEntries(group) {
         };
     }
 
-    const { event, overlay } = attachResolvedRuntimeEffectOverlay(analyticsEntry.event, catalogEntry.event);
+    const overlay = buildResolvedRuntimeEffectOverlay(analyticsEntry.event, catalogEntry.event);
     return {
-        entries: group.entries.map((entry) => entry === analyticsEntry ? { ...entry, event } : entry),
+        entries: group.entries,
         overlay,
         explanation: buildBattleExplanation({
             battleId: group.key,
             captureEvent: captureEntry?.event,
             reportEvent: reportEntry?.event,
-            analyticsEvent: event,
+            analyticsEvent: analyticsEntry.event,
             catalogSnapshotEvent: catalogEntry.event,
             runtimeEffectOverlay: overlay,
         }),

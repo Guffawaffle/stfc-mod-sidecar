@@ -369,10 +369,12 @@ async function hydrateBattleGroup(group) {
     if (cachedDetail) {
         if (Array.isArray(cachedDetail)) {
             group.entries = cachedDetail;
+            group.runtimeEffectOverlay = null;
             group.battleExplanation = null;
             group.battleTimeline = null;
         } else {
             group.entries = Array.isArray(cachedDetail.entries) ? cachedDetail.entries : [];
+            group.runtimeEffectOverlay = cachedDetail.derivedViews?.runtimeEffectOverlay ?? null;
             group.battleExplanation = cachedDetail.derivedViews?.battleExplanation ?? cachedDetail.battleExplanation ?? null;
             group.battleTimeline = cachedDetail.derivedViews?.battleTimeline
                 ?? cachedDetail.battleTimeline
@@ -388,6 +390,7 @@ async function hydrateBattleGroup(group) {
             throw new Error(payload.error ?? `Unable to load battle ${group.key}.`);
         }
         group.entries = payload.events;
+        group.runtimeEffectOverlay = payload.derivedViews?.runtimeEffectOverlay ?? null;
         group.battleExplanation = payload.derivedViews?.battleExplanation ?? payload.battleExplanation ?? null;
         group.battleTimeline = payload.derivedViews?.battleTimeline
             ?? payload.battleTimeline
@@ -398,6 +401,7 @@ async function hydrateBattleGroup(group) {
         state.detailsByLine.set(`battle:${group.key}`, {
             entries: group.entries,
             derivedViews: {
+                runtimeEffectOverlay: group.runtimeEffectOverlay,
                 battleExplanation: group.battleExplanation,
                 battleTimeline: group.battleTimeline,
             },
@@ -454,6 +458,7 @@ function applyBattleIndexUpdates(updates) {
             reportEntry: existing?.reportEntry ?? null,
             analyticsEntry: existing?.analyticsEntry ?? null,
             catalogEntry: existing?.catalogEntry ?? null,
+            runtimeEffectOverlay: existing?.runtimeEffectOverlay ?? null,
             battleExplanation: existing?.battleExplanation ?? null,
             battleTimeline: existing?.battleTimeline ?? null,
             effectiveSource: update.effectiveSource ?? existing?.effectiveSource ?? state.snapshot?.effectiveSource ?? sourceKey(state.snapshot),
@@ -522,9 +527,12 @@ function buildReportModel(group) {
     const csvParityColumns = Array.isArray(csvParity.columns) ? csvParity.columns : inferCsvParityColumns(csvParityRows);
     const csvParityCoverage = csvParity.coverage ?? {};
     const csvParityNotes = Array.isArray(csvParity.notes) ? csvParity.notes : [];
-    const resolvedRuntimeEffects = Array.isArray(analytics.resolvedRuntimeEffects) ? analytics.resolvedRuntimeEffects : [];
-    const resolvedRuntimeEffectSummary = analytics.resolvedRuntimeEffectSummary ?? {};
-    const resolvedRuntimeEffectCoverage = analytics.resolvedRuntimeEffectCoverage ?? {};
+    const runtimeEffectOverlay = group.runtimeEffectOverlay ?? {};
+    const resolvedRuntimeEffects = Array.isArray(runtimeEffectOverlay.resolvedRuntimeEffects)
+        ? runtimeEffectOverlay.resolvedRuntimeEffects
+        : [];
+    const resolvedRuntimeEffectSummary = runtimeEffectOverlay.resolvedRuntimeEffectSummary ?? {};
+    const resolvedRuntimeEffectCoverage = runtimeEffectOverlay.coverage ?? {};
     const rewards = Array.isArray(report.rewards) ? report.rewards : [];
     const signature = report.decode?.signature ?? deriveCaptureSignature(capture);
     const markerHints = report.decode?.markerHints ?? {};

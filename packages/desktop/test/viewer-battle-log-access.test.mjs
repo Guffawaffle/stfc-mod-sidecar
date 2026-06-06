@@ -41,7 +41,7 @@ describe("viewer battle log access helpers", () => {
         expect(JSON.stringify(index.battles[0])).not.toContain("battleLog");
     });
 
-    test("builds lazy battle detail with full raw and enriched events", () => {
+    test("builds lazy battle detail with raw events and derived views", () => {
         const detail = buildBattleDetailSnapshot(sampleSnapshot(), "battle-1");
 
         expect(detail).toMatchObject({
@@ -54,6 +54,8 @@ describe("viewer battle log access helpers", () => {
                 fallbackActive: false,
             },
         });
+        expect(detail).not.toHaveProperty("runtimeEffectOverlay");
+        expect(detail).toHaveProperty("derivedViews.runtimeEffectOverlay");
         expect(detail).toHaveProperty("derivedViews.battleExplanation");
         expect(detail).toHaveProperty("derivedViews.battleTimeline");
         expect(detail).not.toHaveProperty("battleExplanation");
@@ -65,6 +67,9 @@ describe("viewer battle log access helpers", () => {
             "catalog.snapshot",
             "battle.analytics",
         ]);
+        expect(detail.events[3].event.analytics).not.toHaveProperty("resolvedRuntimeEffects");
+        expect(detail.events[3].event.analytics).not.toHaveProperty("resolvedRuntimeEffectSummary");
+        expect(detail.events[3].event.analytics).not.toHaveProperty("resolvedRuntimeEffectCoverage");
     });
 
     test("keeps Workbench on battle index startup and lazy detail loading", () => {

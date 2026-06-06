@@ -9,7 +9,7 @@ import {
     getRuntimeEffectNameCatalog,
     resetRuntimeEffectNameCatalogForTests,
 } from "../../viewer/server/runtime-effect-name-catalog.mjs";
-import { attachResolvedRuntimeEffectOverlay, buildResolvedRuntimeEffectOverlay } from "../../viewer/server/runtime-effect-enrichment.mjs";
+import { buildResolvedRuntimeEffectOverlay } from "../../viewer/server/runtime-effect-enrichment.mjs";
 
 describe("runtime effect enrichment", () => {
     test("resolves an officer below-decks ability relation by exact string IDs", () => {
@@ -311,10 +311,10 @@ describe("runtime effect enrichment", () => {
         });
     });
 
-    test("attaches overlay fields without mutating the original analytics event", () => {
+    test("builds overlay fields without mutating the original analytics event", () => {
         const analytics = analyticsEvent([{ sourceRef: "4290764940", effectRef: "1120204726", valueDisplay: "0.7" }]);
         const before = structuredClone(analytics);
-        const { event, overlay } = attachResolvedRuntimeEffectOverlay(
+        const overlay = buildResolvedRuntimeEffectOverlay(
             analytics,
             catalogSnapshot({
                 officers: {
@@ -328,12 +328,15 @@ describe("runtime effect enrichment", () => {
         );
 
         expect(analytics).toEqual(before);
-        expect(event).not.toBe(analytics);
-        expect(event.analytics).toHaveProperty("resolvedRuntimeEffects");
+        expect(analytics.analytics).not.toHaveProperty("resolvedRuntimeEffects");
+        expect(overlay.resolvedRuntimeEffects[0]).toMatchObject({
+            sourceRef: "4290764940",
+            effectSlot: "belowDecksAbilityId",
+        });
         expect(overlay.coverage.structurallyResolvedCount).toBe(1);
     });
 
-    test("battle detail API attaches the overlay to the latest analytics projection", () => {
+    test("battle detail API exposes the overlay under derivedViews without changing raw analytics", () => {
         const detail = buildBattleDetailSnapshot({
             ok: true,
             source: "store",
@@ -352,11 +355,15 @@ describe("runtime effect enrichment", () => {
             ],
         }, "battle-1");
 
-        expect(detail.runtimeEffectOverlay.coverage.structurallyResolvedCount).toBe(1);
-        expect(detail.events[1].event.analytics.resolvedRuntimeEffects[0]).toMatchObject({
+        expect(detail).not.toHaveProperty("runtimeEffectOverlay");
+        expect(detail.derivedViews.runtimeEffectOverlay.coverage.structurallyResolvedCount).toBe(1);
+        expect(detail.derivedViews.runtimeEffectOverlay.resolvedRuntimeEffects[0]).toMatchObject({
             sourceRef: "4290764940",
             effectSlot: "belowDecksAbilityId",
         });
+        expect(detail.events[1].event.analytics).not.toHaveProperty("resolvedRuntimeEffects");
+        expect(detail.events[1].event.analytics).not.toHaveProperty("resolvedRuntimeEffectSummary");
+        expect(detail.events[1].event.analytics).not.toHaveProperty("resolvedRuntimeEffectCoverage");
     });
 });
 

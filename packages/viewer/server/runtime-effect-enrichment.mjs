@@ -36,26 +36,6 @@ export function buildResolvedRuntimeEffectOverlay(analyticsEvent, catalogSnapsho
     };
 }
 
-export function attachResolvedRuntimeEffectOverlay(analyticsEvent, catalogSnapshotEvent, options = {}) {
-    const overlay = buildResolvedRuntimeEffectOverlay(analyticsEvent, catalogSnapshotEvent, options);
-    if (!analyticsEvent || typeof analyticsEvent !== "object" || analyticsEvent.type !== "battle.analytics") {
-        return { event: analyticsEvent, overlay };
-    }
-
-    return {
-        event: {
-            ...analyticsEvent,
-            analytics: {
-                ...(isRecord(analyticsEvent.analytics) ? analyticsEvent.analytics : {}),
-                resolvedRuntimeEffects: overlay.resolvedRuntimeEffects,
-                resolvedRuntimeEffectSummary: overlay.resolvedRuntimeEffectSummary,
-                resolvedRuntimeEffectCoverage: overlay.coverage,
-            },
-        },
-        overlay,
-    };
-}
-
 function runtimeCandidatesFromAnalytics(analyticsEvent) {
     const analytics = isRecord(analyticsEvent?.analytics) ? analyticsEvent.analytics : analyticsEvent;
     if (!isRecord(analytics)) {
