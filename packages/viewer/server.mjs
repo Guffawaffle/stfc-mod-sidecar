@@ -61,8 +61,13 @@ import { buildFleetActivitySnapshot } from "./server/fleet-activity.mjs";
 import { createFeedWatcher } from "./server/feed-watcher.mjs";
 import { fleetProjectionStreamSummary, shouldNotifyFleetProjectionChanged } from "./server/fleet-stream-events.mjs";
 import { ingestAcceptedMajelPayload } from "./server/majel-ingest-bridge.mjs";
-import { buildObservedHostileCatalogSnapshot } from "./server/observed-hostile-access.mjs";
+import {
+    buildObservedHostileCatalogEntriesSnapshot,
+    buildObservedHostileCatalogSnapshot,
+    buildObservedHostileObservationSnapshot,
+} from "./server/observed-hostile-access.mjs";
 import { readObservedHostileProbeStatus } from "./server/observed-hostile-probe-status.mjs";
+import { loadObservedHostileReferenceCatalog } from "./server/observed-hostile-reference.mjs";
 import { ingestSidecarEnvelope } from "./server/sidecar-ingest.mjs";
 import { handleDevRoutes } from "./server/routes/dev-routes.mjs";
 import { handleDiagnosticsRoutes } from "./server/routes/diagnostics-routes.mjs";
@@ -91,6 +96,7 @@ const STREAM_KEEPALIVE_MS = 30000;
 const SHUTDOWN_GRACE_MS = 5000;
 const BATTLE_EVENT_TYPES = Object.freeze(["battle.event", "battle.capture", "battle.analytics", "battle.report", "catalog.snapshot"]);
 const OBSERVED_HOSTILE_EVENT_TYPES = Object.freeze(["observed.hostile"]);
+const OBSERVED_HOSTILE_PROJECTION_EVENT_LIMIT = 5000;
 const BATTLE_FRESHNESS_EVENT_TYPES = new Set(BATTLE_EVENT_TYPES);
 const SHIP_COMBAT_PREVIEW_SOURCE = "fleet.ship_recent_combat.preview";
 const SHIP_COMBAT_PREVIEW_LIMIT = 3;
@@ -260,6 +266,8 @@ const server = createServer(async (request, response) => {
     if (await handleObservedHostileRoutes(request, response, requestUrl, {
         defaultLimit,
         readObservedHostileCatalog,
+        readObservedHostileCatalogEntries,
+        readObservedHostileObservations,
     })) {
         return;
     }
@@ -1960,22 +1968,81 @@ async function readBattleIndex(limit) {
 
 async function readObservedHostileCatalog(limit) {
     const catalogLimit = Math.min(Math.max(limit, 1), 250);
-    const eventScanLimit = Math.min(Math.max(catalogLimit * 8, 50), 2000);
-    const [snapshot, probeStatus] = await Promise.all([
-        readEventsSnapshot(eventScanLimit, {
-            includeDetails: true,
-            eventTypes: OBSERVED_HOSTILE_EVENT_TYPES,
-        }),
+    const [snapshot, probeStatus, referenceCatalog] = await readObservedHostileProjectionInputs();
+    return buildObservedHostileCatalogSnapshot(snapshot, {
+        limit: catalogLimit,
+        probeStatus,
+        referenceCatalog,
+    });
+}
+
+async function readObservedHostileCatalogEntries(options = {}) {
+    const [snapshot, probeStatus, referenceCatalog] = await readObservedHostileProjectionInputs();
+    return buildObservedHostileCatalogEntriesSnapshot(snapshot, {
+        ...options,
+        probeStatus,
+        referenceCatalog,
+    });
+}
+
+async function readObservedHostileObservations(options = {}) {
+    const [snapshot, probeStatus, referenceCatalog] = await readObservedHostileProjectionInputs();
+    return buildObservedHostileObservationSnapshot(snapshot, {
+        ...options,
+        probeStatus,
+        referenceCatalog,
+    });
+}
+
+async function readObservedHostileProjectionInputs() {
+    const [snapshot, probeStatus, referenceCatalog] = await Promise.all([
+        readObservedHostileEventsSnapshot(OBSERVED_HOSTILE_PROJECTION_EVENT_LIMIT),
         readObservedHostileProbeStatus({
             gameDir,
             settingsPath,
             detectStfcGameProcess,
         }),
+        loadObservedHostileReferenceCatalog(),
     ]);
-    return buildObservedHostileCatalogSnapshot(snapshot, {
-        limit: catalogLimit,
-        probeStatus,
-    });
+    return [snapshot, probeStatus, referenceCatalog];
+}
+
+async function readObservedHostileEventsSnapshot(limit) {
+    const store = eventStore;
+    const storeRevision = eventStoreRevision;
+    if (!store) {
+        return emptyEventsSnapshot();
+    }
+
+    const generatedAt = new Date().toISOString();
+    const resolvedLimit = Math.min(Math.max(limit, 10), OBSERVED_HOSTILE_PROJECTION_EVENT_LIMIT);
+    try {
+        const [totalLines, storedEvents] = await Promise.all([
+            store.countByTypes(OBSERVED_HOSTILE_EVENT_TYPES),
+            store.listRecentByTypes(OBSERVED_HOSTILE_EVENT_TYPES, resolvedLimit),
+        ]);
+
+        if (store !== eventStore || storeRevision !== eventStoreRevision) {
+            return readObservedHostileEventsSnapshot(limit);
+        }
+
+        return {
+            ok: true,
+            source: "store",
+            storageBackend: store.backend,
+            exists: true,
+            detail: "full",
+            generatedAt,
+            pollHintMs: POLL_HINT_MS,
+            totalLines,
+            returnedLines: storedEvents.length,
+            events: storedEvents.map((entry) => normalizeLine(entry.rawJson, entry.sequenceId)),
+        };
+    } catch (error) {
+        console.warn(`[sidecar-viewer] observed hostile event snapshot unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    return emptyEventsSnapshot();
 }
 
 async function readBattleDetail(battleKey) {

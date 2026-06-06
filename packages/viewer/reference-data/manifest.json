@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "stfc.sidecar.reference-manifest.v0",
+  "generatedAt": "2026-06-06T19:37:31.089Z",
+  "packs": [
+    {
+      "packId": "stfc-space.hostiles",
+      "kind": "hostile_catalog",
+      "version": "2026-06-05",
+      "path": "packs/stfc-space.hostiles.v2026-06-05.json",
+      "entryCount": 5293,
+      "generatedAt": "2026-06-06T19:37:31.089Z",
+      "source": {
+        "name": "stfc.space",
+        "capturedAt": "2026-06-05T05:46:00.842Z"
+      }
+    }
+  ]
+}

@@ -3,7 +3,11 @@ export function classifyObservedHostilePayload(payload) {
         return "unavailable";
     }
 
-    const entries = Array.isArray(payload.entries) ? payload.entries : [];
+    const entries = Array.isArray(payload.entries)
+        ? payload.entries
+        : Array.isArray(payload.items)
+            ? payload.items
+            : [];
     if (entries.length === 0) {
         return "empty";
     }
@@ -76,6 +80,92 @@ export function describeObservedHostileIdentityQuality(value) {
     }
 }
 
+export function describeObservedHostileEvidenceTier(value) {
+    switch (String(value ?? "").trim()) {
+        case "tier1_passive_system_view":
+            return {
+                label: "Passive system view",
+                title: "Counted from the canonical FleetDataSystem passive system-view source.",
+            };
+        case "tier2_view_adjacent_ui":
+            return {
+                label: "Supplemental UI",
+                title: "Captured from a view-adjacent target widget. Useful for drilldown, but not counted as passive hostile coverage.",
+            };
+        case "tier3_interactive":
+            return {
+                label: "Interactive",
+                title: "Requires user interaction or scan-adjacent context and stays out of passive hostile counts.",
+            };
+        default:
+            return {
+                label: "Unclassified",
+                title: "Source evidence is not yet classified for passive hostile counting.",
+            };
+    }
+}
+
+export function describeObservedHostileBaseline(baseline) {
+    const status = String(baseline?.status ?? "").trim().toLowerCase();
+    switch (status) {
+        case "matched":
+            return {
+                label: "Baseline matched",
+                title: String(baseline?.summary ?? "Bundled hostile baseline found one high-confidence candidate."),
+            };
+        case "candidate":
+            return {
+                label: "Baseline candidate",
+                title: String(baseline?.summary ?? "Bundled hostile baseline found one likely candidate."),
+            };
+        case "ambiguous":
+            return {
+                label: "Baseline ambiguous",
+                title: String(baseline?.summary ?? "Bundled hostile baseline found multiple plausible candidates."),
+            };
+        case "unmapped":
+            return {
+                label: "Baseline unmapped",
+                title: String(baseline?.summary ?? "No bundled hostile baseline candidates matched."),
+            };
+        case "insufficient_signal":
+            return {
+                label: "Baseline waiting",
+                title: String(baseline?.summary ?? "Stored observations do not yet include enough stable fields for baseline comparison."),
+            };
+        default:
+            return {
+                label: "Baseline unavailable",
+                title: String(baseline?.summary ?? "Bundled hostile baseline data is unavailable."),
+            };
+    }
+}
+
+export function describeObservedHostileReferencePresence(value) {
+    switch (String(value ?? "").trim().toLowerCase()) {
+        case "known":
+            return {
+                label: "Known by STFC.space",
+                title: "Observed fields align with one or more bundled STFC.space hostile entries.",
+            };
+        case "unknown":
+            return {
+                label: "Gap Candidate",
+                title: "No bundled STFC.space hostile entries matched the current observed fields. Review before treating this as a confirmed reference gap.",
+            };
+        case "needs_signal":
+            return {
+                label: "Needs Signal",
+                title: "There is not enough stable observed data to decide whether this hostile is already known by bundled STFC.space data.",
+            };
+        default:
+            return {
+                label: "Reference Unavailable",
+                title: "Bundled STFC.space hostile reference data is unavailable.",
+            };
+    }
+}
+
 export function formatObservedHostileList(items, options = {}) {
     const list = Array.isArray(items) ? items.filter(Boolean) : [];
     const limit = Number.isFinite(options.limit) ? Math.max(1, options.limit) : list.length;
@@ -97,6 +187,8 @@ function searchableEntryText(entry) {
         entry?.key,
         entry?.identityKind,
         entry?.identityQuality,
+        entry?.evidenceTier,
+        entry?.referencePresence,
         entry?.strongestConfidence,
         ...(Array.isArray(entry?.sourceSurfaces) ? entry.sourceSurfaces : []),
         ...(Array.isArray(entry?.hullIds) ? entry.hullIds : []),
@@ -104,12 +196,27 @@ function searchableEntryText(entry) {
         ...(Array.isArray(entry?.runtimeFleetIds) ? entry.runtimeFleetIds : []),
         ...(Array.isArray(entry?.locationTranslationIds) ? entry.locationTranslationIds : []),
         ...(Array.isArray(entry?.userIds) ? entry.userIds : []),
+        ...(Array.isArray(entry?.systemIds) ? entry.systemIds : []),
+        ...(Array.isArray(entry?.userLevels) ? entry.userLevels : []),
+        ...(Array.isArray(entry?.userLocaIds) ? entry.userLocaIds : []),
+        ...(Array.isArray(entry?.hullTypeNames) ? entry.hullTypeNames : []),
+        ...(Array.isArray(entry?.fleetTypeNames) ? entry.fleetTypeNames : []),
         latest?.sourceSurface,
+        latest?.sourceTier,
         latest?.runtimeFleetId,
         latest?.hullId,
         latest?.hullName,
         latest?.locationTranslationId,
         latest?.userId,
+        latest?.systemId,
+        latest?.hullTypeName,
+        latest?.fleetTypeName,
+        entry?.baseline?.summary,
+        ...(Array.isArray(entry?.baseline?.matches) ? entry.baseline.matches.flatMap((match) => [
+            match?.hostileId,
+            match?.name,
+            match?.factionName,
+        ]) : []),
     ].filter(Boolean).join(" ");
 }
 

@@ -36,24 +36,35 @@ describe("desktop dev script", () => {
         expect(parseDesktopDevArgs([])).toEqual({
             command: "start",
             skipStop: false,
+            cycle: false,
             launchArgs: [],
             lines: 80,
         });
         expect(parseDesktopDevArgs(["--skip-stop"])) .toEqual({
             command: "start",
             skipStop: true,
+            cycle: false,
             launchArgs: [],
             lines: 80,
         });
         expect(parseDesktopDevArgs(["start-bg", "--foo"])) .toEqual({
             command: "start-bg",
             skipStop: false,
+            cycle: false,
+            launchArgs: ["--foo"],
+            lines: 80,
+        });
+        expect(parseDesktopDevArgs(["start-bg", "--cycle", "--foo"])) .toEqual({
+            command: "start-bg",
+            skipStop: false,
+            cycle: true,
             launchArgs: ["--foo"],
             lines: 80,
         });
         expect(parseDesktopDevArgs(["logs", "--lines", "25"])) .toEqual({
             command: "logs",
             skipStop: false,
+            cycle: false,
             launchArgs: [],
             lines: 25,
         });

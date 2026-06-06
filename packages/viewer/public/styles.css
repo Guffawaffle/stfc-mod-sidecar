@@ -3055,6 +3055,100 @@ h3,
   margin-top: 8px;
 }
 
+.observed-hostile-feed {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+  max-height: min(980px, calc(100vh - 260px));
+  overflow: auto;
+  padding-right: 14px;
+}
+
+.observed-hostile-feed-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.observed-hostile-feed-tabs button {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  color: var(--muted);
+  background: rgba(5, 6, 9, 0.38);
+  border: 1px solid rgba(124, 214, 255, 0.18);
+  border-radius: 8px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.observed-hostile-feed-tabs button[aria-selected="true"] {
+  color: #050609;
+  background: var(--lcars-orange);
+  border-color: rgba(255, 157, 46, 0.78);
+  box-shadow: inset 0 -4px 0 rgba(5, 6, 9, 0.25);
+}
+
+.observed-hostile-feed-note {
+  margin: -8px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.observed-hostile-feed-heading {
+  margin-bottom: 10px;
+}
+
+.observed-hostile-tab-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.observed-hostile-tab-panel[hidden] {
+  display: none;
+}
+
+.observed-hostile-observation-list {
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+
+.observed-hostile-catalog-debug {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.observed-hostile-catalog-list {
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+
+.observed-hostile-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.observed-hostile-pagination button {
+  padding: 8px 12px;
+}
+
+.observed-hostile-observation-card {
+  gap: 6px;
+}
+
+.observed-hostile-observation-card p {
+  margin: 0;
+}
+
 .observed-hostile-entry-card {
   gap: 6px;
 }
@@ -3088,6 +3182,16 @@ h3,
 .observed-hostile-detail-view {
   display: grid;
   gap: 14px;
+}
+
+.observed-hostile-subheading {
+  margin-bottom: 0;
+}
+
+.observed-hostile-entry-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: 10px;
 }
 
 .observed-hostile-detail-block {

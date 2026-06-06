@@ -31,6 +31,7 @@
     "desktop:dist": "npm run dist --workspace @stfc-mod-sidecar/desktop",
     "desktop:dist:win": "node ./scripts/ax.mjs dist:win",
     "analyze:attack-scalars": "node ./scripts/analyze-attack-scalars.mjs",
+    "reference:build:hostiles": "node ./scripts/build-hostile-reference-pack.mjs",
     "viewer": "npm run server:start",
     "viewer:run": "npm run build --workspace @stfc-mod-sidecar/core && node packages/viewer/server.mjs",
     "viewer:sample": "npm run server:start -- --feed-path ./examples/sample-battle-events.jsonl"

@@ -32,6 +32,7 @@ export function parseDesktopDevArgs(argv) {
     const parsed = {
         command: DEFAULT_COMMAND,
         skipStop: false,
+        cycle: false,
         launchArgs: [],
         lines: DEFAULT_LOG_LINES,
     };
@@ -42,6 +43,11 @@ export function parseDesktopDevArgs(argv) {
 
         if (arg === "--skip-stop") {
             parsed.skipStop = true;
+            continue;
+        }
+
+        if (arg === "--cycle") {
+            parsed.cycle = true;
             continue;
         }
 
@@ -100,7 +106,9 @@ async function startForeground(args) {
 
 async function startBackground(args) {
     const managedState = loadManagedState({ cleanupStale: true });
-    if (managedState) {
+    if (managedState && args.cycle) {
+        await stopManagedDesktop();
+    } else if (managedState) {
         throw new Error(`managed desktop dev is already running (pid ${managedState.pid})`);
     }
 

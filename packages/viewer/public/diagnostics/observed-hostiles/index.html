@@ -19,11 +19,30 @@
         <section class="hero-controls" aria-label="observed hostile catalog controls">
           <label class="control control--wide">
             <span>Search</span>
-            <input id="observed-hostile-search" type="search" placeholder="Hull, runtime ID, user ID, source..." />
+            <input id="observed-hostile-search" type="search" placeholder="System, hostile, ID, source..." />
           </label>
           <label class="control">
-            <span>Limit</span>
-            <input id="observed-hostile-limit" type="number" min="10" max="500" step="10" value="200" />
+            <span>Match</span>
+            <select id="observed-hostile-status-filter">
+              <option value="">All</option>
+              <option value="matched">Matched</option>
+              <option value="ambiguous">Ambiguous</option>
+              <option value="unmapped">Unmapped</option>
+              <option value="insufficient_signal">Insufficient</option>
+            </select>
+          </label>
+          <label class="control">
+            <span>Reference</span>
+            <select id="observed-hostile-reference-filter">
+              <option value="">All</option>
+              <option value="known">Known by STFC.space</option>
+              <option value="unknown">Gap Candidates</option>
+              <option value="needs_signal">Needs Signal</option>
+            </select>
+          </label>
+          <label class="control">
+            <span>Entry page</span>
+            <input id="observed-hostile-limit" type="number" min="10" max="250" step="10" value="25" />
           </label>
           <label class="toggle">
             <input id="observed-hostile-auto-refresh" type="checkbox" checked />
@@ -34,7 +53,7 @@
         </section>
         <details class="console-help">
           <summary aria-label="About Observed Hostile Catalog">?</summary>
-          <p>Grouped sidecar-local hostile sightings derived from stored <code>observed.hostile</code> events.</p>
+          <p>Passive System Observations are counted from stored <code>fleet_data_system</code> hostile sightings. View-adjacent UI evidence stays supplemental.</p>
         </details>
       </header>
 
@@ -48,6 +67,14 @@
         <article>
           <span class="status-label">Store</span>
           <strong id="observed-hostile-store">Loading…</strong>
+        </article>
+        <article>
+          <span class="status-label">Reference</span>
+          <strong id="observed-hostile-reference">Loading…</strong>
+        </article>
+        <article>
+          <span class="status-label">Observations</span>
+          <strong id="observed-hostile-observation-count">0</strong>
         </article>
         <article>
           <span class="status-label">Entries</span>
@@ -69,27 +96,87 @@
 
       <section class="content observed-hostile-content">
         <section class="feed-column observed-hostile-feed">
-          <div class="panel-heading">
-            <h2>Catalog Entries</h2>
-            <p id="observed-hostile-feed-note">Grouped from sidecar-stored hostile sightings. Public sync is unchanged.</p>
+          <div class="observed-hostile-feed-tabs" role="tablist" aria-label="Observed hostile catalog views">
+            <button
+              id="observed-hostile-tab-observations"
+              type="button"
+              role="tab"
+              aria-selected="true"
+              aria-controls="observed-hostile-observation-panel"
+              data-observed-hostile-tab="observations"
+            >
+              System Observations
+            </button>
+            <button
+              id="observed-hostile-tab-catalog"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="observed-hostile-catalog-panel"
+              data-observed-hostile-tab="catalog"
+            >
+              Catalog Entries
+            </button>
           </div>
-          <div id="observed-hostile-list" class="event-list">
-            <div class="empty-state">Loading observed hostile catalog…</div>
-          </div>
+          <p id="observed-hostile-feed-note" class="observed-hostile-feed-note">
+            Passive observations count fleet-data sightings. Supplemental UI evidence remains visible for drilldown.
+          </p>
+          <section
+            id="observed-hostile-observation-panel"
+            class="observed-hostile-tab-panel"
+            role="tabpanel"
+            aria-labelledby="observed-hostile-tab-observations"
+            data-observed-hostile-panel="observations"
+          >
+            <div class="panel-heading observed-hostile-feed-heading">
+              <h2>System Observations</h2>
+              <p>Passive system windows grouped from nearby fleet-data sightings and known system boundaries.</p>
+            </div>
+            <div id="observed-hostile-observation-list" class="event-list observed-hostile-observation-list">
+              <div class="empty-state">Loading system observations...</div>
+            </div>
+            <div class="observed-hostile-pagination">
+              <span id="observed-hostile-observation-page-status">No observations loaded</span>
+              <button id="observed-hostile-load-more-observations" class="button-secondary" type="button" hidden>
+                Load more observations
+              </button>
+            </div>
+          </section>
+
+          <section
+            id="observed-hostile-catalog-panel"
+            class="observed-hostile-tab-panel observed-hostile-catalog-debug"
+            role="tabpanel"
+            aria-labelledby="observed-hostile-tab-catalog"
+            data-observed-hostile-panel="catalog"
+            hidden
+          >
+            <div class="panel-heading observed-hostile-feed-heading">
+              <h2>Catalog Entries</h2>
+              <p>Evidence buckets for drilldown and debugging.</p>
+            </div>
+            <div id="observed-hostile-list" class="event-list observed-hostile-catalog-list">
+              <div class="empty-state">Loading catalog entries...</div>
+            </div>
+            <div class="observed-hostile-pagination">
+              <span id="observed-hostile-catalog-page-status">No entries loaded</span>
+              <button id="observed-hostile-load-more" class="button-secondary" type="button" hidden>Load more entries</button>
+            </div>
+          </section>
         </section>
 
         <section class="detail-column observed-hostile-detail-column">
           <div class="panel-heading observed-hostile-detail-heading">
             <div>
-              <h2>Entry Detail</h2>
-              <p>Inspect identity quality, grouped IDs, and the latest raw observation overlay.</p>
+              <h2>Observation Detail</h2>
+              <p>Review passive observed hostiles, supplemental UI evidence, match health, and evidence buckets.</p>
             </div>
             <div class="module-actions" aria-label="observed hostile detail actions">
               <a class="link-button link-button--secondary" href="/diagnostics/">Diagnostics</a>
             </div>
           </div>
           <div id="observed-hostile-detail" class="detail-view observed-hostile-detail-view">
-            <div class="empty-state">Select a catalog entry to inspect its grouped hostile evidence.</div>
+            <div class="empty-state">Select a system observation to inspect observed hostiles.</div>
           </div>
         </section>
       </section>
