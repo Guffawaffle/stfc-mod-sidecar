@@ -37,6 +37,13 @@ export interface SidecarEventStoreAppendResult {
     duplicates: number;
 }
 
+export interface SidecarLatestBattleFreshnessRecord {
+    latestBattleId: string | null;
+    latestJournalId: string | null;
+    latestCapturedAtUnixMs: number | null;
+    latestTimestampIsoUtc: string | null;
+}
+
 export interface SidecarEventStore {
     readonly backend: SqlSidecarStoreBackend;
     append(events: readonly SidecarEvent[]): Promise<SidecarEventStoreAppendResult>;
@@ -45,6 +52,7 @@ export interface SidecarEventStore {
     listRecent(limit: number): Promise<SidecarStoredEvent[]>;
     listRecentByTypes(eventTypes: readonly string[], limit: number): Promise<SidecarStoredEvent[]>;
     listByBattleKey(battleKey: string): Promise<SidecarStoredEvent[]>;
+    readLatestBattleFreshness(): Promise<SidecarLatestBattleFreshnessRecord | null>;
     getBySequenceId(sequenceId: number): Promise<SidecarStoredEvent | null>;
     close(): Promise<void>;
 }
@@ -84,6 +92,7 @@ interface SqlDialect {
     listRecentStatement(tableName: string): string;
     listRecentByTypesStatement(tableName: string, eventTypePlaceholders: string, limitPlaceholder: string): string;
     listByBattleKeyStatement(tableName: string): string;
+    readLatestBattleFreshnessStatement(tableName: string, eventTypePlaceholders: string): string;
     getBySequenceIdStatement(tableName: string): string;
     countStatement(tableName: string): string;
     countByTypesStatement(tableName: string, eventTypePlaceholders: string): string;
@@ -92,6 +101,13 @@ interface SqlDialect {
 }
 
 const DEFAULT_TABLE_NAME = "sidecar_events";
+const LATEST_BATTLE_EVENT_TYPES = Object.freeze([
+    "battle.event",
+    "battle.capture",
+    "battle.analytics",
+    "battle.report",
+    "catalog.snapshot",
+]);
 
 export async function createSqlSidecarEventStore(options: SqlSidecarEventStoreOptions): Promise<SidecarEventStore> {
     const tableName = options.tableName ?? DEFAULT_TABLE_NAME;
@@ -193,6 +209,18 @@ class SqlSidecarEventStore implements SidecarEventStore {
         return result.rows.map(deserializeStoredEventRow);
     }
 
+    async readLatestBattleFreshness(): Promise<SidecarLatestBattleFreshnessRecord | null> {
+        const eventTypePlaceholders = LATEST_BATTLE_EVENT_TYPES
+            .map((_eventType, index) => this.dialect.placeholder(index + 1))
+            .join(", ");
+        const result = await this.executor.query(
+            this.dialect.readLatestBattleFreshnessStatement(this.tableName, eventTypePlaceholders),
+            LATEST_BATTLE_EVENT_TYPES,
+        );
+        const row = result.rows[0];
+        return row ? deserializeLatestBattleFreshnessRow(row) : null;
+    }
+
     async getBySequenceId(sequenceId: number): Promise<SidecarStoredEvent | null> {
         const result = await this.executor.query(this.dialect.getBySequenceIdStatement(this.tableName), [sequenceId]);
         const row = result.rows[0];
@@ -290,6 +318,9 @@ const sqliteDialect: SqlDialect = {
     listByBattleKeyStatement(tableName) {
         return `SELECT sequence_id, event_key, payload_json AS raw_json FROM ${tableName} WHERE battle_id = ?1 OR journal_id = ?2 ORDER BY sequence_id ASC`;
     },
+    readLatestBattleFreshnessStatement(tableName, eventTypePlaceholders) {
+        return `SELECT battle_id AS latest_battle_id, journal_id AS latest_journal_id, captured_at_unix_ms AS latest_captured_at_unix_ms, event_timestamp AS latest_timestamp_iso_utc FROM ${tableName} WHERE event_type IN (${eventTypePlaceholders}) ORDER BY COALESCE(captured_at_unix_ms, CAST(ROUND(unixepoch(event_timestamp) * 1000) AS INTEGER)) DESC, sequence_id DESC LIMIT 1`;
+    },
     getBySequenceIdStatement(tableName) {
         return `SELECT sequence_id, event_key, payload_json AS raw_json FROM ${tableName} WHERE sequence_id = ?1`;
     },
@@ -342,6 +373,9 @@ const postgresDialect: SqlDialect = {
     },
     listByBattleKeyStatement(tableName) {
         return `SELECT sequence_id, event_key, payload_json::text AS raw_json FROM ${tableName} WHERE battle_id = $1 OR journal_id = $2 ORDER BY sequence_id ASC`;
+    },
+    readLatestBattleFreshnessStatement(tableName, eventTypePlaceholders) {
+        return `SELECT battle_id AS latest_battle_id, journal_id AS latest_journal_id, captured_at_unix_ms AS latest_captured_at_unix_ms, event_timestamp::text AS latest_timestamp_iso_utc FROM ${tableName} WHERE event_type IN (${eventTypePlaceholders}) ORDER BY COALESCE(captured_at_unix_ms, CAST(EXTRACT(EPOCH FROM event_timestamp) * 1000 AS BIGINT)) DESC, sequence_id DESC LIMIT 1`;
     },
     getBySequenceIdStatement(tableName) {
         return `SELECT sequence_id, event_key, payload_json::text AS raw_json FROM ${tableName} WHERE sequence_id = $1`;
@@ -413,6 +447,15 @@ function deserializeStoredEventRow(row: Record<string, unknown>): SidecarStoredE
     };
 }
 
+function deserializeLatestBattleFreshnessRow(row: Record<string, unknown>): SidecarLatestBattleFreshnessRecord {
+    return {
+        latestBattleId: nullableNonEmptyString(row.latest_battle_id),
+        latestJournalId: nullableNonEmptyString(row.latest_journal_id),
+        latestCapturedAtUnixMs: nullableFiniteNumber(row.latest_captured_at_unix_ms),
+        latestTimestampIsoUtc: nullableNonEmptyString(row.latest_timestamp_iso_utc),
+    };
+}
+
 function normalizeEventTypes(eventTypes: readonly string[]): string[] {
     return [...new Set(eventTypes.map((value) => value.trim()).filter(Boolean))];
 }
@@ -425,6 +468,25 @@ function getOptionalString(value: object, key: string): string | null {
 function getOptionalNumber(value: object, key: string): number | null {
     const candidate = Reflect.get(value, key);
     return typeof candidate === "number" && Number.isFinite(candidate) ? candidate : null;
+}
+
+function nullableNonEmptyString(value: unknown): string | null {
+    if (typeof value !== "string") {
+        return null;
+    }
+
+    const normalized = value.trim();
+    return normalized.length > 0 ? normalized : null;
+}
+
+function nullableFiniteNumber(value: unknown): number | null {
+    if (typeof value === "bigint") {
+        const normalized = Number(value);
+        return Number.isFinite(normalized) ? normalized : null;
+    }
+
+    const normalized = typeof value === "number" ? value : Number(value);
+    return Number.isFinite(normalized) ? normalized : null;
 }
 
 function isSelectStatement(sql: string): boolean {

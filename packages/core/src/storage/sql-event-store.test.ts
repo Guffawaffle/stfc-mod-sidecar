@@ -91,6 +91,38 @@ describe("sql sidecar event store", () => {
 
         await store.close();
     });
+
+    it("reads latest stored battle freshness metadata in sqlite", async () => {
+        const store = await createSqlSidecarEventStore({
+            backend: "sqlite",
+            connection: makeTempPath("events.sqlite"),
+        });
+
+        await store.append([
+            sampleDebugEvent(),
+            sampleCaptureEvent({
+                battleId: "battle-older",
+                journalId: "journal-older",
+                timestamp: "2026-04-28T00:00:00.000Z",
+                capturedAtUnixMs: 1777334400000,
+            }),
+            sampleReportEvent({
+                battleId: "battle-newer",
+                journalId: "journal-newer",
+                timestamp: "2026-04-28T00:05:00.000Z",
+                capturedAtUnixMs: 1777334700000,
+            }),
+        ]);
+
+        await expect(store.readLatestBattleFreshness()).resolves.toEqual({
+            latestBattleId: "battle-newer",
+            latestJournalId: "journal-newer",
+            latestCapturedAtUnixMs: 1777334700000,
+            latestTimestampIsoUtc: "2026-04-28T00:05:00.000Z",
+        });
+
+        await store.close();
+    });
 });
 
 function makeTempPath(fileName: string): string {

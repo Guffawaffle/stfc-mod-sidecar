@@ -1,4 +1,5 @@
 import { createBridgeStatus } from "../../shared/bridge-status.js";
+import { describeBattleFreshness } from "../../shared/battle-freshness.js";
 import { formatLocalInstant } from "../../shared/instant.js";
 
 const FALLBACK_REFRESH_MS = 15000;
@@ -17,6 +18,8 @@ const state = {
 
 const elements = {
     feedPath: document.querySelector("#feed-path"),
+    battleFreshness: document.querySelector("#battle-freshness"),
+    latestStoredBattle: document.querySelector("#latest-stored-battle"),
     eventCount: document.querySelector("#event-count"),
     battleCount: document.querySelector("#battle-count"),
     viewerStatus: document.querySelector("#viewer-status"),
@@ -46,8 +49,14 @@ async function refreshSnapshot(options = {}) {
 
     try {
         const limit = Number.parseInt(elements.lineLimit.value, 10) || 200;
-        const response = await fetch(`/api/battles?limit=${limit}`, { cache: "no-store" });
-        const snapshot = await response.json();
+        const [snapshotResponse, healthResponse] = await Promise.all([
+            fetch(`/api/battles?limit=${limit}`, { cache: "no-store" }),
+            fetch("/api/health/ready", { cache: "no-store" }).catch(() => null),
+        ]);
+        const [snapshot, health] = await Promise.all([
+            snapshotResponse.json(),
+            healthResponse?.json?.().catch(() => null) ?? Promise.resolve(null),
+        ]);
 
         state.snapshot = snapshot;
         state.battleGroups = buildBattleGroups(snapshot);
@@ -57,7 +66,7 @@ async function refreshSnapshot(options = {}) {
             state.selectedCombatantKey = null;
         }
 
-        renderStatus(snapshot);
+        renderStatus(snapshot, health);
         renderBattleSelect();
         void renderReport();
 
@@ -128,10 +137,15 @@ function ensureFallbackRefresh() {
     }, FALLBACK_REFRESH_MS);
 }
 
-function renderStatus(snapshot) {
+function renderStatus(snapshot, health = null) {
     const source = describeSource(snapshot);
+    const freshness = describeBattleFreshness(health?.battleFreshness);
     elements.feedPath.textContent = source.label;
     elements.feedPath.title = source.title;
+    elements.battleFreshness.textContent = freshness.statusLabel;
+    elements.battleFreshness.title = freshness.title;
+    elements.latestStoredBattle.textContent = freshness.latestLabel;
+    elements.latestStoredBattle.title = freshness.title;
     elements.eventCount.textContent = `${snapshot.scannedEvents ?? snapshot.returnedLines ?? 0} / ${snapshot.totalEvents ?? snapshot.totalLines ?? 0}`;
     elements.battleCount.textContent = `${snapshot.returnedBattles ?? state.battleGroups.length} / ${snapshot.totalBattles ?? state.battleGroups.length}`;
 }

@@ -2,6 +2,7 @@ import { sendJson } from "../static-files.mjs";
 
 export async function handleHealthRoutes(request, response, requestUrl, context) {
     if (requestUrl.pathname === "/api/health/ready") {
+        const battleFreshness = await resolveBattleFreshness(context);
         sendJson(response, 200, {
             ok: true,
             pid: context.process.pid,
@@ -12,6 +13,7 @@ export async function handleHealthRoutes(request, response, requestUrl, context)
             modProfile: context.communityModSettingsProfile,
             settingsProfile: context.communityModSettingsProfile,
             eventStoreBackend: context.getEventStoreBackend(),
+            battleFreshness,
             startedAt: context.startedAt.toISOString(),
             uptimeMs: Date.now() - context.startedAt.getTime(),
             shuttingDown: context.isShutdownRequested(),
@@ -23,9 +25,10 @@ export async function handleHealthRoutes(request, response, requestUrl, context)
 
     if (requestUrl.pathname === "/api/health") {
         const { install: communityModInstall, variantGate } = await context.refreshCommunityModVariantGate();
-        const [storedEvents, fleetBroker] = await Promise.all([
+        const [storedEvents, fleetBroker, battleFreshness] = await Promise.all([
             context.countStoredEvents(),
             context.readFleetBrokerSummary(),
+            resolveBattleFreshness(context),
         ]);
         sendJson(response, 200, {
             ok: true,
@@ -46,6 +49,7 @@ export async function handleHealthRoutes(request, response, requestUrl, context)
             communityModInstall,
             release: context.releaseInfo,
             eventStoreBackend: context.getEventStoreBackend(),
+            battleFreshness,
             storedEvents,
             cloudTelemetry: context.cloudTelemetryBridge.status(),
             fleetBroker,
@@ -86,4 +90,22 @@ export async function handleHealthRoutes(request, response, requestUrl, context)
     }
 
     return false;
+}
+
+async function resolveBattleFreshness(context) {
+    if (typeof context.getBattleFreshness === "function") {
+        return context.getBattleFreshness();
+    }
+
+    return {
+        source: "unavailable",
+        status: "unavailable",
+        staleAfterMs: null,
+        latestBattleId: null,
+        latestJournalId: null,
+        latestCapturedAtUnixMs: null,
+        latestTimestampIsoUtc: null,
+        ageMs: null,
+        checkedAt: new Date().toISOString(),
+    };
 }

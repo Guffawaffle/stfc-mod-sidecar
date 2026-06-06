@@ -85,15 +85,19 @@ const SETTINGS_SAVE_MODE_LOCAL_TRUSTED = "local_trusted";
 const SETTINGS_SAVE_MODE_REMOTE_PROTECTED = "remote_protected";
 const MAX_EVENT_INGEST_BYTES = 5 * 1024 * 1024;
 const POLL_HINT_MS = 2000;
+const DEFAULT_BATTLE_FRESH_STALE_MS = 15 * 60 * 1000;
 const STREAM_KEEPALIVE_MS = 30000;
 const SHUTDOWN_GRACE_MS = 5000;
 const BATTLE_EVENT_TYPES = Object.freeze(["battle.event", "battle.capture", "battle.analytics", "battle.report", "catalog.snapshot"]);
+const BATTLE_FRESHNESS_EVENT_TYPES = new Set(BATTLE_EVENT_TYPES);
 const SHIP_COMBAT_PREVIEW_SOURCE = "fleet.ship_recent_combat.preview";
 const SHIP_COMBAT_PREVIEW_LIMIT = 3;
 const SHIP_COMBAT_PREVIEW_EVENT_WINDOW = 60;
 const DEVELOPER_EVENT_TYPE_LIST = Object.freeze(["debug.event", "hook.event", "session.event", "integration.event"]);
 const ALL_EVENT_TYPES = Object.freeze([...BATTLE_EVENT_TYPES, ...DEVELOPER_EVENT_TYPE_LIST]);
 const DEVELOPER_EVENT_TYPES = new Set(DEVELOPER_EVENT_TYPE_LIST);
+const BARE_UTC_ISO_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/;
+const EXPLICIT_TIMEZONE_PATTERN = /(?:[zZ]|[+-]\d{2}:\d{2})$/;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -199,6 +203,12 @@ let communityModVariantGate = buildCommunityModVariantGateContext({
 let communityModCapabilities = communityModVariantGate.capabilities;
 let eventStore = await createConfiguredEventStore();
 let eventStoreRevision = 0;
+let battleFreshnessCache = unavailableBattleFreshnessCache();
+const battleFreshnessStaleAfterMs = parseBattleFreshStaleMs(
+    process.env.STFC_SIDECAR_BATTLE_FRESH_STALE_MS,
+    DEFAULT_BATTLE_FRESH_STALE_MS,
+);
+await refreshBattleFreshnessCacheFromStore();
 let fleetBroker = await createConfiguredFleetBroker();
 const majelIngestStore = createMajelIngestStore();
 
@@ -362,6 +372,7 @@ const server = createServer(async (request, response) => {
         developerMode,
         feedPath,
         gameDir,
+        getBattleFreshness: readBattleFreshness,
         getCommunityModCapabilities: () => communityModCapabilities,
         getEventStoreBackend: () => eventStore?.backend ?? "none",
         isAuthorizedShutdownRequest,
@@ -520,6 +531,150 @@ async function createConfiguredFleetBroker() {
     throw new Error(`Unsupported STFC_SIDECAR_STORE_BACKEND for fleet broker: ${backend}`);
 }
 
+function unavailableBattleFreshnessCache() {
+    return {
+        backend: null,
+        latestBattleId: null,
+        latestJournalId: null,
+        latestCapturedAtUnixMs: null,
+        latestTimestampIsoUtc: null,
+    };
+}
+
+async function refreshBattleFreshnessCacheFromStore() {
+    const store = eventStore;
+    const storeRevision = eventStoreRevision;
+    if (!store || typeof store.readLatestBattleFreshness !== "function") {
+        battleFreshnessCache = unavailableBattleFreshnessCache();
+        return;
+    }
+
+    try {
+        const freshness = await store.readLatestBattleFreshness();
+        if (store !== eventStore || storeRevision !== eventStoreRevision) {
+            return;
+        }
+
+        battleFreshnessCache = freshness
+            ? normalizeBattleFreshnessCacheRecord(store.backend, freshness)
+            : unavailableBattleFreshnessCache();
+    } catch (error) {
+        if (store === eventStore && storeRevision === eventStoreRevision) {
+            console.warn(`[sidecar-viewer] unable to read battle freshness: ${error instanceof Error ? error.message : String(error)}`);
+            battleFreshnessCache = unavailableBattleFreshnessCache();
+        }
+    }
+}
+
+function updateBattleFreshnessCacheFromEvents(events, backend) {
+    if (!Array.isArray(events) || events.length === 0 || !backend) {
+        return;
+    }
+
+    const latest = latestBattleFreshnessCandidate(events);
+    if (!latest) {
+        return;
+    }
+
+    const nextRecord = normalizeBattleFreshnessCacheRecord(backend, latest);
+    const currentInstantMs = battleFreshnessInstantMs(battleFreshnessCache);
+    const nextInstantMs = battleFreshnessInstantMs(nextRecord);
+    if (!Number.isFinite(nextInstantMs)) {
+        return;
+    }
+
+    if (!Number.isFinite(currentInstantMs) || nextInstantMs >= currentInstantMs) {
+        battleFreshnessCache = nextRecord;
+    }
+}
+
+function normalizeBattleFreshnessCacheRecord(backend, record = {}) {
+    return {
+        backend: backend ?? null,
+        latestBattleId: normalizeOptionalText(record.latestBattleId ?? record.battleId),
+        latestJournalId: normalizeOptionalText(record.latestJournalId ?? record.journalId),
+        latestCapturedAtUnixMs: firstFiniteNumber(
+            record.latestCapturedAtUnixMs,
+            eventCapturedAtUnixMs(record),
+            parseInstantToUnixMs(record.latestTimestampIsoUtc ?? record.timestamp),
+        ),
+        latestTimestampIsoUtc: normalizeOptionalText(record.latestTimestampIsoUtc ?? record.timestamp),
+    };
+}
+
+function latestBattleFreshnessCandidate(events) {
+    let latest = null;
+    let latestInstantMs = Number.NEGATIVE_INFINITY;
+
+    for (const event of events) {
+        if (!isBattleFreshnessEvent(event)) {
+            continue;
+        }
+
+        const instantMs = firstFiniteNumber(
+            eventCapturedAtUnixMs(event),
+            parseInstantToUnixMs(event?.timestamp),
+        );
+        if (!Number.isFinite(instantMs) || instantMs < latestInstantMs) {
+            continue;
+        }
+
+        latest = {
+            battleId: event?.battleId ?? null,
+            journalId: event?.journalId ?? null,
+            latestCapturedAtUnixMs: instantMs,
+            timestamp: normalizeOptionalText(event?.timestamp),
+        };
+        latestInstantMs = instantMs;
+    }
+
+    return latest;
+}
+
+function buildBattleFreshnessSnapshot({ now, staleAfterMs, cache }) {
+    const checkedAt = now.toISOString();
+    const latestCapturedAtUnixMs = battleFreshnessInstantMs(cache);
+    const latestTimestampIsoUtc = normalizeOptionalText(cache?.latestTimestampIsoUtc);
+
+    if (!cache?.backend || !Number.isFinite(latestCapturedAtUnixMs)) {
+        return {
+            source: "unavailable",
+            status: "unavailable",
+            staleAfterMs,
+            latestBattleId: normalizeOptionalText(cache?.latestBattleId),
+            latestJournalId: normalizeOptionalText(cache?.latestJournalId),
+            latestCapturedAtUnixMs: null,
+            latestTimestampIsoUtc,
+            ageMs: null,
+            checkedAt,
+        };
+    }
+
+    const ageMs = Math.max(0, now.getTime() - latestCapturedAtUnixMs);
+    return {
+        source: cache.backend,
+        status: ageMs <= staleAfterMs ? "fresh" : "stale",
+        staleAfterMs,
+        latestBattleId: normalizeOptionalText(cache.latestBattleId),
+        latestJournalId: normalizeOptionalText(cache.latestJournalId),
+        latestCapturedAtUnixMs,
+        latestTimestampIsoUtc,
+        ageMs,
+        checkedAt,
+    };
+}
+
+function battleFreshnessInstantMs(record) {
+    return firstFiniteNumber(
+        record?.latestCapturedAtUnixMs,
+        parseInstantToUnixMs(record?.latestTimestampIsoUtc),
+    );
+}
+
+function isBattleFreshnessEvent(event) {
+    return BATTLE_FRESHNESS_EVENT_TYPES.has(String(event?.type ?? ""));
+}
+
 function isBattleLogApiPath(pathname) {
     return pathname === "/api/events" || pathname === "/api/events/stream" || /^\/api\/events\/[0-9]+$/.test(pathname);
 }
@@ -650,12 +805,14 @@ async function reconcileRuntimeSurfacesWithVariantGate() {
             if (nextStore) {
                 eventStore = nextStore;
                 eventStoreRevision += 1;
+                await refreshBattleFreshnessCacheFromStore();
             }
         }
     } else if (eventStore) {
         const closingStore = eventStore;
         eventStore = null;
         eventStoreRevision += 1;
+        battleFreshnessCache = unavailableBattleFreshnessCache();
         await closingStore.close().catch((error) => {
             console.warn(`[sidecar-viewer] unable to close event store: ${error instanceof Error ? error.message : String(error)}`);
         });
@@ -1094,6 +1251,14 @@ function parseAxScopeLimit(value, fallback) {
     return parsed > 0 ? Math.max(parsed, 10) : 0;
 }
 
+async function readBattleFreshness() {
+    return buildBattleFreshnessSnapshot({
+        now: new Date(),
+        staleAfterMs: battleFreshnessStaleAfterMs,
+        cache: battleFreshnessCache,
+    });
+}
+
 async function countStoredEvents() {
     const store = eventStore;
     const storeRevision = eventStoreRevision;
@@ -1392,6 +1557,11 @@ function parseInteger(value, fallback) {
     return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function parseBattleFreshStaleMs(value, fallback) {
+    const parsed = Number.parseInt(value ?? "", 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 async function handleEventIngest(request, response) {
     const store = eventStore;
     const storeRevision = eventStoreRevision;
@@ -1418,6 +1588,7 @@ async function handleEventIngest(request, response) {
         }
 
         const result = await store.append(events);
+        updateBattleFreshnessCacheFromEvents(events, store.backend);
         broadcastEventUpdate("ingest", {
             appended: result.stored ?? result.appended ?? events.length,
             received: result.received ?? events.length,
@@ -1475,6 +1646,7 @@ async function handleSidecarIngest(request, response) {
             battleUnavailablePayload: unavailableEventStorePayload,
             appendBattleEvents: eventStore ? async (events) => {
                 const result = await eventStore.append(events);
+                updateBattleFreshnessCacheFromEvents(events, eventStore.backend);
                 broadcastEventUpdate("ingest", {
                     appended: result.stored ?? result.appended ?? events.length,
                     received: result.received ?? events.length,
@@ -2186,6 +2358,38 @@ function eventCapturedAtUnixMs(event) {
 
     if (typeof event?.capture?.capturedAtUnixMs === "number" && Number.isFinite(event.capture.capturedAtUnixMs)) {
         return event.capture.capturedAtUnixMs;
+    }
+
+    return null;
+}
+
+function parseInstantToUnixMs(value) {
+    const normalized = normalizeOptionalText(value);
+    if (!normalized) {
+        return null;
+    }
+
+    const timestamp = BARE_UTC_ISO_PATTERN.test(normalized) && !EXPLICIT_TIMEZONE_PATTERN.test(normalized)
+        ? `${normalized}Z`
+        : normalized;
+    const parsed = Date.parse(timestamp);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeOptionalText(value) {
+    if (typeof value !== "string") {
+        return null;
+    }
+
+    const normalized = value.trim();
+    return normalized.length > 0 ? normalized : null;
+}
+
+function firstFiniteNumber(...values) {
+    for (const value of values) {
+        if (typeof value === "number" && Number.isFinite(value)) {
+            return value;
+        }
     }
 
     return null;

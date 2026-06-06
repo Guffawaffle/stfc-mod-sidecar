@@ -1,4 +1,5 @@
 import { createBridgeStatus } from "../shared/bridge-status.js";
+import { describeBattleFreshness } from "../shared/battle-freshness.js";
 import { formatLocalInstant, formatRecordInstant } from "../shared/instant.js";
 
 const FALLBACK_REFRESH_MS = 15000;
@@ -21,6 +22,8 @@ const state = {
 const elements = {
   feedPath: document.querySelector("#feed-path"),
   lastModified: document.querySelector("#last-modified"),
+  battleFreshness: document.querySelector("#battle-freshness"),
+  latestStoredBattle: document.querySelector("#latest-stored-battle"),
   eventCount: document.querySelector("#event-count"),
   unreadCount: document.querySelector("#unread-count"),
   viewerStatus: document.querySelector("#viewer-status"),
@@ -45,12 +48,18 @@ async function refreshSnapshot(options = {}) {
 
   try {
     const limit = Number.parseInt(elements.lineLimit.value, 10) || 150;
-    const response = await fetch(`/api/events?limit=${limit}&detail=summary`, { cache: "no-store" });
-    const snapshot = await response.json();
+    const [snapshotResponse, healthResponse] = await Promise.all([
+      fetch(`/api/events?limit=${limit}&detail=summary`, { cache: "no-store" }),
+      fetch("/api/health/ready", { cache: "no-store" }).catch(() => null),
+    ]);
+    const [snapshot, health] = await Promise.all([
+      snapshotResponse.json(),
+      healthResponse?.json?.().catch(() => null) ?? Promise.resolve(null),
+    ]);
     state.snapshot = snapshot;
     updateReadBaseline(snapshot);
 
-    renderStatus(snapshot);
+    renderStatus(snapshot, health);
     renderEventList(snapshot);
     void renderSelectedEvent();
 
@@ -118,8 +127,9 @@ function ensureFallbackRefresh() {
   }, FALLBACK_REFRESH_MS);
 }
 
-function renderStatus(snapshot) {
+function renderStatus(snapshot, health = null) {
   const source = describeSource(snapshot);
+  const freshness = describeBattleFreshness(health?.battleFreshness);
   elements.feedPath.textContent = source.label;
   elements.feedPath.title = source.title;
   elements.lastModified.textContent = snapshot.lastModified
@@ -127,6 +137,10 @@ function renderStatus(snapshot) {
     : snapshot.generatedAt
       ? formatLocalInstant(snapshot.generatedAt, { fallback: "Waiting for events" })
       : "Waiting for events";
+  elements.battleFreshness.textContent = freshness.statusLabel;
+  elements.battleFreshness.title = freshness.title;
+  elements.latestStoredBattle.textContent = freshness.latestLabel;
+  elements.latestStoredBattle.title = freshness.title;
   elements.eventCount.textContent = `${snapshot.returnedLines ?? 0} / ${snapshot.totalLines ?? 0}`;
   elements.unreadCount.textContent = `${unreadEntries(snapshot).length}`;
 }

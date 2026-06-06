@@ -9,12 +9,24 @@ describe("viewer health routes", () => {
         const refreshCommunityModVariantGate = vi.fn();
         const countStoredEvents = vi.fn();
         const readFleetBrokerSummary = vi.fn();
+        const getBattleFreshness = vi.fn(async () => ({
+            source: "sqlite",
+            status: "fresh",
+            staleAfterMs: 900000,
+            latestBattleId: "battle-001",
+            latestJournalId: "journal-001",
+            latestCapturedAtUnixMs: 1778651580000,
+            latestTimestampIsoUtc: "2026-05-13T04:33:00.000Z",
+            ageMs: 120000,
+            checkedAt: "2026-05-13T04:35:00.000Z",
+        }));
         const handled = await handleHealthRoutes(
             { method: "GET" },
             response,
             new URL("http://127.0.0.1/api/health/ready"),
             baseContext({
                 countStoredEvents,
+                getBattleFreshness,
                 readFleetBrokerSummary,
                 refreshCommunityModVariantGate,
                 startedAt,
@@ -33,10 +45,22 @@ describe("viewer health routes", () => {
             modProfile: "netniv-basic",
             settingsProfile: "netniv-basic",
             eventStoreBackend: "sqlite",
+            battleFreshness: {
+                source: "sqlite",
+                status: "fresh",
+                staleAfterMs: 900000,
+                latestBattleId: "battle-001",
+                latestJournalId: "journal-001",
+                latestCapturedAtUnixMs: 1778651580000,
+                latestTimestampIsoUtc: "2026-05-13T04:33:00.000Z",
+                ageMs: 120000,
+                checkedAt: "2026-05-13T04:35:00.000Z",
+            },
             startedAt: startedAt.toISOString(),
             shuttingDown: false,
             pollHintMs: 2000,
         });
+        expect(getBattleFreshness).toHaveBeenCalledTimes(1);
         expect(refreshCommunityModVariantGate).not.toHaveBeenCalled();
         expect(countStoredEvents).not.toHaveBeenCalled();
         expect(readFleetBrokerSummary).not.toHaveBeenCalled();
@@ -83,6 +107,17 @@ describe("viewer health routes", () => {
             communityModInstall: { state: "installed" },
             release: { version: "0.1.0-test" },
             eventStoreBackend: "sqlite",
+            battleFreshness: {
+                source: "sqlite",
+                status: "fresh",
+                staleAfterMs: 900000,
+                latestBattleId: "battle-001",
+                latestJournalId: "journal-001",
+                latestCapturedAtUnixMs: 1778651580000,
+                latestTimestampIsoUtc: "2026-05-13T04:33:00.000Z",
+                ageMs: 120000,
+                checkedAt: "2026-05-13T04:35:00.000Z",
+            },
             storedEvents: 42,
             cloudTelemetry: { ok: true },
             fleetBroker: {
@@ -178,6 +213,17 @@ function baseContext(overrides = {}) {
         developerMode: false,
         feedPath: "C:/Games/STFC/game/community_patch_battle_feed.jsonl",
         gameDir: "C:/Games/STFC/game",
+        getBattleFreshness: async () => ({
+            source: "sqlite",
+            status: "fresh",
+            staleAfterMs: 900000,
+            latestBattleId: "battle-001",
+            latestJournalId: "journal-001",
+            latestCapturedAtUnixMs: 1778651580000,
+            latestTimestampIsoUtc: "2026-05-13T04:33:00.000Z",
+            ageMs: 120000,
+            checkedAt: "2026-05-13T04:35:00.000Z",
+        }),
         getCommunityModCapabilities: () => ({ battleLog: true }),
         getEventStoreBackend: () => "sqlite",
         isAuthorizedShutdownRequest: () => true,
