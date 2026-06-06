@@ -97,6 +97,7 @@ export function createFeedWatcher({
         if (!existsSync(feedPath)) {
             return {
                 ok: false,
+                source: "jsonl_fallback",
                 feedPath,
                 exists: false,
                 generatedAt,
@@ -114,6 +115,7 @@ export function createFeedWatcher({
 
         return {
             ok: true,
+            source: "jsonl_fallback",
             feedPath,
             exists: true,
             detail: includeDetails ? "full" : "summary",
@@ -132,6 +134,7 @@ export function createFeedWatcher({
             return {
                 ok: false,
                 statusCode: 404,
+                source: "jsonl_fallback",
                 feedPath,
                 exists: false,
                 generatedAt,
@@ -146,6 +149,7 @@ export function createFeedWatcher({
             return {
                 ok: false,
                 statusCode: 404,
+                source: "jsonl_fallback",
                 feedPath,
                 exists: true,
                 generatedAt,
@@ -156,6 +160,7 @@ export function createFeedWatcher({
 
         return {
             ok: true,
+            source: "jsonl_fallback",
             feedPath,
             exists: true,
             detail: "full",

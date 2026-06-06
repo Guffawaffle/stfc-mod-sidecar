@@ -21,6 +21,7 @@ describe("viewer feed watcher", () => {
 
         expect(snapshot).toMatchObject({
             ok: false,
+            source: "jsonl_fallback",
             feedPath,
             exists: false,
             pollHintMs: 2000,
@@ -43,6 +44,7 @@ describe("viewer feed watcher", () => {
 
         expect(summary).toMatchObject({
             ok: true,
+            source: "jsonl_fallback",
             feedPath,
             exists: true,
             detail: "summary",
@@ -59,6 +61,7 @@ describe("viewer feed watcher", () => {
 
         expect(detail).toMatchObject({
             ok: true,
+            source: "jsonl_fallback",
             feedPath,
             exists: true,
             detail: "full",

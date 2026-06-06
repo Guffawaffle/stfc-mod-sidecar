@@ -1,4 +1,5 @@
 import { createBridgeStatus } from "../../shared/bridge-status.js";
+import { formatLocalInstant } from "../../shared/instant.js";
 
 const FALLBACK_REFRESH_MS = 15000;
 
@@ -128,21 +129,49 @@ function ensureFallbackRefresh() {
 }
 
 function renderStatus(snapshot) {
-    elements.feedPath.textContent = dataSourceLabel(snapshot);
+    const source = describeSource(snapshot);
+    elements.feedPath.textContent = source.label;
+    elements.feedPath.title = source.title;
     elements.eventCount.textContent = `${snapshot.scannedEvents ?? snapshot.returnedLines ?? 0} / ${snapshot.totalEvents ?? snapshot.totalLines ?? 0}`;
     elements.battleCount.textContent = `${snapshot.returnedBattles ?? state.battleGroups.length} / ${snapshot.totalBattles ?? state.battleGroups.length}`;
 }
 
-function dataSourceLabel(snapshot) {
-    if (snapshot?.source === "store") {
-        return `${snapshot.storageBackend ?? "local"} event store`;
+function describeSource(snapshot) {
+    const key = sourceKey(snapshot);
+    if (key === "sqlite") {
+        return {
+            label: "SQLite (sqlite)",
+            title: "Battle Workbench is reading its battle list from the SQLite event store.",
+        };
     }
 
-    if (snapshot?.feedPath) {
-        return snapshot.feedPath;
+    if (key === "postgres") {
+        return {
+            label: "PostgreSQL (postgres)",
+            title: "Battle Workbench is reading its battle list from the PostgreSQL event store.",
+        };
     }
 
-    return "Local sidecar data layer";
+    if (key === "jsonl_fallback") {
+        return {
+            label: "JSONL fallback (jsonl_fallback)",
+            title: snapshot?.feedPath
+                ? `Battle Workbench is reading its battle list from the JSONL fallback feed at ${snapshot.feedPath}.`
+                : "Battle Workbench is reading its battle list from the JSONL fallback feed.",
+        };
+    }
+
+    if (key === "memory_feed") {
+        return {
+            label: "Memory feed (memory_feed)",
+            title: "Battle Workbench is reading its battle list from an in-memory feed.",
+        };
+    }
+
+    return {
+        label: "Unknown (unknown)",
+        title: "Battle Workbench could not determine the effective battle-list source.",
+    };
 }
 
 function buildBattleGroups(snapshot) {
@@ -156,6 +185,7 @@ function buildBattleGroups(snapshot) {
         entries: [],
         title: battle.title ?? `Battle ${battle.battleId ?? battle.key ?? ""}`,
         timestamp: battle.timestamp ?? "",
+        capturedAtUnixMs: finiteNumberOrNull(battle.capturedAtUnixMs),
         completeness: battle.completeness ?? {},
         participantNames: Array.isArray(battle.participantNames) ? battle.participantNames : [],
         captureEntry: null,
@@ -164,6 +194,8 @@ function buildBattleGroups(snapshot) {
         catalogEntry: null,
         battleExplanation: null,
         battleTimeline: null,
+        effectiveSource: battle.effectiveSource ?? snapshot.effectiveSource ?? sourceKey(snapshot),
+        sourceDiagnostics: battle.sourceDiagnostics ?? snapshot.sourceDiagnostics ?? null,
         detailLoaded: false,
     })).filter((battle) => battle.key);
 }
@@ -202,7 +234,7 @@ function renderBattleSelect() {
     for (const group of state.battleGroups) {
         const option = document.createElement("option");
         option.value = group.key;
-        option.textContent = `${formatDateTime(group.timestamp)} | ${group.title}`;
+        option.textContent = `${formatBattleTime(group)} | ${group.title}`;
         option.selected = group.key === state.selectedBattleKey;
         elements.battleSelect.appendChild(option);
     }
@@ -332,6 +364,8 @@ async function hydrateBattleGroup(group) {
                 ?? cachedDetail.battleTimeline
                 ?? group.battleExplanation?.battleTimeline
                 ?? null;
+            group.effectiveSource = cachedDetail.effectiveSource ?? group.effectiveSource;
+            group.sourceDiagnostics = cachedDetail.sourceDiagnostics ?? group.sourceDiagnostics;
         }
     } else {
         const response = await fetch(`/api/battles/${encodeURIComponent(group.key)}`, { cache: "no-store" });
@@ -345,12 +379,16 @@ async function hydrateBattleGroup(group) {
             ?? payload.battleTimeline
             ?? group.battleExplanation?.battleTimeline
             ?? null;
+        group.effectiveSource = payload.effectiveSource ?? group.effectiveSource ?? state.snapshot?.effectiveSource ?? sourceKey(state.snapshot);
+        group.sourceDiagnostics = payload.sourceDiagnostics ?? group.sourceDiagnostics ?? state.snapshot?.sourceDiagnostics ?? null;
         state.detailsByLine.set(`battle:${group.key}`, {
             entries: group.entries,
             derivedViews: {
                 battleExplanation: group.battleExplanation,
                 battleTimeline: group.battleTimeline,
             },
+            effectiveSource: group.effectiveSource,
+            sourceDiagnostics: group.sourceDiagnostics,
         });
     }
     group.detailLoaded = true;
@@ -394,6 +432,7 @@ function applyBattleIndexUpdates(updates) {
             lineNumber: Math.max(Number(existing?.lineNumber ?? 0), Number(update.lineNumber ?? 0)),
             title: update.title ?? existing?.title ?? `Battle ${key}`,
             timestamp: update.timestamp ?? existing?.timestamp ?? "",
+            capturedAtUnixMs: finiteNumberOrNull(update.capturedAtUnixMs) ?? existing?.capturedAtUnixMs ?? null,
             completeness: update.completeness ?? existing?.completeness ?? {},
             participantNames: Array.isArray(update.participantNames) ? update.participantNames : existing?.participantNames ?? [],
             entries: existing?.entries ?? [],
@@ -403,6 +442,8 @@ function applyBattleIndexUpdates(updates) {
             catalogEntry: existing?.catalogEntry ?? null,
             battleExplanation: existing?.battleExplanation ?? null,
             battleTimeline: existing?.battleTimeline ?? null,
+            effectiveSource: update.effectiveSource ?? existing?.effectiveSource ?? state.snapshot?.effectiveSource ?? sourceKey(state.snapshot),
+            sourceDiagnostics: update.sourceDiagnostics ?? existing?.sourceDiagnostics ?? state.snapshot?.sourceDiagnostics ?? null,
             detailLoaded: false,
         });
         state.detailsByLine.delete(`battle:${key}`);
@@ -452,6 +493,13 @@ function buildReportModel(group) {
     const csvParity = analytics.csvParity ?? report.csvParity ?? {};
     const summary = report.summary ?? analytics.summary ?? capture.summary ?? {};
     const timestamp = reportEvent?.timestamp ?? analyticsEvent?.timestamp ?? captureEvent?.timestamp ?? summary.battleTime ?? "";
+    const capturedAtUnixMs = firstFiniteNumber(
+        reportEvent?.capturedAtUnixMs,
+        analyticsEvent?.capturedAtUnixMs,
+        captureEvent?.capturedAtUnixMs,
+        capture?.capturedAtUnixMs,
+        group.capturedAtUnixMs,
+    );
     const combatants = normalizeCombatants(report.fleets, capture.participants);
     const segments = Array.isArray(report.events) ? report.events : [];
     const rounds = Array.isArray(report.rounds) ? report.rounds : Array.isArray(analytics.rounds) ? analytics.rounds : [];
@@ -474,7 +522,10 @@ function buildReportModel(group) {
         key: group.key,
         title,
         timestamp,
+        capturedAtUnixMs,
         lineNumber: group.lineNumber,
+        effectiveSource: group.effectiveSource ?? sourceKey(state.snapshot),
+        sourceDiagnostics: group.sourceDiagnostics ?? null,
         reportEvent,
         captureEvent,
         analyticsEvent,
@@ -855,7 +906,8 @@ function renderBattleDetails(model) {
           ${renderMetric("Segments", model.segmentCount || model.segments.length || "Pending")}
           ${renderMetric("Armada", armada)}
           ${renderMetric("Battle ID", model.key)}
-          ${renderMetric("Time", formatDateTime(model.timestamp))}
+          ${renderMetric("Source", model.effectiveSource || "--")}
+          ${renderMetric("Time", formatLocalInstant(model.capturedAtUnixMs ?? model.timestamp, { fallback: "Unknown time" }))}
         </aside>
         <div class="combatant-grid">${combatantCards || `<div class="empty-state">No combatants captured.</div>`}</div>
       </div>
@@ -1602,9 +1654,48 @@ function formatCompact(value) {
     return Number.isInteger(number) ? String(number) : number.toFixed(2);
 }
 
-function formatDateTime(value) {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.valueOf()) ? value || "Unknown time" : parsed.toLocaleString();
+function formatBattleTime(group) {
+    return formatLocalInstant(group?.capturedAtUnixMs ?? group?.timestamp, { fallback: "Unknown time" });
+}
+
+function sourceKey(snapshot) {
+    if (snapshot?.effectiveSource) {
+        return String(snapshot.effectiveSource);
+    }
+
+    if (snapshot?.source === "store") {
+        if (snapshot.storageBackend === "sqlite") {
+            return "sqlite";
+        }
+        if (snapshot.storageBackend === "postgres") {
+            return "postgres";
+        }
+        return "unknown";
+    }
+
+    if (snapshot?.source === "jsonl_fallback" || snapshot?.feedPath) {
+        return "jsonl_fallback";
+    }
+
+    if (snapshot?.source === "majel-ingest-memory") {
+        return "memory_feed";
+    }
+
+    return "unknown";
+}
+
+function firstFiniteNumber(...values) {
+    for (const value of values) {
+        if (typeof value === "number" && Number.isFinite(value)) {
+            return value;
+        }
+    }
+
+    return null;
+}
+
+function finiteNumberOrNull(value) {
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function numberOrNull(value) {

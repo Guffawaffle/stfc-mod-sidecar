@@ -17,11 +17,17 @@ describe("viewer battle log access helpers", () => {
         expect(index).toMatchObject({
             ok: true,
             detail: "battle-index",
+            effectiveSource: "sqlite",
+            sourceDiagnostics: {
+                key: "sqlite",
+                fallbackActive: false,
+            },
             totalBattles: 1,
             returnedBattles: 1,
         });
         expect(index.battles[0]).toMatchObject({
             battleId: "battle-1",
+            capturedAtUnixMs: 1777334400000,
             battleType: 2,
             completeness: {
                 hasCapture: true,
@@ -42,6 +48,11 @@ describe("viewer battle log access helpers", () => {
             ok: true,
             detail: "battle-detail",
             battleId: "battle-1",
+            effectiveSource: "sqlite",
+            sourceDiagnostics: {
+                key: "sqlite",
+                fallbackActive: false,
+            },
         });
         expect(detail).toHaveProperty("derivedViews.battleExplanation");
         expect(detail).toHaveProperty("derivedViews.battleTimeline");
@@ -80,6 +91,39 @@ describe("viewer battle log access helpers", () => {
         expect(workbenchApp).not.toContain("unknownScalarA");
         expect(workbenchApp).not.toContain("unknownScalarB");
     });
+
+    test("marks explicit JSONL fallback battle snapshots without pretending they came from the store", () => {
+        const fallbackIndex = buildBattleIndexSnapshot({
+            ...sampleSnapshot(),
+            source: "jsonl_fallback",
+            storageBackend: null,
+            feedPath: "C:/Games/STFC/game/community_patch_battle_feed.jsonl",
+        }, { limit: 10 });
+
+        const fallbackDetail = buildBattleDetailSnapshot({
+            ...sampleSnapshot(),
+            source: "jsonl_fallback",
+            storageBackend: null,
+            feedPath: "C:/Games/STFC/game/community_patch_battle_feed.jsonl",
+        }, "battle-1");
+
+        expect(fallbackIndex).toMatchObject({
+            source: "jsonl_fallback",
+            effectiveSource: "jsonl_fallback",
+            sourceDiagnostics: {
+                key: "jsonl_fallback",
+                fallbackActive: true,
+            },
+        });
+        expect(fallbackDetail).toMatchObject({
+            source: "jsonl_fallback",
+            effectiveSource: "jsonl_fallback",
+            sourceDiagnostics: {
+                key: "jsonl_fallback",
+                fallbackActive: true,
+            },
+        });
+    });
 });
 
 function sampleSnapshot() {
@@ -96,6 +140,7 @@ function sampleSnapshot() {
                 journalId: "journal-1",
                 battleType: 2,
                 timestamp: "2026-06-04T20:00:00.000Z",
+                capturedAtUnixMs: 1777334400000,
                 capture: {
                     participants: [{ name: "Guffawaffle" }],
                     battleLog: { tokens: ["1", "2"] },
@@ -108,6 +153,7 @@ function sampleSnapshot() {
                 journalId: "journal-1",
                 battleType: 2,
                 timestamp: "2026-06-04T20:00:01.000Z",
+                capturedAtUnixMs: 1777334400000,
                 report: { summary: { outcome: "initiator_victory" } },
             }, "Lv.9 Hostile", "Guffawaffle"),
             eventEntry(3, {
@@ -116,6 +162,7 @@ function sampleSnapshot() {
                 journalId: "journal-1",
                 battleType: 2,
                 timestamp: "2026-06-04T20:00:02.000Z",
+                capturedAtUnixMs: 1777334400000,
                 catalog: { coverage: { resolvedEntries: 3, totalEntries: 4 } },
             }),
             eventEntry(4, {
@@ -124,6 +171,7 @@ function sampleSnapshot() {
                 journalId: "journal-1",
                 battleType: 2,
                 timestamp: "2026-06-04T20:00:03.000Z",
+                capturedAtUnixMs: 1777334400000,
                 analytics: { csvParity: { rows: [{ round: 1 }] } },
             }),
         ],
@@ -139,6 +187,7 @@ function eventEntry(lineNumber, event, title = event.type, subtitle = "") {
         battleId: event.battleId,
         journalId: event.journalId,
         battleType: event.battleType,
+        capturedAtUnixMs: event.capturedAtUnixMs,
         timestamp: event.timestamp,
         summary: {
             title,

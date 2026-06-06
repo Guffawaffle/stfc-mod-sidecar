@@ -1,4 +1,5 @@
 import { createBridgeStatus } from "../shared/bridge-status.js";
+import { formatLocalInstant, formatRecordInstant } from "../shared/instant.js";
 
 const FALLBACK_REFRESH_MS = 15000;
 const READ_STATE_STORAGE_KEY = "stfc-sidecar.battle-log.read-events.v1";
@@ -118,26 +119,54 @@ function ensureFallbackRefresh() {
 }
 
 function renderStatus(snapshot) {
-  elements.feedPath.textContent = dataSourceLabel(snapshot);
+  const source = describeSource(snapshot);
+  elements.feedPath.textContent = source.label;
+  elements.feedPath.title = source.title;
   elements.lastModified.textContent = snapshot.lastModified
-    ? formatDateTime(snapshot.lastModified)
+    ? formatLocalInstant(snapshot.lastModified, { fallback: "Waiting for events" })
     : snapshot.generatedAt
-      ? formatDateTime(snapshot.generatedAt)
+      ? formatLocalInstant(snapshot.generatedAt, { fallback: "Waiting for events" })
       : "Waiting for events";
   elements.eventCount.textContent = `${snapshot.returnedLines ?? 0} / ${snapshot.totalLines ?? 0}`;
   elements.unreadCount.textContent = `${unreadEntries(snapshot).length}`;
 }
 
-function dataSourceLabel(snapshot) {
-  if (snapshot?.source === "store") {
-    return `${snapshot.storageBackend ?? "local"} event store`;
+function describeSource(snapshot) {
+  const key = sourceKey(snapshot);
+  if (key === "sqlite") {
+    return {
+      label: "SQLite (sqlite)",
+      title: "Battle Log Explorer is reading from the SQLite event store.",
+    };
   }
 
-  if (snapshot?.feedPath) {
-    return snapshot.feedPath;
+  if (key === "postgres") {
+    return {
+      label: "PostgreSQL (postgres)",
+      title: "Battle Log Explorer is reading from the PostgreSQL event store.",
+    };
   }
 
-  return "Local sidecar data layer";
+  if (key === "jsonl_fallback") {
+    return {
+      label: "JSONL fallback (jsonl_fallback)",
+      title: snapshot?.feedPath
+        ? `Battle Log Explorer is reading from the JSONL fallback feed at ${snapshot.feedPath}.`
+        : "Battle Log Explorer is reading from the JSONL fallback feed.",
+    };
+  }
+
+  if (key === "memory_feed") {
+    return {
+      label: "Memory feed (memory_feed)",
+      title: "Battle Log Explorer is reading from an in-memory feed.",
+    };
+  }
+
+  return {
+    label: "Unknown (unknown)",
+    title: "Battle Log Explorer could not determine the effective data source.",
+  };
 }
 
 function updateReadBaseline(snapshot) {
@@ -272,7 +301,7 @@ function renderEventList(snapshot) {
       </div>
       <p>${escapeHtml(summary.subtitle ?? "")}</p>
       <div class="chip-row">${chipMarkup}</div>
-      <time>${escapeHtml(summary.timestamp ? formatDateTime(summary.timestamp) : "No timestamp")}</time>
+      <time>${escapeHtml(formatRecordInstant(entry, { fallback: "No timestamp" }))}</time>
     `;
 
     button.addEventListener("click", () => {
@@ -418,7 +447,7 @@ async function loadEntryDetail(entry) {
 function buildSummaryRows(event) {
   const rows = [
     ["Type", event.type],
-    ["Timestamp", event.timestamp ?? ""],
+    ["Time", formatRecordInstant(event, { fallback: "" })],
     ["Source", event.source ?? ""],
   ];
 
@@ -822,9 +851,30 @@ function renderEmpty(message) {
   return empty;
 }
 
-function formatDateTime(value) {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.valueOf()) ? value : parsed.toLocaleString();
+function sourceKey(snapshot) {
+  if (snapshot?.effectiveSource) {
+    return String(snapshot.effectiveSource);
+  }
+
+  if (snapshot?.source === "store") {
+    if (snapshot.storageBackend === "sqlite") {
+      return "sqlite";
+    }
+    if (snapshot.storageBackend === "postgres") {
+      return "postgres";
+    }
+    return "unknown";
+  }
+
+  if (snapshot?.source === "jsonl_fallback" || snapshot?.feedPath) {
+    return "jsonl_fallback";
+  }
+
+  if (snapshot?.source === "majel-ingest-memory") {
+    return "memory_feed";
+  }
+
+  return "unknown";
 }
 
 function escapeHtml(value) {

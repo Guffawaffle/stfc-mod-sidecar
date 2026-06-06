@@ -8,11 +8,14 @@ export function buildBattleIndexSnapshot(snapshot = {}, options = {}) {
     const groups = buildBattleGroupsFromEntries(events);
     const limit = Number.isFinite(options.limit) ? Math.max(1, options.limit) : groups.length;
     const battles = groups.slice(0, limit).map(toBattleIndexEntry);
+    const sourceDiagnostics = describeBattleSnapshotSource(snapshot);
 
     return {
         ok: snapshot.ok !== false,
-        source: snapshot.source ?? "store",
+        source: sourceDiagnostics.source,
         storageBackend: snapshot.storageBackend ?? null,
+        effectiveSource: sourceDiagnostics.key,
+        sourceDiagnostics,
         exists: snapshot.exists !== false,
         detail: "battle-index",
         generatedAt: snapshot.generatedAt ?? new Date().toISOString(),
@@ -30,12 +33,15 @@ export function buildBattleDetailSnapshot(snapshot = {}, battleKey = "") {
     const normalizedKey = normalizeBattleKey(battleKey);
     const events = Array.isArray(snapshot.events) ? snapshot.events : [];
     const group = buildBattleGroupsFromEntries(events).find((item) => item.key === normalizedKey);
+    const sourceDiagnostics = describeBattleSnapshotSource(snapshot);
 
     if (!group) {
         return {
             ok: false,
-            source: snapshot.source ?? "store",
+            source: sourceDiagnostics.source,
             storageBackend: snapshot.storageBackend ?? null,
+            effectiveSource: sourceDiagnostics.key,
+            sourceDiagnostics,
             exists: snapshot.exists !== false,
             detail: "battle-detail",
             statusCode: 404,
@@ -49,8 +55,10 @@ export function buildBattleDetailSnapshot(snapshot = {}, battleKey = "") {
 
     return {
         ok: true,
-        source: snapshot.source ?? "store",
+        source: sourceDiagnostics.source,
         storageBackend: snapshot.storageBackend ?? null,
+        effectiveSource: sourceDiagnostics.key,
+        sourceDiagnostics,
         exists: snapshot.exists !== false,
         detail: "battle-detail",
         generatedAt: snapshot.generatedAt ?? new Date().toISOString(),
@@ -75,6 +83,7 @@ export function battleIndexUpdatesFromEvents(events = []) {
         journalId: event?.journalId,
         battleType: event?.battleType,
         timestamp: event?.timestamp,
+        capturedAtUnixMs: eventCapturedAtUnixMs(event),
         summary: summarizeEventLike(event),
     })));
 
@@ -104,6 +113,7 @@ export function buildBattleGroupsFromEntries(entries = []) {
             entries: [],
             lineNumber: 0,
             timestamp: "",
+            capturedAtUnixMs: null,
             battleType: null,
             title: "",
             subtitle: "",
@@ -120,6 +130,7 @@ export function buildBattleGroupsFromEntries(entries = []) {
         group.eventTypes.add(eventType);
         group.lineNumber = Math.max(group.lineNumber, Number(entry.lineNumber ?? 0));
         group.timestamp = newestTimestamp(group.timestamp, entry.timestamp ?? entry.summary?.timestamp);
+        group.capturedAtUnixMs = newestCapturedAtUnixMs(group.capturedAtUnixMs, entryCapturedAtUnixMs(entry));
         group.battleType = group.battleType ?? entry.battleType ?? entry.event?.battleType ?? null;
         group.title = bestTitle(group.title, entry.summary?.title, eventType);
         group.subtitle = group.subtitle || String(entry.summary?.subtitle ?? "");
@@ -150,6 +161,7 @@ function toBattleIndexEntry(group) {
         battleId: group.key,
         key: group.key,
         timestamp: group.timestamp,
+        capturedAtUnixMs: group.capturedAtUnixMs,
         battleType: group.battleType,
         title: group.title || `Battle ${group.key}`,
         subtitle: group.subtitle,
@@ -246,7 +258,25 @@ function newestTimestamp(left, right) {
     if (!left) {
         return normalizedRight;
     }
-    return Date.parse(normalizedRight) >= Date.parse(left) ? normalizedRight : left;
+    const rightMs = parseInstantMs(normalizedRight);
+    const leftMs = parseInstantMs(left);
+    if (rightMs == null) {
+        return left;
+    }
+    if (leftMs == null) {
+        return normalizedRight;
+    }
+    return rightMs >= leftMs ? normalizedRight : left;
+}
+
+function newestCapturedAtUnixMs(left, right) {
+    if (right == null) {
+        return left ?? null;
+    }
+    if (left == null) {
+        return right;
+    }
+    return right >= left ? right : left;
 }
 
 function bestTitle(current, candidate, eventType) {
@@ -291,4 +321,111 @@ function summarizeEventLike(event) {
         subtitle: summary.outcome ?? "",
         timestamp: event.timestamp,
     };
+}
+
+function describeBattleSnapshotSource(snapshot = {}) {
+    const source = resolvedSnapshotSource(snapshot);
+    const key = effectiveBattleSourceKey(snapshot);
+    const feedPath = typeof snapshot.feedPath === "string" && snapshot.feedPath.trim() ? snapshot.feedPath : null;
+    return {
+        key,
+        source,
+        label: battleSourceLabel(key),
+        storageBackend: snapshot.storageBackend ?? null,
+        feedPath,
+        fallbackActive: key === "jsonl_fallback",
+    };
+}
+
+function effectiveBattleSourceKey(snapshot = {}) {
+    const source = resolvedSnapshotSource(snapshot);
+    if (source === "store") {
+        if (snapshot.storageBackend === "sqlite") {
+            return "sqlite";
+        }
+        if (snapshot.storageBackend === "postgres") {
+            return "postgres";
+        }
+        return "unknown";
+    }
+    if (source === "jsonl_fallback") {
+        return "jsonl_fallback";
+    }
+    if (source === "majel-ingest-memory") {
+        return "memory_feed";
+    }
+    return "unknown";
+}
+
+function resolvedSnapshotSource(snapshot = {}) {
+    if (typeof snapshot.source === "string" && snapshot.source.trim().length > 0) {
+        return snapshot.source.trim();
+    }
+    if (typeof snapshot.feedPath === "string" && snapshot.feedPath.trim().length > 0) {
+        return "jsonl_fallback";
+    }
+    return "unknown";
+}
+
+function battleSourceLabel(key) {
+    switch (key) {
+        case "sqlite":
+            return "SQLite event store";
+        case "postgres":
+            return "PostgreSQL event store";
+        case "jsonl_fallback":
+            return "JSONL fallback";
+        case "memory_feed":
+            return "In-memory feed";
+        default:
+            return "Unknown source";
+    }
+}
+
+function entryCapturedAtUnixMs(entry) {
+    return firstFiniteNumber(
+        entry?.capturedAtUnixMs,
+        entry?.event?.capturedAtUnixMs,
+        entry?.event?.capture?.capturedAtUnixMs,
+    );
+}
+
+function eventCapturedAtUnixMs(event) {
+    return firstFiniteNumber(
+        event?.capturedAtUnixMs,
+        event?.capture?.capturedAtUnixMs,
+    );
+}
+
+function firstFiniteNumber(...values) {
+    for (const value of values) {
+        if (typeof value === "number" && Number.isFinite(value)) {
+            return value;
+        }
+    }
+
+    return null;
+}
+
+function parseInstantMs(value) {
+    const normalized = normalizeUtcInstantString(value);
+    if (!normalized) {
+        return null;
+    }
+
+    const parsed = Date.parse(normalized);
+    return Number.isNaN(parsed) ? null : parsed;
+}
+
+function normalizeUtcInstantString(value) {
+    const text = String(value ?? "").trim();
+    if (!text) {
+        return "";
+    }
+
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(text) && !/(?:[zZ]|[+-]\d{2}:\d{2})$/.test(text)) {
+        return `${text}Z`;
+    }
+
+    return text;
 }

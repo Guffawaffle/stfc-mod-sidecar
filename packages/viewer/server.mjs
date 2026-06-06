@@ -2174,8 +2174,21 @@ function eventIndex(event) {
         battleId: event.battleId ?? null,
         journalId: event.journalId ?? null,
         battleType: event.battleType ?? null,
+        capturedAtUnixMs: eventCapturedAtUnixMs(event),
         timestamp: event.timestamp ?? null,
     };
+}
+
+function eventCapturedAtUnixMs(event) {
+    if (typeof event?.capturedAtUnixMs === "number" && Number.isFinite(event.capturedAtUnixMs)) {
+        return event.capturedAtUnixMs;
+    }
+
+    if (typeof event?.capture?.capturedAtUnixMs === "number" && Number.isFinite(event.capture.capturedAtUnixMs)) {
+        return event.capture.capturedAtUnixMs;
+    }
+
+    return null;
 }
 
 function summarizeEvent(event) {
