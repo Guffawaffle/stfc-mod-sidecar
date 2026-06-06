@@ -62,8 +62,23 @@
           </div>
         </article>
 
-        <article class="diagnostic-tool-row" data-developer-card>
+        <article class="diagnostic-tool-row diagnostic-tool-row--ready">
           <div class="diagnostic-tool-row__code">DX-03</div>
+          <div class="diagnostic-tool-row__main">
+            <h2>Observed Hostile Catalog</h2>
+            <span class="command-chip command-chip--ready">READY</span>
+          </div>
+          <div class="diagnostic-tool-row__actions">
+            <a class="link-button link-button--secondary" href="/diagnostics/observed-hostiles/">Open</a>
+            <button class="button-secondary diagnostic-detail-toggle" type="button" aria-expanded="false" aria-controls="diagnostic-detail-observed-hostiles" data-detail-toggle>Details</button>
+          </div>
+          <div id="diagnostic-detail-observed-hostiles" class="diagnostic-tool-row__detail" data-detail-panel hidden>
+            <p>Review grouped sidecar-local hostile sightings, identity quality, latest observation overlays, and raw evidence links without touching public sync.</p>
+          </div>
+        </article>
+
+        <article class="diagnostic-tool-row" data-developer-card>
+          <div class="diagnostic-tool-row__code">DX-04</div>
           <div class="diagnostic-tool-row__main">
             <h2>Cloud Sync Monitor</h2>
             <span class="command-chip">DEV</span>
@@ -81,7 +96,7 @@
         </article>
 
         <article class="diagnostic-tool-row diagnostic-tool-row--ready">
-          <div class="diagnostic-tool-row__code">DX-04</div>
+          <div class="diagnostic-tool-row__code">DX-05</div>
           <div class="diagnostic-tool-row__main">
             <h2>Diagnostics Bundle</h2>
             <span class="command-chip command-chip--ready">READY</span>
@@ -101,7 +116,7 @@
         </article>
 
         <article class="diagnostic-tool-row" data-developer-card>
-          <div class="diagnostic-tool-row__code">DX-05</div>
+          <div class="diagnostic-tool-row__code">DX-06</div>
           <div class="diagnostic-tool-row__main">
             <h2>Developer Diagnostics Controls</h2>
             <span class="command-chip">DEV</span>

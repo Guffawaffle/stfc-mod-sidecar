@@ -41,10 +41,11 @@ describe("viewer landing page markup", () => {
         expect(diagnosticsHtml).toContain("Raw evidence tools and transport monitors.");
         expect(diagnosticsHtml).toContain("Battle Log Explorer");
         expect(diagnosticsHtml).toContain("Battle Workbench");
+        expect(diagnosticsHtml).toContain("Observed Hostile Catalog");
         expect(diagnosticsHtml).toContain("Cloud Sync Monitor");
         expect(diagnosticsHtml).toContain("diagnostic-tool-row");
         expect(diagnosticsHtml).toContain("DX-01");
-        expect(diagnosticsHtml).toContain("DX-05");
+        expect(diagnosticsHtml).toContain("DX-06");
         expect(diagnosticsHtml).toContain("data-detail-toggle");
         expect(diagnosticsHtml).toContain('id="preview-diagnostics"');
         expect(diagnosticsHtml).toContain('id="copy-diagnostics"');
@@ -60,6 +61,7 @@ describe("viewer landing page markup", () => {
         expect(diagnosticsHtml).toContain('href="/about/?surface=setup"');
         expect(diagnosticsHtml).toContain('href="/battle-log/"');
         expect(diagnosticsHtml).toContain('href="/battle-log/workbench/"');
+        expect(diagnosticsHtml).toContain('href="/diagnostics/observed-hostiles/"');
         expect(diagnosticsHtml).toContain('href="/diagnostics/cloud-sync/"');
         expect(diagnosticsHtml).not.toContain('href="/majel/"');
         expect(diagnosticsHtml).not.toContain('href="/about/#diagnostics-bundle"');
@@ -73,6 +75,7 @@ describe("viewer landing page markup", () => {
         expect(diagnosticsHtml.indexOf('href="/battle-log/"')).toBeLessThan(diagnosticsHtml.indexOf('aria-controls="diagnostic-detail-battle-log"'));
         expect(diagnosticsHtml.indexOf('data-capability-card-fallback hidden disabled>Open</button>')).toBeLessThan(diagnosticsHtml.indexOf('aria-controls="diagnostic-detail-battle-log"'));
         expect(diagnosticsHtml.indexOf('href="/battle-log/workbench/"')).toBeLessThan(diagnosticsHtml.indexOf('aria-controls="diagnostic-detail-workbench"'));
+        expect(diagnosticsHtml.indexOf('href="/diagnostics/observed-hostiles/"')).toBeLessThan(diagnosticsHtml.indexOf('aria-controls="diagnostic-detail-observed-hostiles"'));
         expect(diagnosticsHtml.indexOf('href="/diagnostics/cloud-sync/"')).toBeLessThan(diagnosticsHtml.indexOf('aria-controls="diagnostic-detail-cloud"'));
         expect(diagnosticsHtml.indexOf('href="/settings/#diagnostics"')).toBeLessThan(diagnosticsHtml.indexOf('aria-controls="diagnostic-detail-controls"'));
     });

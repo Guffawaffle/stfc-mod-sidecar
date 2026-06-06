@@ -3051,6 +3051,91 @@ h3,
   font-size: 0.78rem;
 }
 
+.observed-hostile-content {
+  margin-top: 8px;
+}
+
+.observed-hostile-entry-card {
+  gap: 6px;
+}
+
+.observed-hostile-entry-card p {
+  margin: 0;
+}
+
+.observed-hostile-entry-card__meta {
+  font-size: 0.82rem;
+}
+
+.observed-hostile-detail-column {
+  display: grid;
+  gap: 12px;
+}
+
+.observed-hostile-detail-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: end;
+  justify-content: space-between;
+  margin-bottom: 0;
+}
+
+.observed-hostile-detail-heading p {
+  margin: 4px 0 0;
+}
+
+.observed-hostile-detail-view {
+  display: grid;
+  gap: 14px;
+}
+
+.observed-hostile-detail-block {
+  display: grid;
+  gap: 8px;
+}
+
+.observed-hostile-detail-block__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: start;
+  justify-content: space-between;
+}
+
+.observed-hostile-detail-block__header .chip-row {
+  margin: 0;
+}
+
+.observed-hostile-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.observed-hostile-detail-section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.observed-hostile-detail-section h3 {
+  font-size: 1rem;
+}
+
+.observed-hostile-detail-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.observed-hostile-detail-list li {
+  overflow-wrap: anywhere;
+}
+
+.observed-hostile-detail-table th {
+  width: 220px;
+}
+
 button,
 .link-button {
   border-radius: 0 999px 999px 0;

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>STFC Sidecar Viewer | Observed Hostile Catalog</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell site-shell">
+      <nav class="site-nav" aria-label="viewer navigation" data-viewer-nav data-current-page="diagnostics"></nav>
+
+      <header class="console-header-rail console-header-rail--with-controls">
+        <span class="console-header-rail__code">DX-03</span>
+        <div class="console-header-rail__title">
+          <h1>Observed Hostile Catalog</h1>
+          <span>Sidecar-local hostile sightings</span>
+        </div>
+        <section class="hero-controls" aria-label="observed hostile catalog controls">
+          <label class="control control--wide">
+            <span>Search</span>
+            <input id="observed-hostile-search" type="search" placeholder="Hull, runtime ID, user ID, source..." />
+          </label>
+          <label class="control">
+            <span>Limit</span>
+            <input id="observed-hostile-limit" type="number" min="10" max="500" step="10" value="200" />
+          </label>
+          <label class="toggle">
+            <input id="observed-hostile-auto-refresh" type="checkbox" checked />
+            <span>Auto refresh</span>
+          </label>
+          <button id="observed-hostile-refresh" type="button">Refresh now</button>
+          <a class="link-button link-button--secondary" href="/api/events?scope=observed&limit=200">Raw events</a>
+        </section>
+        <details class="console-help">
+          <summary aria-label="About Observed Hostile Catalog">?</summary>
+          <p>Grouped sidecar-local hostile sightings derived from stored <code>observed.hostile</code> events.</p>
+        </details>
+      </header>
+
+      <section class="status-strip status-strip--compact" aria-live="polite">
+        <article>
+          <span class="status-label">Source</span>
+          <strong id="observed-hostile-source">Loading…</strong>
+        </article>
+        <article>
+          <span class="status-label">Store</span>
+          <strong id="observed-hostile-store">Loading…</strong>
+        </article>
+        <article>
+          <span class="status-label">Entries</span>
+          <strong id="observed-hostile-entry-count">0</strong>
+        </article>
+        <article>
+          <span class="status-label">Sightings</span>
+          <strong id="observed-hostile-sighting-count">0</strong>
+        </article>
+        <article>
+          <span class="status-label">Latest Seen</span>
+          <strong id="observed-hostile-latest-seen">Waiting for sightings</strong>
+        </article>
+        <article>
+          <span class="status-label">Status</span>
+          <strong id="observed-hostile-status" class="bridge-status" data-state="off">Starting…</strong>
+        </article>
+      </section>
+
+      <section class="content observed-hostile-content">
+        <section class="feed-column observed-hostile-feed">
+          <div class="panel-heading">
+            <h2>Catalog Entries</h2>
+            <p id="observed-hostile-feed-note">Grouped from sidecar-stored hostile sightings. Public sync is unchanged.</p>
+          </div>
+          <div id="observed-hostile-list" class="event-list">
+            <div class="empty-state">Loading observed hostile catalog…</div>
+          </div>
+        </section>
+
+        <section class="detail-column observed-hostile-detail-column">
+          <div class="panel-heading observed-hostile-detail-heading">
+            <div>
+              <h2>Entry Detail</h2>
+              <p>Inspect identity quality, grouped IDs, and the latest raw observation overlay.</p>
+            </div>
+            <div class="module-actions" aria-label="observed hostile detail actions">
+              <a class="link-button link-button--secondary" href="/diagnostics/">Diagnostics</a>
+            </div>
+          </div>
+          <div id="observed-hostile-detail" class="detail-view observed-hostile-detail-view">
+            <div class="empty-state">Select a catalog entry to inspect its grouped hostile evidence.</div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="/diagnostics/observed-hostiles/app.js"></script>
+    <script type="module" src="/shared/shell.js"></script>
+  </body>
+</html>
