@@ -5,6 +5,7 @@ import {
     SIDECAR_BATTLE_EVENTS_PROTOCOL_VERSION,
     SIDECAR_FLEET_RUNTIME_PROTOCOL_VERSION,
     SIDECAR_INGEST_PROTOCOL_VERSION,
+    SIDECAR_OBSERVED_HOSTILES_PROTOCOL_VERSION,
 } from "../../viewer/server/sidecar-ingest.mjs";
 
 describe("viewer sidecar ingest", () => {
@@ -89,6 +90,39 @@ describe("viewer sidecar ingest", () => {
         expect(majelIngest).not.toHaveBeenCalled();
     });
 
+    it("accepts observed.hostiles and appends them through the sidecar event store", async () => {
+        const appendObservedHostileEvents = vi.fn(async (events) => ({
+            backend: "sqlite",
+            received: events.length,
+            stored: events.length,
+            duplicates: 0,
+        }));
+        const observedEvent = sampleObservedHostileEvent();
+
+        const result = await ingestSidecarEnvelope(sampleEnvelope({
+            kind: "observed.hostiles",
+            payloadProtocol: SIDECAR_OBSERVED_HOSTILES_PROTOCOL_VERSION,
+            payload: [observedEvent],
+        }), {
+            normalizeObservedHostileEvents: (payload) => payload,
+            appendObservedHostileEvents,
+            ingestFleetRuntimePayload: vi.fn(),
+        });
+
+        expect(result.statusCode).toBe(202);
+        expect(result.body).toMatchObject({
+            ok: true,
+            protocolVersion: SIDECAR_INGEST_PROTOCOL_VERSION,
+            kind: "observed.hostiles",
+            stored: 1,
+            duplicates: 0,
+        });
+        expect(appendObservedHostileEvents).toHaveBeenCalledWith([observedEvent], expect.objectContaining({
+            kind: "observed.hostiles",
+            batchId: "batch-1",
+        }));
+    });
+
     it("rejects unknown kinds", async () => {
         await expect(ingestSidecarEnvelope(sampleEnvelope({ kind: "diagnostics", payload: {} }), {}))
             .rejects.toThrow("Unsupported sidecar ingest kind");
@@ -106,6 +140,12 @@ describe("viewer sidecar ingest", () => {
             payloadProtocol: SIDECAR_BATTLE_EVENTS_PROTOCOL_VERSION,
             payload: sampleFleetRuntimePayload(),
         }), {})).rejects.toThrow(`fleet.runtime requires payloadProtocol '${SIDECAR_FLEET_RUNTIME_PROTOCOL_VERSION}'.`);
+
+        await expect(ingestSidecarEnvelope(sampleEnvelope({
+            kind: "observed.hostiles",
+            payloadProtocol: SIDECAR_FLEET_RUNTIME_PROTOCOL_VERSION,
+            payload: [sampleObservedHostileEvent()],
+        }), {})).rejects.toThrow(`observed.hostiles requires payloadProtocol '${SIDECAR_OBSERVED_HOSTILES_PROTOCOL_VERSION}'.`);
     });
 
     it("rejects malformed envelopes and invalid payload shapes", async () => {
@@ -131,6 +171,12 @@ describe("viewer sidecar ingest", () => {
             payloadProtocol: SIDECAR_FLEET_RUNTIME_PROTOCOL_VERSION,
             payload: [sampleFleetRuntimePayload()],
         }), {})).rejects.toThrow("fleet.runtime payload must be a fleet runtime snapshot object.");
+
+        await expect(ingestSidecarEnvelope(sampleEnvelope({
+            kind: "observed.hostiles",
+            payloadProtocol: SIDECAR_OBSERVED_HOSTILES_PROTOCOL_VERSION,
+            payload: { type: "observed.hostile" },
+        }), {})).rejects.toThrow("observed.hostiles payload must be an array of sidecar events.");
     });
 });
 
@@ -184,5 +230,23 @@ function sampleFleetRuntimePayload() {
             },
             { slotIndex: 1, present: false },
         ],
+    };
+}
+
+function sampleObservedHostileEvent() {
+    return {
+        protocolVersion: SIDECAR_BATTLE_EVENTS_PROTOCOL_VERSION,
+        type: "observed.hostile",
+        schemaVersion: "stfc.observed.hostile.v0",
+        timestamp: "2026-05-18T12:05:03.000Z",
+        source: "stfc-community-mod",
+        observation: {
+            sourceSurface: "prescan_target_widget",
+            confidence: "strong",
+            hullId: "3066099110",
+            hullName: "Armada Carrier",
+            runtimeFleetId: "4001",
+            locationTranslationId: "847108551",
+        },
     };
 }

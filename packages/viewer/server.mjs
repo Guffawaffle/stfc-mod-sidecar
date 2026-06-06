@@ -61,6 +61,7 @@ import { buildFleetActivitySnapshot } from "./server/fleet-activity.mjs";
 import { createFeedWatcher } from "./server/feed-watcher.mjs";
 import { fleetProjectionStreamSummary, shouldNotifyFleetProjectionChanged } from "./server/fleet-stream-events.mjs";
 import { ingestAcceptedMajelPayload } from "./server/majel-ingest-bridge.mjs";
+import { buildObservedHostileCatalogSnapshot } from "./server/observed-hostile-access.mjs";
 import { ingestSidecarEnvelope } from "./server/sidecar-ingest.mjs";
 import { handleDevRoutes } from "./server/routes/dev-routes.mjs";
 import { handleDiagnosticsRoutes } from "./server/routes/diagnostics-routes.mjs";
@@ -70,6 +71,7 @@ import { handleHealthRoutes } from "./server/routes/health-routes.mjs";
 import { handleMajelRoutes } from "./server/routes/majel-routes.mjs";
 import { handleModInstallRoutes } from "./server/routes/mod-install-routes.mjs";
 import { handleModUninstallRoutes } from "./server/routes/mod-uninstall-routes.mjs";
+import { handleObservedHostileRoutes } from "./server/routes/observed-hostile-routes.mjs";
 import { handleSettingsRoutes } from "./server/routes/settings-routes.mjs";
 import { handleSidecarRoutes } from "./server/routes/sidecar-routes.mjs";
 import { resolvePublicAsset, sendFile, sendJson, sendText } from "./server/static-files.mjs";
@@ -87,12 +89,13 @@ const DEFAULT_BATTLE_FRESH_STALE_MS = 15 * 60 * 1000;
 const STREAM_KEEPALIVE_MS = 30000;
 const SHUTDOWN_GRACE_MS = 5000;
 const BATTLE_EVENT_TYPES = Object.freeze(["battle.event", "battle.capture", "battle.analytics", "battle.report", "catalog.snapshot"]);
+const OBSERVED_HOSTILE_EVENT_TYPES = Object.freeze(["observed.hostile"]);
 const BATTLE_FRESHNESS_EVENT_TYPES = new Set(BATTLE_EVENT_TYPES);
 const SHIP_COMBAT_PREVIEW_SOURCE = "fleet.ship_recent_combat.preview";
 const SHIP_COMBAT_PREVIEW_LIMIT = 3;
 const SHIP_COMBAT_PREVIEW_EVENT_WINDOW = 60;
 const DEVELOPER_EVENT_TYPE_LIST = Object.freeze(["debug.event", "hook.event", "session.event", "integration.event"]);
-const ALL_EVENT_TYPES = Object.freeze([...BATTLE_EVENT_TYPES, ...DEVELOPER_EVENT_TYPE_LIST]);
+const ALL_EVENT_TYPES = Object.freeze([...BATTLE_EVENT_TYPES, ...OBSERVED_HOSTILE_EVENT_TYPES, ...DEVELOPER_EVENT_TYPE_LIST]);
 const DEVELOPER_EVENT_TYPES = new Set(DEVELOPER_EVENT_TYPE_LIST);
 const BARE_UTC_ISO_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/;
 const EXPLICIT_TIMEZONE_PATTERN = /(?:[zZ]|[+-]\d{2}:\d{2})$/;
@@ -249,6 +252,13 @@ const server = createServer(async (request, response) => {
         readBattleIndex,
         readEventDetail,
         readEventsSnapshot,
+    })) {
+        return;
+    }
+
+    if (await handleObservedHostileRoutes(request, response, requestUrl, {
+        defaultLimit,
+        readObservedHostileCatalog,
     })) {
         return;
     }
@@ -1645,6 +1655,7 @@ async function handleSidecarIngest(request, response) {
             developerModeRequiredPayload,
             isDeveloperEvent,
             normalizeBattleEvents: normalizeIncomingEvents,
+            normalizeObservedHostileEvents: normalizeIncomingEvents,
             battleUnavailablePayload: unavailableEventStorePayload,
             appendBattleEvents: eventStore ? async (events) => {
                 const result = await eventStore.append(events);
@@ -1653,6 +1664,20 @@ async function handleSidecarIngest(request, response) {
                     appended: result.stored ?? result.appended ?? events.length,
                     received: result.received ?? events.length,
                     battleIndexUpdates: battleIndexUpdatesFromEvents(events),
+                    storeStatus: "idle",
+                });
+                return {
+                    backend: eventStore.backend,
+                    ...result,
+                };
+            } : null,
+            observedHostilesUnavailablePayload: unavailableEventStorePayload,
+            appendObservedHostileEvents: eventStore ? async (events) => {
+                const result = await eventStore.append(events);
+                broadcastEventUpdate("observed-hostile-ingest", {
+                    appended: result.stored ?? result.appended ?? events.length,
+                    received: result.received ?? events.length,
+                    observedHostileCount: events.length,
                     storeStatus: "idle",
                 });
                 return {
@@ -1930,6 +1955,16 @@ async function readBattleIndex(limit) {
         eventTypes: BATTLE_EVENT_TYPES,
     });
     return buildBattleIndexSnapshot(snapshot, { limit: battleLimit });
+}
+
+async function readObservedHostileCatalog(limit) {
+    const catalogLimit = Math.min(Math.max(limit, 1), 250);
+    const eventScanLimit = Math.min(Math.max(catalogLimit * 8, 50), 2000);
+    const snapshot = await readEventsSnapshot(eventScanLimit, {
+        includeDetails: true,
+        eventTypes: OBSERVED_HOSTILE_EVENT_TYPES,
+    });
+    return buildObservedHostileCatalogSnapshot(snapshot, { limit: catalogLimit });
 }
 
 async function readBattleDetail(battleKey) {
@@ -2412,6 +2447,22 @@ function firstFiniteNumber(...values) {
 }
 
 function summarizeEvent(event) {
+    if (event.type === "observed.hostile") {
+        const observation = asRecord(event.observation);
+        const hullName = asText(observation.hullName);
+        const hullId = asText(observation.hullId);
+        const sourceSurface = asText(observation.sourceSurface) || "observation";
+        const confidence = asText(observation.confidence) || "candidate";
+        const title = hullName || hullId || asText(observation.userId) || asText(observation.runtimeFleetId) || "Observed hostile";
+
+        return {
+            title,
+            subtitle: sourceSurface,
+            chips: [event.type, confidence],
+            timestamp: event.timestamp,
+        };
+    }
+
     if (event.type === "battle.capture") {
         const capture = asRecord(event.capture);
         const summary = asRecord(capture.summary);

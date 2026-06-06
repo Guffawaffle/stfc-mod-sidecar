@@ -4,6 +4,7 @@ import {
   BATTLE_CAPTURE_SCHEMA_VERSION,
   BATTLE_REPORT_SCHEMA_VERSION,
   CATALOG_SNAPSHOT_SCHEMA_VERSION,
+  OBSERVED_HOSTILE_SCHEMA_VERSION,
   type BattleAnalyticsEvent,
   type BattleEvent,
   type BattleCaptureEvent,
@@ -13,6 +14,7 @@ import {
   type HookEvent,
   type IntegrationEvent,
   type JsonObject,
+  type ObservedHostileEvent,
   type SessionEvent,
   type SidecarEvent,
   type SidecarEventType,
@@ -26,6 +28,7 @@ const EVENT_TYPES = new Set<SidecarEventType>([
   "battle.analytics",
   "battle.report",
   "catalog.snapshot",
+  "observed.hostile",
   "session.event",
   "integration.event",
 ]);
@@ -70,6 +73,8 @@ export function isSidecarEvent(value: unknown): value is SidecarEvent {
       return isBattleReportEvent(value);
     case "catalog.snapshot":
       return isCatalogSnapshotEvent(value);
+    case "observed.hostile":
+      return isObservedHostileEvent(value);
     case "session.event":
       return isSessionEvent(value);
     case "integration.event":
@@ -151,6 +156,17 @@ export function isCatalogSnapshotEvent(value: unknown): value is CatalogSnapshot
   }
 
   return true;
+}
+
+export function isObservedHostileEvent(value: unknown): value is ObservedHostileEvent {
+  return (
+    isRecord(value) &&
+    value.type === "observed.hostile" &&
+    value.schemaVersion === OBSERVED_HOSTILE_SCHEMA_VERSION &&
+    isRecord(value.observation) &&
+    isString(value.observation.sourceSurface) &&
+    isString(value.observation.confidence)
+  );
 }
 
 export function isSessionEvent(value: unknown): value is SessionEvent {

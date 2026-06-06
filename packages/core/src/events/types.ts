@@ -11,6 +11,7 @@ export type SidecarEventType =
   | "battle.analytics"
   | "battle.report"
   | "catalog.snapshot"
+  | "observed.hostile"
   | "session.event"
   | "integration.event";
 
@@ -200,6 +201,37 @@ export interface CatalogSnapshotEvent extends SidecarEventBase<"catalog.snapshot
   };
 }
 
+export const OBSERVED_HOSTILE_SCHEMA_VERSION = "stfc.observed.hostile.v0" as const;
+
+export interface ObservedHostileObservation {
+  sourceSurface: string;
+  confidence: string;
+  runtimeFleetId?: string;
+  fleetTypeValue?: number;
+  fleetTypeName?: string;
+  hullId?: string;
+  hullName?: string;
+  hullTypeValue?: number;
+  hullTypeName?: string;
+  threatLevel?: number;
+  locationTranslationId?: string;
+  userId?: string;
+  poiPointer?: string;
+  widgetPointer?: string;
+  controllerPointer?: string;
+  hasAddToQueueButton?: boolean;
+  hasScanEngageButtons?: boolean;
+  hasRewardsButton?: boolean;
+  visibilityStateValue?: number;
+  visibilityStateName?: string;
+  [key: string]: unknown;
+}
+
+export interface ObservedHostileEvent extends SidecarEventBase<"observed.hostile"> {
+  schemaVersion: typeof OBSERVED_HOSTILE_SCHEMA_VERSION;
+  observation: ObservedHostileObservation;
+}
+
 export type SessionPhase =
   | "sidecar_started"
   | "game_detected"
@@ -230,5 +262,6 @@ export type SidecarEvent =
   | BattleAnalyticsEvent
   | BattleReportEvent
   | CatalogSnapshotEvent
+  | ObservedHostileEvent
   | SessionEvent
   | IntegrationEvent;

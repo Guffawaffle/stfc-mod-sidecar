@@ -105,6 +105,24 @@ describe("viewer event routes", () => {
         });
     });
 
+    it("allows observed hostile event scope without developer mode", async () => {
+        const context = baseContext({ developerMode: false });
+        const response = captureResponse();
+
+        await handleEventRoutes(
+            { method: "GET" },
+            response,
+            new URL("http://127.0.0.1/api/events?scope=observed&detail=summary"),
+            context,
+        );
+
+        expect(response.statusCode).toBe(200);
+        expect(context.readEventsSnapshot).toHaveBeenCalledWith(150, {
+            includeDetails: false,
+            eventTypes: ["observed.hostile"],
+        });
+    });
+
     it("delegates event ingest and stream handlers", async () => {
         const context = baseContext();
         const ingestResponse = captureResponse();

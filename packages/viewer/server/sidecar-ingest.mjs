@@ -1,11 +1,14 @@
 export const SIDECAR_INGEST_PROTOCOL_VERSION = "stfc.sidecar.ingest.v1";
 export const SIDECAR_BATTLE_EVENTS_KIND = "battle.events";
+export const SIDECAR_OBSERVED_HOSTILES_KIND = "observed.hostiles";
 export const SIDECAR_FLEET_RUNTIME_KIND = "fleet.runtime";
 export const SIDECAR_EVENTS_PROTOCOL_VERSION = "stfc.sidecar.events.v0";
 export const SIDECAR_BATTLE_EVENTS_PROTOCOL_VERSION = SIDECAR_EVENTS_PROTOCOL_VERSION;
+export const SIDECAR_OBSERVED_HOSTILES_PROTOCOL_VERSION = SIDECAR_EVENTS_PROTOCOL_VERSION;
 export const SIDECAR_FLEET_RUNTIME_PROTOCOL_VERSION = "stfc.fleet.runtime_snapshot.v1";
 
 const BATTLE_EVENT_TYPES = new Set(["battle.event", "battle.capture", "battle.analytics", "battle.report", "catalog.snapshot"]);
+const OBSERVED_HOSTILE_EVENT_TYPES = new Set(["observed.hostile"]);
 
 export async function ingestSidecarEnvelope(envelope, options = {}) {
     const parsed = parseSidecarIngestEnvelope(envelope);
@@ -54,6 +57,35 @@ export async function ingestSidecarEnvelope(envelope, options = {}) {
         };
     }
 
+    if (parsed.kind === SIDECAR_OBSERVED_HOSTILES_KIND) {
+        if (typeof options.appendObservedHostileEvents !== "function") {
+            return unavailableResult(options.observedHostilesUnavailablePayload, "Observed hostile storage is unavailable.");
+        }
+
+        const normalizeObservedHostileEvents = typeof options.normalizeObservedHostileEvents === "function"
+            ? options.normalizeObservedHostileEvents
+            : defaultNormalizeBattleEvents;
+        const events = normalizeObservedHostileEvents(parsed.payload);
+        if (!Array.isArray(events) || events.length === 0) {
+            throw new Error("observed.hostiles payload must contain at least one recognized sidecar event.");
+        }
+        if (events.some((event) => !OBSERVED_HOSTILE_EVENT_TYPES.has(String(event?.type ?? "")))) {
+            throw new Error("observed.hostiles payload must contain only observed.hostile sidecar event types.");
+        }
+
+        const result = await options.appendObservedHostileEvents(events, parsed);
+        return {
+            statusCode: 202,
+            body: {
+                ok: true,
+                protocolVersion: SIDECAR_INGEST_PROTOCOL_VERSION,
+                kind: parsed.kind,
+                received: events.length,
+                ...result,
+            },
+        };
+    }
+
     if (typeof options.ingestFleetRuntimePayload !== "function") {
         return unavailableResult(options.fleetUnavailablePayload, "Fleet broker is unavailable.");
     }
@@ -81,7 +113,7 @@ export function parseSidecarIngestEnvelope(value) {
     }
 
     const kind = requiredString(value.kind, "kind");
-    if (kind !== SIDECAR_BATTLE_EVENTS_KIND && kind !== SIDECAR_FLEET_RUNTIME_KIND) {
+    if (kind !== SIDECAR_BATTLE_EVENTS_KIND && kind !== SIDECAR_OBSERVED_HOSTILES_KIND && kind !== SIDECAR_FLEET_RUNTIME_KIND) {
         throw new Error(`Unsupported sidecar ingest kind '${kind}'.`);
     }
 
@@ -106,6 +138,19 @@ export function parseSidecarIngestEnvelope(value) {
         }
         if (parsed.payload.length === 0) {
             throw new Error("battle.events payload must contain at least one event.");
+        }
+        return parsed;
+    }
+
+    if (parsed.kind === SIDECAR_OBSERVED_HOSTILES_KIND) {
+        if (parsed.payloadProtocol !== SIDECAR_EVENTS_PROTOCOL_VERSION) {
+            throw new Error(`observed.hostiles requires payloadProtocol '${SIDECAR_EVENTS_PROTOCOL_VERSION}'.`);
+        }
+        if (!Array.isArray(parsed.payload)) {
+            throw new Error("observed.hostiles payload must be an array of sidecar events.");
+        }
+        if (parsed.payload.length === 0) {
+            throw new Error("observed.hostiles payload must contain at least one event.");
         }
         return parsed;
     }

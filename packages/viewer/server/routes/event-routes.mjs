@@ -7,14 +7,17 @@ const BATTLE_EVENT_TYPES = Object.freeze([
     "battle.report",
     "catalog.snapshot",
 ]);
-const BATTLE_EVENT_TYPE_SET = new Set(BATTLE_EVENT_TYPES);
+const OBSERVED_EVENT_TYPES = Object.freeze([
+    "observed.hostile",
+]);
 const DEVELOPER_EVENT_TYPES = Object.freeze([
     "debug.event",
     "hook.event",
     "session.event",
     "integration.event",
 ]);
-const KNOWN_EVENT_TYPES = new Set([...BATTLE_EVENT_TYPES, ...DEVELOPER_EVENT_TYPES]);
+const DEVELOPER_EVENT_TYPE_SET = new Set(DEVELOPER_EVENT_TYPES);
+const KNOWN_EVENT_TYPES = new Set([...BATTLE_EVENT_TYPES, ...OBSERVED_EVENT_TYPES, ...DEVELOPER_EVENT_TYPES]);
 
 export async function handleEventRoutes(request, response, requestUrl, context) {
     if (requestUrl.pathname === "/api/battles") {
@@ -121,7 +124,7 @@ function resolveEventScope(requestUrl, context) {
         };
     }
 
-    const hasDeveloperTypes = eventTypes === null || eventTypes.some((eventType) => !BATTLE_EVENT_TYPE_SET.has(eventType));
+    const hasDeveloperTypes = eventTypes === null || eventTypes.some((eventType) => DEVELOPER_EVENT_TYPE_SET.has(eventType));
     if (hasDeveloperTypes && !context.developerMode) {
         return {
             ok: false,
@@ -140,6 +143,10 @@ function eventTypesForScope(scope) {
 
     if (scope === "debug") {
         return [...DEVELOPER_EVENT_TYPES];
+    }
+
+    if (scope === "observed") {
+        return [...OBSERVED_EVENT_TYPES];
     }
 
     if (scope === "all") {
