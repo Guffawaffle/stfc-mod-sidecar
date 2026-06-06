@@ -42,6 +42,8 @@ describe("battle explanation projection", () => {
             hullDamageDisplay: "150",
             shieldDamageDisplay: "200",
             mitigatedDamageDisplay: "15",
+            mitigatedIsolyticDamageDisplay: "482,477.8",
+            mitigatedApexBarrierDisplay: "16,528.6",
             isolyticDamageDisplay: "200",
         });
         expect(explanation.damageSummary.target).toMatchObject({
@@ -61,16 +63,16 @@ describe("battle explanation projection", () => {
         });
         expect(explanation.runtimeEffects).toEqual([
             expect.objectContaining({
-                label: "Borg Hugh below-decks Adaptive Analysis observed at 0.7",
-                sourceLabel: "Borg Hugh",
+                label: "Synthetic Officer below-decks Synthetic Ability observed at 0.7",
+                sourceLabel: "Synthetic Officer",
                 sourceDomain: "officer",
                 sourceRef: "4290764940",
-                sourceName: "Borg Hugh",
+                sourceName: "Synthetic Officer",
                 sourceLocaKey: "50001",
                 effectRef: "1120204726",
                 effectSlot: "belowDecksAbilityId",
-                effectName: "Adaptive Analysis",
-                effectLabel: "Adaptive Analysis",
+                effectName: "Synthetic Ability",
+                effectLabel: "Synthetic Ability",
                 valueDisplay: "0.7",
                 triggeredCount: 1,
                 observedCount: 2,
@@ -98,6 +100,60 @@ describe("battle explanation projection", () => {
         });
         expect(explanation.unresolved.runtimeEffectRefs).toEqual(["888", "999"]);
         expect(explanation.unresolved.catalogRefs).toEqual([]);
+        expect(explanation.battleTimeline).toMatchObject({
+            schema: "stfc.battle.timeline.v0",
+            summary: {
+                roundCount: 2,
+                unresolvedCandidateCount: 1,
+            },
+            participantsByShipIdExact: {
+                "ship-a": expect.objectContaining({
+                    shipLabel: "USS Northcutt",
+                    componentIdsExact: ["812617665"],
+                }),
+            },
+        });
+        expect(explanation.battleTimeline.events.map((event) => event.type)).toEqual([
+            "ability_applied",
+            "attack",
+            "mitigation",
+            "ability_applied",
+            "shield_depleted",
+            "status",
+            "attack",
+            "mitigation",
+            "attack",
+            "mitigation",
+        ]);
+        expect(explanation.battleTimeline.events.find((event) => event.type === "mitigation")).toMatchObject({
+            details: [
+                "Mitigates 10 Standard damage",
+                "Mitigates 482,477 Isolytic damage",
+                "Mitigates 16,528 using Apex Barrier",
+            ],
+            damage: {
+                mitigatedStandardDamage: 10,
+                mitigatedIsolyticDamage: 482477.80000000005,
+                mitigatedApexBarrier: 16528.6,
+            },
+            confidence: "native_display_field_projection",
+        });
+        expect(explanation.battleTimeline.events.find((event) => event.type === "attack")).toMatchObject({
+            details: expect.arrayContaining([
+                "USS Northcutt Deals 50 Isolytic damage",
+                "Lv.60 L60 Exborg Explorer Receives 200 Shield Health damage",
+                "Lv.60 L60 Exborg Explorer Receives 100 Hull Health damage",
+            ]),
+        });
+        expect(explanation.battleTimeline.diagnostics.unresolvedCandidates).toEqual([
+            expect.objectContaining({
+                type: "unresolved_candidate",
+                sourceRef: "999",
+                effectRef: "888",
+            }),
+        ]);
+        expect(JSON.stringify(explanation.battleTimeline.events)).not.toContain("\"componentIds");
+        expect(JSON.stringify(explanation.battleTimeline.events)).not.toContain("unresolved_candidate");
         expect(explanation.nonClaims).toContain("CSV ability rows remain unpromoted.");
         expect(analytics).toEqual(before);
     });
@@ -119,6 +175,12 @@ describe("battle explanation projection", () => {
         expect(detail.derivedViews.battleExplanation).toMatchObject({
             schema: "stfc.battle.explanation.v0",
             headline: "USS Northcutt defeated Lv.60 L60 Exborg Explorer in 2 rounds.",
+        });
+        expect(detail.derivedViews.battleTimeline).toMatchObject({
+            schema: "stfc.battle.timeline.v0",
+            summary: {
+                eventCount: 8,
+            },
         });
         expect(detail.events.map((entry) => entry.event.type)).toEqual([
             "battle.capture",
@@ -231,9 +293,18 @@ function analyticsEvent() {
         analytics: {
             summary: { outcome: "initiator_victory", roundCount: 2 },
             attackRows: [
-                attackRow("ship-a", "ship-b", "812617665", { hull: 100, shield: 200, mitigated: 10, totalIsolytic: 50 }, true),
-                attackRow("ship-a", "ship-b", "812617665", { hull: 50, shield: 0, mitigated: 5, totalIsolytic: 150 }, "YES"),
-                attackRow("ship-b", "ship-a", "9999999999", { hull: 25, shield: 10, mitigated: 2, totalIsolytic: 0 }, false),
+                attackRow("ship-a", "ship-b", "812617665", {
+                    hull: 100,
+                    targetHullRemaining: 0,
+                    shield: 200,
+                    targetShieldRemaining: 0,
+                    mitigated: 10,
+                    totalIsolytic: 50,
+                    unknownScalarA: 482477.80000000005,
+                    unknownScalarB: 16528.6,
+                }, true),
+                attackRow("ship-a", "ship-b", "812617665", { hull: 50, shield: 0, mitigated: 5, totalIsolytic: 150 }, "YES", { subRound: 2 }),
+                attackRow("ship-b", "ship-a", "9999999999", { hull: 25, shield: 10, mitigated: 2, totalIsolytic: 0 }, false, { subRound: 3 }),
             ],
             experimental: {
                 runtimeAbilityRowCandidates: [],
@@ -246,7 +317,7 @@ function analyticsEvent() {
     };
 }
 
-function attackRow(attackerShipId, targetShipId, componentId, damage, critical) {
+function attackRow(attackerShipId, targetShipId, componentId, damage, critical, extra = {}) {
     return {
         round: 1,
         subRound: 1,
@@ -256,6 +327,7 @@ function attackRow(attackerShipId, targetShipId, componentId, damage, critical) 
         damage,
         critical: critical === true,
         criticalHit: critical === "YES" ? "YES" : critical === true ? true : false,
+        ...extra,
     };
 }
 
@@ -271,8 +343,22 @@ function reportEvent() {
         report: {
             summary: { outcome: "initiator_victory", roundCount: 2 },
             fleets: [
-                { side: "initiator", uid: "player-1", displayName: "Raw Player", shipIdsExact: ["ship-a"], hullIdsExact: ["311330874"] },
-                { side: "target", uid: "hostile-1", displayName: "Lv.60 L60 Exborg Explorer", shipIdsExact: ["ship-b"], hullIdsExact: ["2222222222"] },
+                {
+                    side: "initiator",
+                    uid: "player-1",
+                    displayName: "Raw Player",
+                    shipIdsExact: ["ship-a"],
+                    hullIdsExact: ["311330874"],
+                    componentIdsExact: ["812617665"],
+                },
+                {
+                    side: "target",
+                    uid: "hostile-1",
+                    displayName: "Lv.60 L60 Exborg Explorer",
+                    shipIdsExact: ["ship-b"],
+                    hullIdsExact: ["2222222222"],
+                    componentIdsExact: ["9999999999"],
+                },
             ],
         },
     };
@@ -321,7 +407,7 @@ function catalogSnapshot() {
                 officers: {
                     "4290764940": {
                         id: "4290764940",
-                        name: "Borg Hugh",
+                        name: "Synthetic Officer",
                         unresolved: true,
                         locaKey: "50001",
                         belowDecksAbilityId: "1120204726",
@@ -330,7 +416,7 @@ function catalogSnapshot() {
                 abilities: {
                     "1120204726": {
                         id: "1120204726",
-                        name: "Adaptive Analysis",
+                        name: "Synthetic Ability",
                         unresolved: false,
                     },
                 },
@@ -356,28 +442,36 @@ function runtimeEffectOverlay() {
                 schema: "stfc.battle.resolved_runtime_effect.v0",
                 sourceDomain: "officer",
                 sourceRef: "4290764940",
-                sourceName: "Borg Hugh",
+                sourceName: "Synthetic Officer",
                 sourceLocaKey: "50001",
                 effectRef: "1120204726",
                 effectSlot: "belowDecksAbilityId",
-                effectName: "Adaptive Analysis",
+                effectName: "Synthetic Ability",
                 valueDisplay: "0.7",
                 phase: "post_attack",
                 triggered: true,
+                round: 1,
+                subRound: 1,
+                ownerShipId: "ship-a",
+                targetShipId: "ship-b",
                 confidence: "exact_catalog_field_match",
             },
             {
                 schema: "stfc.battle.resolved_runtime_effect.v0",
                 sourceDomain: "officer",
                 sourceRef: "4290764940",
-                sourceName: "Borg Hugh",
+                sourceName: "Synthetic Officer",
                 sourceLocaKey: "50001",
                 effectRef: "1120204726",
                 effectSlot: "belowDecksAbilityId",
-                effectName: "Adaptive Analysis",
+                effectName: "Synthetic Ability",
                 valueDisplay: "0.7",
                 phase: "pre_attack",
                 triggered: false,
+                round: 1,
+                subRound: 1,
+                ownerShipId: "ship-a",
+                targetShipId: "ship-b",
                 confidence: "exact_catalog_field_match",
             },
             {
@@ -388,6 +482,9 @@ function runtimeEffectOverlay() {
                 valueDisplay: "1",
                 phase: "post_attack",
                 triggered: false,
+                round: 1,
+                subRound: 1,
+                ownerShipId: "ship-a",
                 confidence: "unresolved",
             },
         ],

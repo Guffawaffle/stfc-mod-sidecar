@@ -36,7 +36,7 @@ describe("runtime effect enrichment", () => {
                 officers: {
                     "4290764940": {
                         id: "4290764940",
-                        name: "Borg Hugh",
+                        name: "Synthetic Officer",
                         unresolved: true,
                         locaKey: "50001",
                         belowDecksAbilityId: "1120204726",
@@ -45,7 +45,7 @@ describe("runtime effect enrichment", () => {
                 abilities: {
                     "1120204726": {
                         id: "1120204726",
-                        name: "Adaptive Analysis",
+                        name: "Synthetic Ability",
                         unresolved: false,
                     },
                 },
@@ -62,11 +62,11 @@ describe("runtime effect enrichment", () => {
             schema: "stfc.battle.resolved_runtime_effect.v0",
             sourceRef: "4290764940",
             sourceDomain: "officer",
-            sourceName: "Borg Hugh",
+            sourceName: "Synthetic Officer",
             sourceLocaKey: "50001",
             effectRef: "1120204726",
             effectSlot: "belowDecksAbilityId",
-            effectName: "Adaptive Analysis",
+            effectName: "Synthetic Ability",
             valueDisplay: "0.7",
             phase: "post_attack",
             markerKind: "triggered_effect_value",

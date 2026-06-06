@@ -60,6 +60,7 @@ export function buildBattleDetailSnapshot(snapshot = {}, battleKey = "") {
         runtimeEffectOverlay: enrichment.overlay,
         derivedViews: {
             battleExplanation: enrichment.explanation,
+            battleTimeline: enrichment.explanation?.battleTimeline ?? null,
         },
     };
 }

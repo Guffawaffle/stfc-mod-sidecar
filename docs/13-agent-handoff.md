@@ -20,12 +20,11 @@ Date: 2026-04-27 local / 2026-04-28 UTC.
 
 ## Open Battle Analytics Work
 
-- Do not rename `damage.unknownScalarA` or `damage.unknownScalarB` yet.
-- Needed evidence: Prime CSV rows for the same battle ID and battle-event index showing:
-  - `Mitigated Isolytic Damage`
-  - `Mitigated Apex Barrier`
-  - `Charging Weapons %`
-- If Prime rows are unavailable, use controlled captures where one mechanic changes at a time.
+- `damage.unknownScalarA` and `damage.unknownScalarB` have native-report display evidence for sidecar projection:
+  - `damage.unknownScalarA` -> `mitigatedIsolyticDamage`
+  - `damage.unknownScalarB` -> `mitigatedApexBarrier`
+- Keep stored/raw `battle.analytics` compatibility unless the producer contract is intentionally migrated.
+- Needed evidence still open: Prime CSV rows or controlled captures for `Charging Weapons %`.
 
 ## Sidecar Scale Direction
 

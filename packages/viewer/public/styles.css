@@ -1337,6 +1337,26 @@ button {
   min-height: auto;
 }
 
+.diagnostic-details {
+  min-width: 0;
+  border: 1px solid var(--report-line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.diagnostic-details > summary {
+  padding: 12px 14px;
+  color: var(--report-ink);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.diagnostic-details > .table-scroll {
+  border-inline: 0;
+  border-bottom: 0;
+  border-radius: 0 0 10px 10px;
+}
+
 .catalog-band {
   min-height: clamp(420px, 54vh, 780px);
 }

@@ -163,6 +163,7 @@ function buildBattleGroups(snapshot) {
         analyticsEntry: null,
         catalogEntry: null,
         battleExplanation: null,
+        battleTimeline: null,
         detailLoaded: false,
     })).filter((battle) => battle.key);
 }
@@ -263,6 +264,7 @@ async function renderReport() {
 
     const html = `
     ${renderBattleExplanation(model)}
+    ${renderBattleTimeline(model)}
     ${renderBattleDetails(model)}
     ${renderFleetComparison(model)}
     ${renderSignalUptime(model)}
@@ -322,9 +324,14 @@ async function hydrateBattleGroup(group) {
         if (Array.isArray(cachedDetail)) {
             group.entries = cachedDetail;
             group.battleExplanation = null;
+            group.battleTimeline = null;
         } else {
             group.entries = Array.isArray(cachedDetail.entries) ? cachedDetail.entries : [];
             group.battleExplanation = cachedDetail.derivedViews?.battleExplanation ?? cachedDetail.battleExplanation ?? null;
+            group.battleTimeline = cachedDetail.derivedViews?.battleTimeline
+                ?? cachedDetail.battleTimeline
+                ?? group.battleExplanation?.battleTimeline
+                ?? null;
         }
     } else {
         const response = await fetch(`/api/battles/${encodeURIComponent(group.key)}`, { cache: "no-store" });
@@ -334,9 +341,16 @@ async function hydrateBattleGroup(group) {
         }
         group.entries = payload.events;
         group.battleExplanation = payload.derivedViews?.battleExplanation ?? payload.battleExplanation ?? null;
+        group.battleTimeline = payload.derivedViews?.battleTimeline
+            ?? payload.battleTimeline
+            ?? group.battleExplanation?.battleTimeline
+            ?? null;
         state.detailsByLine.set(`battle:${group.key}`, {
             entries: group.entries,
-            battleExplanation: group.battleExplanation,
+            derivedViews: {
+                battleExplanation: group.battleExplanation,
+                battleTimeline: group.battleTimeline,
+            },
         });
     }
     group.detailLoaded = true;
@@ -388,6 +402,7 @@ function applyBattleIndexUpdates(updates) {
             analyticsEntry: existing?.analyticsEntry ?? null,
             catalogEntry: existing?.catalogEntry ?? null,
             battleExplanation: existing?.battleExplanation ?? null,
+            battleTimeline: existing?.battleTimeline ?? null,
             detailLoaded: false,
         });
         state.detailsByLine.delete(`battle:${key}`);
@@ -465,6 +480,7 @@ function buildReportModel(group) {
         analyticsEvent,
         catalogEvent,
         battleExplanation: group.battleExplanation ?? null,
+        battleTimeline: group.battleTimeline ?? group.battleExplanation?.battleTimeline ?? null,
         catalog,
         summary,
         combatants,
@@ -710,6 +726,96 @@ function renderExplanationRuntimeRow(effect) {
       <td>${escapeHtml(effect.humanClaim ?? "--")}</td>
     </tr>
   `;
+}
+
+function renderBattleTimeline(model) {
+    const timeline = model.battleTimeline;
+    if (!timeline || typeof timeline !== "object") {
+        return "";
+    }
+
+    const events = Array.isArray(timeline.events) ? timeline.events.slice(0, 200) : [];
+    const unresolved = arrayFrom(timeline.diagnostics?.unresolvedCandidates);
+    const rows = events.map(renderBattleTimelineRow).join("");
+    const unresolvedRows = unresolved.slice(0, 80).map(renderBattleTimelineDiagnosticRow).join("");
+
+    return `
+    <section class="report-band battle-timeline-band">
+      <div class="report-band__heading">
+        <div>
+          <p class="eyebrow">Battle Timeline</p>
+          <h2>Native-Style Battle Events</h2>
+        </div>
+        <span class="line-badge">sidecar derived</span>
+      </div>
+      <div class="metric-grid metric-grid--inline">
+        ${renderMetric("Events", (timeline.summary?.eventCount ?? events.length) || "--")}
+        ${renderMetric("Rounds", timeline.summary?.roundCount ?? "--")}
+        ${renderMetric("Participants", Object.keys(timeline.participantsByShipIdExact ?? {}).length || "--")}
+        ${renderMetric("Hidden Candidates", (timeline.summary?.unresolvedCandidateCount ?? unresolved.length) || "0")}
+      </div>
+      <div class="table-scroll table-scroll--tall" data-scroll-key="battle-timeline">
+        <table class="report-table report-table--compact report-table--wide">
+          <thead>
+            <tr>
+              <th>Round/Event</th>
+              <th>Actor</th>
+              <th>Event</th>
+              <th>Target</th>
+              <th>Details</th>
+              <th>Source/Confidence</th>
+            </tr>
+          </thead>
+          <tbody>${rows || `<tr><td colspan="6">No derived battle timeline is available yet.</td></tr>`}</tbody>
+        </table>
+      </div>
+      <details class="diagnostic-details">
+        <summary>Unresolved runtime candidates (${escapeHtml(String(unresolved.length))})</summary>
+        <div class="table-scroll" data-scroll-key="battle-timeline-unresolved">
+          <table class="report-table report-table--compact">
+            <thead><tr><th>Round/Event</th><th>Actor</th><th>Candidate</th><th>Value</th><th>Confidence</th></tr></thead>
+            <tbody>${unresolvedRows || `<tr><td colspan="5">No unresolved runtime candidates.</td></tr>`}</tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+  `;
+}
+
+function renderBattleTimelineRow(event) {
+    const round = timelineRoundLabel(event);
+    const details = arrayFrom(event.details).join("\n");
+    const confidence = [event.source, event.confidence].filter(Boolean).join(" | ") || "--";
+
+    return `
+    <tr>
+      <td><strong>${escapeHtml(round)}</strong><span>${escapeHtml(titleCase(event.type ?? "event"))}</span></td>
+      <td>${escapeHtml(event.actor ?? "--")}</td>
+      <td>${escapeHtml(event.event ?? "--")}</td>
+      <td>${escapeHtml(event.target ?? "--")}</td>
+      <td>${escapeHtml(details || "--")}</td>
+      <td>${escapeHtml(confidence)}</td>
+    </tr>
+  `;
+}
+
+function renderBattleTimelineDiagnosticRow(event) {
+    return `
+    <tr>
+      <td>${escapeHtml(timelineRoundLabel(event))}</td>
+      <td>${escapeHtml(event.actor ?? "--")}</td>
+      <td>${escapeHtml(event.event ?? "--")}</td>
+      <td>${escapeHtml(event.valueDisplay ?? "--")}</td>
+      <td>${escapeHtml(event.confidence ?? "--")}</td>
+    </tr>
+  `;
+}
+
+function timelineRoundLabel(event) {
+    const round = event.round != null && event.subRound != null
+        ? `${event.round}.${event.subRound}`
+        : event.round ?? event.subRound ?? "--";
+    return event.sequence ? `${round} #${event.sequence}` : String(round);
 }
 
 function slotLabel(slot) {

@@ -1,4 +1,5 @@
 const BATTLE_EXPLANATION_SCHEMA = "stfc.battle.explanation.v0";
+const BATTLE_TIMELINE_SCHEMA = "stfc.battle.timeline.v0";
 
 const NON_CLAIMS = Object.freeze([
     "Runtime effects are observed candidate rows, not finalized proc-rate math.",
@@ -7,6 +8,15 @@ const NON_CLAIMS = Object.freeze([
 ]);
 
 const SIDE_ORDER = Object.freeze(["initiator", "target", "unknown"]);
+const TIMELINE_PHASE_ORDER = Object.freeze({
+    round_start: 10,
+    pre_attack: 20,
+    attack: 30,
+    mitigation: 40,
+    post_attack: 50,
+    status: 60,
+    unresolved_candidate: 90,
+});
 
 export function buildBattleExplanation({
     battleId,
@@ -29,6 +39,16 @@ export function buildBattleExplanation({
     const runtimeEffects = buildRuntimeEffects(runtimeEffectOverlay);
     const runtimeEffectsMeta = buildRuntimeEffectsMeta(runtimeEffectOverlay, runtimeEffects);
     const unresolved = buildUnresolved(runtimeEffectOverlay, participants, weaponSummary, catalog);
+    const battleTimeline = buildBattleTimeline({
+        battleId,
+        analyticsEvent,
+        reportEvent,
+        captureEvent,
+        participants,
+        attackRows,
+        runtimeEffectOverlay,
+        outcome,
+    });
 
     return {
         schema: BATTLE_EXPLANATION_SCHEMA,
@@ -45,6 +65,7 @@ export function buildBattleExplanation({
         runtimeEffects,
         runtimeEffectsMeta,
         unresolved,
+        battleTimeline,
         safeClaims: buildSafeClaims(runtimeEffects, unresolved),
         nonClaims: [...NON_CLAIMS],
     };
@@ -63,6 +84,12 @@ function buildParticipants(report, capture, catalog) {
         const hullIds = idsFrom(raw.hullIdsExact, raw.hull_ids_exact, raw.hullIds, raw.hull_ids);
         const hullId = hullIds[0] ?? null;
         const hull = hullId ? catalog.lookup("hulls", hullId) : null;
+        const componentIds = idsFrom(
+            raw.componentIdsExact,
+            raw.component_ids_exact,
+            raw.componentIds,
+            raw.component_ids,
+        );
         const displayName = entryName(player)
             ?? text(raw.displayName)
             ?? text(raw.display_name)
@@ -77,6 +104,7 @@ function buildParticipants(report, capture, catalog) {
             shipIds,
             hullId,
             hullType: entryType(hull),
+            componentIds,
             participantKind: text(raw.participantKind) ?? text(raw.participant_kind),
             uid,
         };
@@ -412,18 +440,22 @@ function damageFromRow(row) {
         hull: numeric(row.hullDamage, damage.hull),
         shield: numeric(row.shieldDamage, damage.shield),
         mitigated: numeric(row.mitigatedDamage, damage.mitigated),
+        mitigatedIsolytic: numeric(row.mitigatedIsolyticDamage, damage.mitigatedIsolyticDamage, damage.unknownScalarA),
+        mitigatedApexBarrier: numeric(row.mitigatedApexBarrier, damage.mitigatedApexBarrier, damage.unknownScalarB),
         isolytic: numeric(row.totalIsolyticDamage, row.totalIsolytic, damage.totalIsolytic, damage.isolytic),
     };
 }
 
 function emptyDamageTotals() {
-    return { hull: 0, shield: 0, mitigated: 0, isolytic: 0 };
+    return { hull: 0, shield: 0, mitigated: 0, mitigatedIsolytic: 0, mitigatedApexBarrier: 0, isolytic: 0 };
 }
 
 function addDamage(total, damage) {
     total.hull += damage.hull ?? 0;
     total.shield += damage.shield ?? 0;
     total.mitigated += damage.mitigated ?? 0;
+    total.mitigatedIsolytic += damage.mitigatedIsolytic ?? 0;
+    total.mitigatedApexBarrier += damage.mitigatedApexBarrier ?? 0;
     total.isolytic += damage.isolytic ?? 0;
 }
 
@@ -432,8 +464,405 @@ function displayDamageTotals(total) {
         hullDamageDisplay: displayNumber(total.hull),
         shieldDamageDisplay: displayNumber(total.shield),
         mitigatedDamageDisplay: displayNumber(total.mitigated),
+        mitigatedIsolyticDamageDisplay: displayNumber(total.mitigatedIsolytic),
+        mitigatedApexBarrierDisplay: displayNumber(total.mitigatedApexBarrier),
         isolyticDamageDisplay: displayNumber(total.isolytic),
     };
+}
+
+function buildBattleTimeline({
+    battleId,
+    analyticsEvent,
+    reportEvent,
+    captureEvent,
+    participants,
+    attackRows,
+    runtimeEffectOverlay,
+    outcome,
+} = {}) {
+    const participantIndex = buildTimelineParticipantIndex(participants);
+    const events = [
+        ...buildRuntimeTimelineEvents(runtimeEffectOverlay, participantIndex),
+        ...buildAttackTimelineEvents(attackRows, participantIndex),
+    ].sort(compareTimelineEvents)
+        .map((event, index) => removeUndefined({
+            ...event,
+            sequence: index + 1,
+            sortKey: undefined,
+        }));
+
+    const unresolvedCandidates = arrayFrom(runtimeEffectOverlay?.resolvedRuntimeEffects)
+        .filter((effect) => isRecord(effect) && effect.confidence !== "exact_catalog_field_match")
+        .map((effect, index) => unresolvedTimelineCandidate(effect, index, participantIndex));
+
+    return {
+        schema: BATTLE_TIMELINE_SCHEMA,
+        battleId: exactString(battleId)
+            ?? exactString(analyticsEvent?.battleId)
+            ?? exactString(reportEvent?.battleId)
+            ?? exactString(captureEvent?.battleId)
+            ?? null,
+        participantsByShipIdExact: participantIndex.participantsByShipIdExact,
+        summary: {
+            roundCount: outcome?.roundCount ?? null,
+            eventCount: events.length,
+            unresolvedCandidateCount: unresolvedCandidates.length,
+        },
+        events,
+        diagnostics: {
+            unresolvedCandidates,
+            legacyDamageFieldAliases: [
+                {
+                    rawField: "damage.mitigated",
+                    derivedField: "mitigatedStandardDamage",
+                    label: "Mitigated Standard Damage",
+                },
+                {
+                    rawField: "damage.unknownScalarA",
+                    derivedField: "mitigatedIsolyticDamage",
+                    label: "Mitigated Isolytic Damage",
+                    evidence: "Native battle report screenshots show this slot as mitigated Isolytic damage.",
+                },
+                {
+                    rawField: "damage.unknownScalarB",
+                    derivedField: "mitigatedApexBarrier",
+                    label: "Mitigated Apex Barrier",
+                    evidence: "Native battle report screenshots show this slot as mitigation using Apex Barrier.",
+                },
+            ],
+        },
+        nonClaims: [...NON_CLAIMS],
+    };
+}
+
+function buildTimelineParticipantIndex(participants) {
+    const participantsByShipIdExact = {};
+    const shipLookup = new Map();
+
+    for (const participant of participants) {
+        for (const shipId of arrayFrom(participant.shipIds)) {
+            const entry = removeUndefined({
+                shipIdExact: shipId,
+                side: participant.side,
+                displayName: participant.displayName,
+                shipLabel: participant.shipLabel,
+                hullId: participant.hullId,
+                hullType: participant.hullType,
+                participantKind: participant.participantKind,
+                uid: participant.uid,
+                componentIdsExact: arrayFrom(participant.componentIds),
+            });
+            participantsByShipIdExact[shipId] = entry;
+            shipLookup.set(shipId, entry);
+        }
+    }
+
+    return { participantsByShipIdExact, shipLookup };
+}
+
+function buildRuntimeTimelineEvents(runtimeEffectOverlay, participantIndex) {
+    return arrayFrom(runtimeEffectOverlay?.resolvedRuntimeEffects)
+        .filter((effect) => isRecord(effect) && effect.confidence === "exact_catalog_field_match")
+        .map((effect, index) => {
+            const ownerShipId = exactString(effect.ownerShipId);
+            const targetShipId = exactString(effect.targetShipId);
+            const actor = timelineActor(ownerShipId, participantIndex, effect.ownerHullName ?? sourceEffectLabel(effect));
+            const target = timelineActor(targetShipId, participantIndex, effect.targetHullName);
+            const source = sourceEffectLabel(effect);
+            const ability = effectDisplayLabel(effect);
+            const details = [
+                source && ability ? `${source} / ${ability}` : source ?? ability,
+                effect.valueDisplay ? `Observed value: ${effect.valueDisplay}` : null,
+                effect.phase ? `Phase: ${effect.phase}` : null,
+            ].filter(Boolean);
+
+            return removeUndefined({
+                eventId: `runtime:${effect.candidateIndex ?? index}`,
+                type: "ability_applied",
+                phase: exactString(effect.phase) ?? "pre_attack",
+                round: numberOrNull(effect.round),
+                subRound: numberOrNull(effect.subRound),
+                actor,
+                actorShipIdExact: ownerShipId,
+                event: ability ? `${source} - ${ability}` : `${source} observed`,
+                target,
+                targetShipIdExact: targetShipId,
+                details,
+                sourceRef: effect.sourceRef,
+                effectRef: effect.effectRef,
+                effectSlot: effect.effectSlot,
+                valueDisplay: effect.valueDisplay,
+                confidence: effect.confidence,
+                provenance: runtimeNameProvenance(effect),
+                sortKey: timelineSortKey(effect.round, effect.subRound, exactString(effect.phase) ?? "pre_attack", index),
+            });
+        });
+}
+
+function buildAttackTimelineEvents(attackRows, participantIndex) {
+    return attackRows.flatMap((row, index) => {
+        const attackerShipId = firstId(
+            row.attackerShipIdExact,
+            row.attacker_ship_id_exact,
+            isRecord(row.attacker) ? row.attacker.shipIdExact : null,
+            row.attackerShipId,
+            row.attacker_ship_id,
+            isRecord(row.attacker) ? row.attacker.shipId : null,
+        );
+        const targetShipId = firstId(
+            row.targetShipIdExact,
+            row.target_ship_id_exact,
+            isRecord(row.target) ? row.target.shipIdExact : null,
+            row.targetShipId,
+            row.target_ship_id,
+            isRecord(row.target) ? row.target.shipId : null,
+        );
+        const componentId = firstId(row.componentIdExact, row.component_id_exact, row.componentId, row.component_id);
+        const round = numberOrNull(row.round);
+        const subRound = numberOrNull(row.subRound);
+        const damage = timelineDamageFromRow(row);
+        const actor = timelineActor(attackerShipId, participantIndex, text(row.attackerShip) ?? text(row.attackerName));
+        const target = timelineActor(targetShipId, participantIndex, text(row.targetShip) ?? text(row.targetName));
+        const critical = row.critical === true || row.criticalHit === true || text(row.criticalHit)?.toUpperCase() === "YES";
+        const attackDetails = attackDetailLines(actor, target, damage);
+        const events = [
+            removeUndefined({
+                eventId: `attack:${index}`,
+                type: "attack",
+                phase: "attack",
+                round,
+                subRound,
+                actor,
+                actorShipIdExact: attackerShipId,
+                event: critical ? "Critical weapon attack" : "Weapon attack",
+                target,
+                targetShipIdExact: targetShipId,
+                componentIdExact: componentId,
+                details: attackDetails,
+                damage,
+                confidence: "stable_attack_payload_v1",
+                source: timelineAttackSource(row),
+                metadata: {
+                    outgoingDamageFormula: outgoingFormulaStatus(damage),
+                },
+                sortKey: timelineSortKey(round, subRound, "attack", index),
+            }),
+        ];
+
+        const mitigationDetails = mitigationDetailLines(damage);
+        if (mitigationDetails.length > 0) {
+            events.push(removeUndefined({
+                eventId: `mitigation:${index}`,
+                type: "mitigation",
+                phase: "mitigation",
+                round,
+                subRound,
+                actor: target,
+                actorShipIdExact: targetShipId,
+                event: "Damage mitigated",
+                target: actor,
+                targetShipIdExact: attackerShipId,
+                componentIdExact: componentId,
+                details: mitigationDetails,
+                damage: {
+                    mitigatedStandardDamage: damage.mitigatedStandardDamage,
+                    mitigatedIsolyticDamage: damage.mitigatedIsolyticDamage,
+                    mitigatedApexBarrier: damage.mitigatedApexBarrier,
+                },
+                confidence: "native_display_field_projection",
+                source: "derived.damage_projection",
+                sortKey: timelineSortKey(round, subRound, "mitigation", index),
+            }));
+        }
+
+        events.push(...statusTimelineEvents(row, index, actor, target, attackerShipId, targetShipId, componentId, damage));
+        return events;
+    });
+}
+
+function attackDetailLines(actor, target, damage) {
+    const lines = [];
+    if (damage.standardDamage != null) {
+        lines.push(`${actor} Deals ${displayIntegerDamage(damage.standardDamage)} Standard damage`);
+    }
+    if (damage.totalIsolyticDamage != null) {
+        lines.push(`${actor} Deals ${displayIntegerDamage(damage.totalIsolyticDamage)} Isolytic damage`);
+    }
+    if (damage.shieldDamage != null) {
+        lines.push(`${target} Receives ${displayIntegerDamage(damage.shieldDamage)} Shield Health damage`);
+    }
+    if (damage.hullDamage != null) {
+        lines.push(`${target} Receives ${displayIntegerDamage(damage.hullDamage)} Hull Health damage`);
+    }
+    return lines;
+}
+
+function mitigationDetailLines(damage) {
+    return [
+        damage.mitigatedStandardDamage != null
+            ? `Mitigates ${displayIntegerDamage(damage.mitigatedStandardDamage)} Standard damage`
+            : null,
+        damage.mitigatedIsolyticDamage != null
+            ? `Mitigates ${displayIntegerDamage(damage.mitigatedIsolyticDamage)} Isolytic damage`
+            : null,
+        damage.mitigatedApexBarrier != null
+            ? `Mitigates ${displayIntegerDamage(damage.mitigatedApexBarrier)} using Apex Barrier`
+            : null,
+    ].filter(Boolean);
+}
+
+function statusTimelineEvents(row, index, actor, target, attackerShipId, targetShipId, componentId, damage) {
+    const round = numberOrNull(row.round);
+    const subRound = numberOrNull(row.subRound);
+    const events = [];
+
+    if (damage.targetShieldRemaining === 0 && (damage.shieldDamage ?? 0) > 0) {
+        events.push(removeUndefined({
+            eventId: `shield-depleted:${index}`,
+            type: "shield_depleted",
+            phase: "status",
+            round,
+            subRound,
+            actor: target,
+            actorShipIdExact: targetShipId,
+            event: "Shield depleted",
+            target: actor,
+            targetShipIdExact: attackerShipId,
+            componentIdExact: componentId,
+            details: [`${target} Shield Health reached 0`],
+            confidence: "derived_from_remaining_health",
+            source: "derived.damage_projection",
+            sortKey: timelineSortKey(round, subRound, "status", index),
+        }));
+    }
+
+    const targetDefeated = damage.targetHullRemaining === 0 && (damage.hullDamage ?? 0) > 0
+        || row.targetDefeated === true
+        || row.targetDestroyed === true
+        || text(row.targetDefeated)?.toUpperCase() === "YES"
+        || text(row.targetDestroyed)?.toUpperCase() === "YES";
+    if (targetDefeated) {
+        events.push(removeUndefined({
+            eventId: `target-defeated:${index}`,
+            type: "status",
+            phase: "status",
+            round,
+            subRound,
+            actor,
+            actorShipIdExact: attackerShipId,
+            event: "Target defeated",
+            target,
+            targetShipIdExact: targetShipId,
+            componentIdExact: componentId,
+            details: [`${target} Hull Health reached 0`],
+            confidence: damage.targetHullRemaining === 0 ? "derived_from_remaining_health" : "csv_status_field",
+            source: "derived.damage_projection",
+            sortKey: timelineSortKey(round, subRound, "status", index + 0.1),
+        }));
+    }
+
+    if (damage.chargingWeaponsPercent != null) {
+        events.push(removeUndefined({
+            eventId: `weapon-charged:${index}`,
+            type: "weapon_charged",
+            phase: "status",
+            round,
+            subRound,
+            actor,
+            actorShipIdExact: attackerShipId,
+            event: "Weapon charge observed",
+            target,
+            targetShipIdExact: targetShipId,
+            componentIdExact: componentId,
+            details: [`Charging Weapons ${displayNumber(damage.chargingWeaponsPercent)}%`],
+            confidence: "csv_status_field",
+            source: "derived.damage_projection",
+            sortKey: timelineSortKey(round, subRound, "status", index + 0.2),
+        }));
+    }
+
+    return events;
+}
+
+function timelineDamageFromRow(row) {
+    const damage = isRecord(row.damage) ? row.damage : {};
+    return removeUndefined({
+        hullDamage: numericOrNull(row.hullDamage, damage.hull),
+        targetHullRemaining: numericOrNull(row.targetHullRemaining, damage.targetHullRemaining),
+        shieldDamage: numericOrNull(row.shieldDamage, damage.shield),
+        targetShieldRemaining: numericOrNull(row.targetShieldRemaining, damage.targetShieldRemaining),
+        mitigatedStandardDamage: numericOrNull(row.mitigatedDamage, row.mitigatedStandardDamage, damage.mitigated),
+        mitigatedIsolyticDamage: numericOrNull(row.mitigatedIsolyticDamage, damage.mitigatedIsolyticDamage, damage.unknownScalarA),
+        mitigatedApexBarrier: numericOrNull(row.mitigatedApexBarrier, damage.mitigatedApexBarrier, damage.unknownScalarB),
+        standardDamage: numericOrNull(row.standardDamage, damage.standard, damage.standardDamage),
+        totalIsolyticDamage: numericOrNull(row.totalIsolyticDamage, row.totalIsolytic, damage.totalIsolytic, damage.isolytic),
+        chargingWeaponsPercent: numericOrNull(row.chargingWeaponsPercent, damage.chargingWeaponsPercent),
+    });
+}
+
+function timelineAttackSource(row) {
+    if (row.sourceKind) {
+        return String(row.sourceKind);
+    }
+    if (row.sourceSegmentIndex != null || row.sourceRecordIndex != null) {
+        return "decoded_attack_record";
+    }
+    return "battle.analytics.attackRows";
+}
+
+function outgoingFormulaStatus(damage) {
+    return damage.standardDamage == null
+        ? "standard damage is shown only when an explicit source field exists"
+        : "explicit source field";
+}
+
+function unresolvedTimelineCandidate(effect, index, participantIndex) {
+    const actor = timelineActor(exactString(effect.ownerShipId), participantIndex, sourceEffectLabel(effect));
+    return removeUndefined({
+        eventId: `unresolved:${effect.candidateIndex ?? index}`,
+        type: "unresolved_candidate",
+        phase: exactString(effect.phase) ?? "unresolved_candidate",
+        round: numberOrNull(effect.round),
+        subRound: numberOrNull(effect.subRound),
+        actor,
+        actorShipIdExact: exactString(effect.ownerShipId),
+        event: `${sourceEffectLabel(effect)} -> ${effectDisplayLabel(effect)}`,
+        sourceRef: effect.sourceRef,
+        effectRef: effect.effectRef,
+        valueDisplay: effect.valueDisplay,
+        confidence: effect.confidence ?? "unresolved",
+    });
+}
+
+function timelineActor(shipId, participantIndex, fallback) {
+    const participant = shipId ? participantIndex.shipLookup.get(shipId) : null;
+    return participant?.shipLabel ?? participant?.displayName ?? fallback ?? "Unknown";
+}
+
+function runtimeNameProvenance(effect) {
+    return [
+        effect.sourceNameSource ? `source:${effect.sourceNameSource}` : `source:${effect.sourceNameResolution ?? "fallback_ref"}`,
+        effect.effectNameSource ? `effect:${effect.effectNameSource}` : `effect:${effect.effectNameResolution ?? "fallback_ref"}`,
+    ].join(" | ");
+}
+
+function timelineSortKey(round, subRound, phase, index) {
+    const normalizedRound = typeof round === "number" && Number.isFinite(round) ? round : 0;
+    const normalizedSubRound = typeof subRound === "number" && Number.isFinite(subRound) ? subRound : 0;
+    const phaseRank = TIMELINE_PHASE_ORDER[phase] ?? TIMELINE_PHASE_ORDER.status;
+    return [normalizedRound, normalizedSubRound, phaseRank, index];
+}
+
+function compareTimelineEvents(left, right) {
+    const leftKey = Array.isArray(left.sortKey) ? left.sortKey : [];
+    const rightKey = Array.isArray(right.sortKey) ? right.sortKey : [];
+    for (let index = 0; index < Math.max(leftKey.length, rightKey.length); index += 1) {
+        const delta = Number(leftKey[index] ?? 0) - Number(rightKey[index] ?? 0);
+        if (delta !== 0) {
+            return delta;
+        }
+    }
+    return 0;
 }
 
 function rawDamageTotal(summary) {
@@ -496,8 +925,27 @@ function numeric(...values) {
     return 0;
 }
 
+function numericOrNull(...values) {
+    for (const value of values) {
+        if (typeof value === "number" && Number.isFinite(value)) {
+            return value;
+        }
+        if (typeof value === "string") {
+            const parsed = Number(value.replace(/,/g, ""));
+            if (Number.isFinite(parsed)) {
+                return parsed;
+            }
+        }
+    }
+    return null;
+}
+
 function displayNumber(value) {
     return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value || 0);
+}
+
+function displayIntegerDamage(value) {
+    return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.trunc(value || 0));
 }
 
 function numberFromDisplay(value) {
@@ -543,4 +991,8 @@ function arrayFrom(value) {
 
 function isRecord(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function removeUndefined(value) {
+    return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
 }

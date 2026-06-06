@@ -70,18 +70,23 @@ Current decoder state:
 
 - The stable attack payload starts at `attackerShipId, -98, componentId, targetShipId, 1.0, 0.0, 1, criticalFlag`.
 - Known damage fields are `hull`, `targetHullRemaining`, `shield`, `targetShieldRemaining`, `mitigated`, and `totalIsolytic`.
-- The next two payload slots are currently preserved as `damage.unknownScalarA` and `damage.unknownScalarB`.
+- The next two payload slots are preserved in stored/raw analytics for compatibility, but sidecar human views now project them as native-style mitigation fields:
+  - `damage.unknownScalarA` -> `mitigatedIsolyticDamage`
+  - `damage.unknownScalarB` -> `mitigatedApexBarrier`
 
 Open candidates:
 
-- `mitigatedIsolyticDamage`
-- `mitigatedApexBarrier`
 - `chargingWeaponsPercent`
 
-Evidence needed to rename either slot:
+Evidence supporting the mitigation projection:
 
-- A known Prime CSV row for the same battle ID and battle event index, especially the three candidate columns above.
-- Or enough controlled captures where one mechanic changes at a time, such as isolytic source on/off, Apex barrier on/off, or charging-weapons behavior on/off.
+- A current JSON/native screenshot pair showed `damage.unknownScalarA: 482477.80000000005` rendered natively as `Mitigates 482,477 Isolytic damage`.
+- The same pair showed `damage.unknownScalarB: 16528.6` rendered natively as `Mitigates 16,528 using Apex Barrier`.
+
+Evidence still needed for additional slot promotion:
+
+- A known Prime CSV row for the same battle ID and battle event index, especially `Charging Weapons %`.
+- Or enough controlled captures where one mechanic changes at a time, such as charging-weapons behavior on/off.
 - Exact battle IDs are more useful than screenshots alone because the JSONL line can be joined back to source segment and record indexes.
 
 Repeatable analysis:
