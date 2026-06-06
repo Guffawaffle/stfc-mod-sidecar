@@ -15,5 +15,7 @@ tmp/
 .runtime/
 .logs/
 
+.github/copilot-instructions.md
+
 .DS_Store
 Thumbs.db
