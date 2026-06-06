@@ -13,6 +13,34 @@ afterEach(async () => {
 });
 
 describe("viewer feed watcher", () => {
+    it("keeps JSONL disabled when no explicit feed path is configured", async () => {
+        const logger = { log: vi.fn(), warn: vi.fn() };
+        const feedWatcher = createTestFeedWatcher("", { logger });
+
+        expect(() => feedWatcher.ensure()).not.toThrow();
+        expect(logger.log).not.toHaveBeenCalled();
+
+        const snapshot = await feedWatcher.readFeedSnapshot(25);
+        expect(snapshot).toMatchObject({
+            ok: false,
+            source: "jsonl_fallback",
+            feedPath: "",
+            exists: false,
+            events: [],
+            error: "JSONL replay feed is not configured. Pass --feed-path or STFC_SIDECAR_FEED_PATH to enable explicit JSONL replay/import reads.",
+        });
+
+        const detail = await feedWatcher.readFeedLine(1);
+        expect(detail).toMatchObject({
+            ok: false,
+            statusCode: 404,
+            source: "jsonl_fallback",
+            feedPath: "",
+            exists: false,
+            error: "JSONL replay feed is not configured.",
+        });
+    });
+
     it("returns the existing missing-feed snapshot shape", async () => {
         const feedPath = path.join(await tempDir(), "missing.jsonl");
         const feedWatcher = createTestFeedWatcher(feedPath);

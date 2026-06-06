@@ -28,11 +28,11 @@ SQLite is the normal packaged runtime event store. JSONL files are diagnostics, 
 
 ## Optional JSONL Evidence Or Replay Path
 
-When explicit JSONL evidence capture or replay is in use, the default feed path is:
+When explicit JSONL evidence capture or replay is in use, a common game feed path is:
 
 `C:\Games\Star Trek Fleet Command\default\game\community_patch_battle_feed.jsonl`
 
-That file is written by `stfc-mod` only when local JSONL logging is explicitly enabled under `[sidecar.logging]`. The viewer can also use JSONL sample files for replay/import-style workflows, but normal runtime data should arrive through `/api/sidecar/ingest` and persist in the sidecar-owned SQL store.
+That file is written by `stfc-mod` only when local JSONL logging is explicitly enabled under `[sidecar.logging]`. The viewer reads JSONL only when you explicitly pass `--feed-path` or set `STFC_SIDECAR_FEED_PATH`. Normal runtime data should arrive through `/api/sidecar/ingest` and persist in the sidecar-owned SQL store.
 
 ## Start The Viewer
 
@@ -51,6 +51,8 @@ From there, open the Battle Log page, or navigate directly to:
 `http://127.0.0.1:43127/battle-log/`
 
 The managed start command builds the sidecar core package first, launches the viewer in the background, records its pid in `.sidecar/viewer-server.json`, and writes bounded process logs to `.sidecar/viewer-server.log`. Treat that file as a local troubleshooting log, not as durable telemetry.
+
+By default, this starts the viewer without a JSONL feed. Battle Log and Workbench reads use the sidecar event store unless an explicit JSONL replay/import feed is configured.
 
 ## Server Control Commands
 
@@ -77,7 +79,7 @@ The control layer adds these operating features:
 
 ## Sample Mode
 
-To run the viewer against the sample JSONL file instead of the live game feed:
+To run the viewer against the sample JSONL file as an explicit replay/import source:
 
 ```powershell
 npm run viewer:sample

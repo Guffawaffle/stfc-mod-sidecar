@@ -35,7 +35,7 @@ Rules:
 
 ### JSONL Evidence Or Replay Feed
 
-Default Windows path:
+Common explicit Windows path:
 
 ```text
 C:\Games\Star Trek Fleet Command\default\game\community_patch_battle_feed.jsonl
@@ -50,6 +50,7 @@ Rules:
 - Invalid lines must remain visible to diagnostics instead of being silently dropped.
 - The file may be absent before the mod emits its first battle event.
 - This file is for diagnostics, evidence capture, and replay/import workflows; it is not the canonical runtime boundary.
+- The Companion does not read this path automatically. JSONL replay/import reads require `--feed-path` or `STFC_SIDECAR_FEED_PATH`.
 
 ### Runtime Log
 

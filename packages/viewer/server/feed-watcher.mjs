@@ -21,6 +21,11 @@ export function createFeedWatcher({
     let feedWatcherDebounce = null;
 
     function ensure() {
+        if (!feedPath) {
+            close();
+            return;
+        }
+
         const target = watcherTargetForFeed(feedPath);
         if (!target || target === feedWatcherPath) {
             return;
@@ -94,6 +99,19 @@ export function createFeedWatcher({
         const resolvedLimit = Math.min(Math.max(limit, 10), 500);
         const includeDetails = options.includeDetails !== false;
 
+        if (!feedPath) {
+            return {
+                ok: false,
+                source: "jsonl_fallback",
+                feedPath: "",
+                exists: false,
+                generatedAt,
+                pollHintMs,
+                events: [],
+                error: "JSONL replay feed is not configured. Pass --feed-path or STFC_SIDECAR_FEED_PATH to enable explicit JSONL replay/import reads.",
+            };
+        }
+
         if (!existsSync(feedPath)) {
             return {
                 ok: false,
@@ -130,6 +148,18 @@ export function createFeedWatcher({
 
     async function readFeedLine(lineNumber) {
         const generatedAt = new Date().toISOString();
+        if (!feedPath) {
+            return {
+                ok: false,
+                statusCode: 404,
+                source: "jsonl_fallback",
+                feedPath: "",
+                exists: false,
+                generatedAt,
+                error: "JSONL replay feed is not configured.",
+            };
+        }
+
         if (!existsSync(feedPath)) {
             return {
                 ok: false,

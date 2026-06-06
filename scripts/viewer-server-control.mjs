@@ -8,7 +8,6 @@ import { fileURLToPath } from "node:url";
 
 import { appendBoundedLogLineSync, trimLogFileSync } from "../packages/viewer/bounded-log-file.mjs";
 
-const DEFAULT_FEED_PATH = "C:\\Games\\Star Trek Fleet Command\\default\\game\\community_patch_battle_feed.jsonl";
 const DEFAULT_PORT = 43127;
 const DEFAULT_LIMIT = 150;
 const DEFAULT_LOG_LINES = 80;
@@ -117,7 +116,7 @@ async function startServer(commandArgs) {
         const health = await waitForServerReady(state, READY_TIMEOUT_MS);
         console.log(`[sidecar-control] viewer started at ${state.url}`);
         console.log(`[sidecar-control] pid ${state.pid} | log ${state.logPath}`);
-        console.log(`[sidecar-control] feed ${health.feedPath ?? state.feedPath}`);
+        console.log(`[sidecar-control] feed ${health.feedPath || state.feedPath || "disabled"}`);
     } catch (error) {
         if (isProcessAlive(state.pid)) {
             await forceKillProcess(state.pid);
@@ -187,8 +186,8 @@ async function showStatus(commandArgs) {
         console.log(`pid: ${managedState.pid}`);
         console.log(`url: ${managedState.url}`);
         console.log(`port: ${managedState.port}`);
-        console.log(`feed: ${managedState.feedPath}`);
-        console.log(`settings: ${managedState.settingsPath ?? "default beside feed"}`);
+        console.log(`feed: ${managedState.feedPath || "disabled"}`);
+        console.log(`settings: ${managedState.settingsPath || "not configured"}`);
         console.log(`limit: ${managedState.limit}`);
         console.log(`started: ${managedState.startedAt}`);
         console.log(`health: ${health?.ok ? "ok" : "unreachable"}`);
@@ -207,8 +206,8 @@ async function showStatus(commandArgs) {
         console.log("[sidecar-control] unmanaged viewer detected");
         console.log(`pid: ${health.pid ?? "unknown"}`);
         console.log(`url: ${serverUrl(requestedPort)}`);
-        console.log(`feed: ${health.feedPath ?? "unknown"}`);
-        console.log(`settings: ${health.settingsPath ?? "unknown"}`);
+        console.log(`feed: ${health.feedPath || "disabled"}`);
+        console.log(`settings: ${health.settingsPath || "not configured"}`);
         return;
     }
 
@@ -236,7 +235,7 @@ async function showLogs(commandArgs) {
 
 function printUsage() {
     console.log("Usage: node scripts/viewer-server-control.mjs <start|stop|kill|status|restart|logs> [viewer args]");
-    console.log("Viewer args: --feed-path <jsonl> --settings-path <toml> --port <number> --limit <number>");
+    console.log("Viewer args: --feed-path <jsonl replay/import source> --settings-path <toml> --port <number> --limit <number>");
     console.log("Log args: logs [--lines <count>]");
 }
 
@@ -273,7 +272,7 @@ function resolveNpmInvocation(args) {
 }
 
 function resolveServerConfig(commandArgs) {
-    let selectedFeedPath = process.env.STFC_SIDECAR_FEED_PATH ?? DEFAULT_FEED_PATH;
+    let selectedFeedPath = process.env.STFC_SIDECAR_FEED_PATH ?? "";
     let selectedSettingsPath = process.env.STFC_SIDECAR_SETTINGS_PATH ?? "";
     let selectedPort = parseInteger(process.env.STFC_SIDECAR_PORT, DEFAULT_PORT);
     let selectedLimit = parseInteger(process.env.STFC_SIDECAR_LIMIT, DEFAULT_LIMIT);
@@ -310,13 +309,17 @@ function resolveServerConfig(commandArgs) {
         }
     }
 
-    const resolvedFeedPath = resolveFeedPath(selectedFeedPath, repoRoot);
+    const resolvedFeedPath = selectedFeedPath ? resolveFeedPath(selectedFeedPath, repoRoot) : "";
     return {
         launchArgs: [...commandArgs],
         port: selectedPort,
         limit: selectedLimit,
         feedPath: resolvedFeedPath,
-        settingsPath: selectedSettingsPath ? resolveFeedPath(selectedSettingsPath, repoRoot) : path.join(path.dirname(resolvedFeedPath), "community_patch_settings.toml"),
+        settingsPath: selectedSettingsPath
+            ? resolveFeedPath(selectedSettingsPath, repoRoot)
+            : resolvedFeedPath
+                ? path.join(path.dirname(resolvedFeedPath), "community_patch_settings.toml")
+                : "",
     };
 }
 

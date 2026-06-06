@@ -75,8 +75,6 @@ import { handleSidecarRoutes } from "./server/routes/sidecar-routes.mjs";
 import { resolvePublicAsset, sendFile, sendJson, sendText } from "./server/static-files.mjs";
 
 const DEFAULT_GAME_DIR = "C:\\Games\\Star Trek Fleet Command\\default\\game";
-const DEFAULT_FEED_FILE = "community_patch_battle_feed.jsonl";
-const DEFAULT_FEED_PATH = path.join(DEFAULT_GAME_DIR, DEFAULT_FEED_FILE);
 const DEFAULT_SETTINGS_FILE = "community_patch_settings.toml";
 const DEFAULT_PORT = 43127;
 const DEFAULT_LIMIT = 150;
@@ -108,6 +106,7 @@ const DEFAULT_ARTIFACT_CACHE_DIR = path.join(repoRoot, ".sidecar", "mod-artifact
 installBoundedConsoleLogSync(process.env.STFC_SIDECAR_PROCESS_LOG_PATH?.trim() ?? "");
 
 const { gameDir, feedPath, settingsPath, port, defaultLimit, developerMode } = parseArgs(process.argv.slice(2));
+const jsonlFeedEnabled = Boolean(feedPath);
 const companionMode = companionModeFromDeveloperMode(developerMode);
 const startedAt = new Date();
 const shutdownToken = process.env.STFC_SIDECAR_SHUTDOWN_TOKEN ?? "";
@@ -443,9 +442,11 @@ server.on("error", (error) => {
 server.listen(port, "127.0.0.1", () => {
     console.log(`[sidecar-viewer] pid ${process.pid}`);
     console.log(`[sidecar-viewer] listening on http://127.0.0.1:${port}`);
-    if (communityModCapabilities.battleLog) {
-        console.log(`[sidecar-viewer] feed path: ${feedPath}`);
+    if (communityModCapabilities.battleLog && jsonlFeedEnabled) {
+        console.log(`[sidecar-viewer] JSONL replay feed path: ${feedPath}`);
         battleFeed.ensure();
+    } else if (communityModCapabilities.battleLog) {
+        console.log("[sidecar-viewer] JSONL replay feed disabled; battle APIs use the sidecar event store.");
     } else {
         console.log(`[sidecar-viewer] battle log surfaces disabled for profile ${communityModSettingsProfile}`);
     }
@@ -818,7 +819,7 @@ async function reconcileRuntimeSurfacesWithVariantGate() {
         });
     }
 
-    if (communityModCapabilities.battleLog) {
+    if (communityModCapabilities.battleLog && jsonlFeedEnabled) {
         battleFeed.ensure();
     } else {
         battleFeed.close();
@@ -1473,12 +1474,11 @@ function parseArgs(args) {
     }
 
     const resolvedGameDir = resolveGameDir(selectedGameDir);
-    const defaultFeedPath = resolvedGameDir ? path.join(resolvedGameDir, DEFAULT_FEED_FILE) : "";
-    const resolvedFeedPath = resolveFeedPath(selectedFeedPath || defaultFeedPath);
+    const resolvedFeedPath = resolveFeedPath(selectedFeedPath);
     return {
         gameDir: resolvedGameDir,
         feedPath: resolvedFeedPath,
-        settingsPath: resolveSettingsPath(selectedSettingsPath, resolvedFeedPath),
+        settingsPath: resolveSettingsPath(selectedSettingsPath, resolvedFeedPath, resolvedGameDir),
         port: selectedPort,
         defaultLimit: selectedLimit,
         developerMode: selectedDeveloperMode,
@@ -1513,12 +1513,14 @@ function resolveFeedPath(feedPath) {
     return path.resolve(platformPath);
 }
 
-function resolveSettingsPath(selectedSettingsPath, selectedFeedPath) {
-    if (!selectedSettingsPath && !selectedFeedPath) {
+function resolveSettingsPath(selectedSettingsPath, selectedFeedPath, selectedGameDir) {
+    const settingsPathValue = selectedSettingsPath
+        || (selectedFeedPath ? path.join(path.dirname(selectedFeedPath), DEFAULT_SETTINGS_FILE) : "")
+        || (selectedGameDir ? path.join(selectedGameDir, DEFAULT_SETTINGS_FILE) : "");
+    if (!settingsPathValue) {
         return "";
     }
 
-    const settingsPathValue = selectedSettingsPath || path.join(path.dirname(selectedFeedPath), DEFAULT_SETTINGS_FILE);
     const platformPath = normalizeWindowsPathForWsl(settingsPathValue);
     return path.resolve(platformPath);
 }
@@ -1913,7 +1915,7 @@ async function readEventsSnapshot(limit, options = {}) {
         }
     }
 
-    if (eventTypesAllowBattleFeed(options.eventTypes)) {
+    if (jsonlFeedEnabled && eventTypesAllowBattleFeed(options.eventTypes)) {
         return battleFeed.readFeedSnapshot(limit, options);
     }
 
@@ -1981,8 +1983,22 @@ async function readBattleDetail(battleKey) {
         }
     }
 
-    const fallback = await battleFeed.readFeedSnapshot(500, { includeDetails: true });
-    return buildBattleDetailSnapshot(fallback, normalizedKey);
+    if (jsonlFeedEnabled) {
+        const fallback = await battleFeed.readFeedSnapshot(500, { includeDetails: true });
+        return buildBattleDetailSnapshot(fallback, normalizedKey);
+    }
+
+    return {
+        ok: false,
+        source: "store",
+        storageBackend: store?.backend ?? "none",
+        exists: Boolean(store),
+        detail: "battle-detail",
+        statusCode: 404,
+        battleId: normalizedKey,
+        events: [],
+        error: "Battle detail not available in the local event store",
+    };
 }
 
 async function readEventDetail(lineNumber, options = {}) {
@@ -2008,7 +2024,7 @@ async function readEventDetail(lineNumber, options = {}) {
         }
     }
 
-    if (eventTypesAllowBattleFeed(options.eventTypes)) {
+    if (jsonlFeedEnabled && eventTypesAllowBattleFeed(options.eventTypes)) {
         return battleFeed.readFeedLine(lineNumber);
     }
 

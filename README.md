@@ -129,7 +129,7 @@ jsonl_recent_logs = 300
 6. Keep the Companion running, then start STFC.
 7. Open the Companion `Battle Log` page after battles resolve.
 
-`/api/sidecar/ingest` is the canonical native-to-Companion runtime path. The Companion persists accepted battle events in its sidecar-owned SQL event store while it is running. `community_patch_battle_feed.jsonl` is optional diagnostics/evidence/import-replay capture only when `[sidecar.logging].jsonl = true`; it is not the normal runtime architecture.
+`/api/sidecar/ingest` is the canonical native-to-Companion runtime path. The Companion persists accepted battle events in its sidecar-owned SQL event store while it is running. `community_patch_battle_feed.jsonl` is optional diagnostics/evidence/import-replay capture only when `[sidecar.logging].jsonl = true`; the viewer reads it only when `--feed-path` or `STFC_SIDECAR_FEED_PATH` is set.
 
 Validate local ingest with `/api/health`, `/api/events`, `/api/battles`, `/battle-log/`, `/battle-log/workbench/`, and `/fleet/`. The Cloud Sync Monitor is for Majel/cloud envelope monitoring and is not required for local Battle Log, Workbench, or Fleet validation.
 
