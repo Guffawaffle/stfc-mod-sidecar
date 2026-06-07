@@ -17,6 +17,7 @@ describe("desktop dev script", () => {
     test("stops a stale managed viewer before Electron starts its desktop sidecar", () => {
         expect(rootPackageJson.scripts["desktop:dev"]).toBe("node ./scripts/desktop-dev.mjs");
         expect(rootPackageJson.scripts["desktop:dev:bg"]).toBe("node ./scripts/desktop-dev.mjs start-bg");
+        expect(rootPackageJson.scripts["desktop:dev:cycle"]).toBe("node ./scripts/desktop-dev.mjs cycle");
         expect(rootPackageJson.scripts["desktop:dev:status"]).toBe("node ./scripts/desktop-dev.mjs status");
         expect(rootPackageJson.scripts["desktop:dev:stop"]).toBe("node ./scripts/desktop-dev.mjs stop");
         expect(rootPackageJson.scripts["desktop:dev:logs"]).toBe("node ./scripts/desktop-dev.mjs logs");
@@ -29,7 +30,9 @@ describe("desktop dev script", () => {
         expect(desktopDevScript).toContain("const logsDir = path.join(repoRoot, \".logs\")");
         expect(desktopDevScript).toContain("const stdoutLogPath = path.join(logsDir, \"desktop-dev.out.log\")");
         expect(axScript).toContain("desktop:start");
+        expect(axScript).toContain("desktop:cycle");
         expect(familyManifest.commands["desktop-start"].executionTarget.args).toEqual(["desktop:start"]);
+        expect(familyManifest.commands["desktop-cycle"].executionTarget.args).toEqual(["desktop:cycle"]);
     });
 
     test("parses background and log commands without changing foreground defaults", () => {
@@ -58,6 +61,13 @@ describe("desktop dev script", () => {
             command: "start-bg",
             skipStop: false,
             cycle: true,
+            launchArgs: ["--foo"],
+            lines: 80,
+        });
+        expect(parseDesktopDevArgs(["cycle", "--foo"])).toEqual({
+            command: "cycle",
+            skipStop: false,
+            cycle: false,
             launchArgs: ["--foo"],
             lines: 80,
         });

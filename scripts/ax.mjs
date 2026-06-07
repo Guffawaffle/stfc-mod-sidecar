@@ -19,6 +19,7 @@ const COMMAND_METADATA = new Map([
     ["test", { description: "Run all sidecar package tests", sideEffects: "write" }],
     ["check", { description: "Build and test all sidecar packages", sideEffects: "write" }],
     ["desktop:start", { description: "Start desktop dev sidecar in the background", sideEffects: "write" }],
+    ["desktop:cycle", { description: "Restart or start the managed desktop dev background process", sideEffects: "write" }],
     ["desktop:stop", { description: "Stop the managed desktop dev background process", sideEffects: "write" }],
     ["desktop:status", { description: "Show managed desktop dev process status", sideEffects: "read" }],
     ["desktop:logs", { description: "Print recent managed desktop dev logs", sideEffects: "read" }],
@@ -32,6 +33,7 @@ const COMMANDS = new Map([
     ["test", testCommand],
     ["check", checkCommand],
     ["desktop:start", desktopStartCommand],
+    ["desktop:cycle", desktopCycleCommand],
     ["desktop:stop", desktopStopCommand],
     ["desktop:status", desktopStatusCommand],
     ["desktop:logs", desktopLogsCommand],
@@ -53,7 +55,7 @@ async function main() {
             success: true,
             durationMs: 0,
             commands: commandInventory(),
-            usage: "npm run ax -- <status|build|test|check|desktop:start|desktop:stop|desktop:status|desktop:logs|dist:win|ci|list>",
+            usage: "npm run ax -- <status|build|test|check|desktop:start|desktop:cycle|desktop:stop|desktop:status|desktop:logs|dist:win|ci|list>",
         });
         return;
     }
@@ -128,6 +130,12 @@ async function checkCommand() {
 async function desktopStartCommand() {
     return sequence([
         () => runNpmStep("desktop:dev:bg", ["run", "desktop:dev:bg"], { timeoutMs: 180_000 }),
+    ]);
+}
+
+async function desktopCycleCommand() {
+    return sequence([
+        () => runNpmStep("desktop:dev:cycle", ["run", "desktop:dev:cycle"], { timeoutMs: 180_000 }),
     ]);
 }
 

@@ -24,6 +24,7 @@
     "smoke:mod-dev-reinstall:waffle": "node ./scripts/community-mod-dev-reinstall-smoke.mjs --profile waffle-advanced",
     "desktop:dev": "node ./scripts/desktop-dev.mjs",
     "desktop:dev:bg": "node ./scripts/desktop-dev.mjs start-bg",
+    "desktop:dev:cycle": "node ./scripts/desktop-dev.mjs cycle",
     "desktop:dev:status": "node ./scripts/desktop-dev.mjs status",
     "desktop:dev:stop": "node ./scripts/desktop-dev.mjs stop",
     "desktop:dev:logs": "node ./scripts/desktop-dev.mjs logs",

@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import electronPath from "electron";
 
-const COMMANDS = new Set(["start", "start-bg", "run-managed", "status", "stop", "logs"]);
+const COMMANDS = new Set(["start", "start-bg", "cycle", "run-managed", "status", "stop", "logs"]);
 const DEFAULT_COMMAND = "start";
 const DEFAULT_PORT = 43127;
 const DEFAULT_LOG_LINES = 80;
@@ -82,6 +82,8 @@ export async function runDesktopDev(argv = process.argv.slice(2)) {
             return startForeground(args);
         case "start-bg":
             return startBackground(args);
+        case "cycle":
+            return cycleBackground(args);
         case "run-managed":
             return runManaged(args);
         case "status":
@@ -175,6 +177,14 @@ async function startBackground(args) {
     }
 
     return 0;
+}
+
+async function cycleBackground(args) {
+    return startBackground({
+        ...args,
+        command: "cycle",
+        cycle: true,
+    });
 }
 
 async function runManaged(args) {
