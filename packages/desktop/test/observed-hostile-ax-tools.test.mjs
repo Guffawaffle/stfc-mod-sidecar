@@ -9,6 +9,7 @@ import {
     buildObservedHostileInspectionPayload,
     buildObservedHostileMaintainerQuestionsMarkdown,
     buildObservedHostileReportPayload,
+    buildObservedHostileReviewPacketPayload,
     buildObservedHostileReviewPacketArtifactPlan,
     buildObservedHostileReviewSummaryMarkdown,
     parseObservedHostileAxArgs,
@@ -55,6 +56,7 @@ describe("observed hostile ax tools", () => {
             "--preview-limit",
             "7",
             "--full",
+            "--summary-only",
             "--timeout-sec",
             "9",
         ], { mode: "report" })).toEqual({
@@ -65,6 +67,7 @@ describe("observed hostile ax tools", () => {
             markdownOut: ".artifacts/report.md",
             previewLimit: 7,
             full: true,
+            summaryOnly: true,
             timeoutSec: 9,
         });
 
@@ -77,12 +80,14 @@ describe("observed hostile ax tools", () => {
             ".artifacts/coverage.json",
             "--preview-limit",
             "4",
+            "--summary-only",
         ], { mode: "coverage" })).toEqual({
             source: "live",
             serverUrl: "",
             reportJson: ".artifacts/community-report.json",
             jsonOut: ".artifacts/coverage.json",
             previewLimit: 4,
+            summaryOnly: true,
             timeoutSec: 4,
         });
 
@@ -95,6 +100,7 @@ describe("observed hostile ax tools", () => {
             "community-report-sudo-review",
             "--preview-limit",
             "3",
+            "--summary-only",
             "--timeout-sec",
             "12",
         ], { mode: "review-packet" })).toEqual({
@@ -103,6 +109,7 @@ describe("observed hostile ax tools", () => {
             outputDir: ".artifacts/coverage-investigation",
             baseName: "community-report-sudo-review",
             previewLimit: 3,
+            summaryOnly: true,
             timeoutSec: 12,
         });
     });
@@ -240,6 +247,9 @@ describe("observed hostile ax tools", () => {
             ok: true,
             protocolVersion: "stfc.observed-hostile.ax.v1",
             detail: "observed-hostile-report",
+            source: {
+                source: "store",
+            },
             summary: {
                 submissionReadyCount: 1,
                 readyForMaintainerReviewCount: 1,
@@ -261,6 +271,15 @@ describe("observed hostile ax tools", () => {
                 jsonOut: expect.stringContaining(".artifacts"),
                 markdownOut: expect.stringContaining(".artifacts"),
             },
+        });
+        const compactSummary = summarizeObservedHostileReportForAx(payload, {
+            previewLimit: 2,
+            summaryOnly: true,
+        });
+        expect(compactSummary.itemsPreview).toBeUndefined();
+        expect(compactSummary.previewCount).toBeUndefined();
+        expect(compactSummary.source).toMatchObject({
+            source: "store",
         });
 
         expect(axScript).toContain("observed-hostiles:report");
@@ -299,6 +318,9 @@ describe("observed hostile ax tools", () => {
         expect(coverage).toMatchObject({
             ok: true,
             detail: "observed-hostile-coverage",
+            source: {
+                source: "store",
+            },
             summary: {
                 submissionReadyCount: 1,
                 readyForMaintainerReviewCount: 1,
@@ -329,6 +351,12 @@ describe("observed hostile ax tools", () => {
             observedKey: "hull:missing-high",
         });
         expect(coverage.hullIdMissingPreview).toHaveLength(2);
+        const compactCoverage = buildObservedHostileCoveragePayload(reportPayload, {
+            previewLimit: 2,
+            summaryOnly: true,
+        });
+        expect(compactCoverage.hullIdMissingPreview).toBeUndefined();
+        expect(compactCoverage.nonWavePreview).toBeUndefined();
 
         const summaryMarkdown = buildObservedHostileReviewSummaryMarkdown(reportPayload.report);
         expect(summaryMarkdown).toContain("* Submission-ready with hullId: 1");
@@ -348,6 +376,16 @@ describe("observed hostile ax tools", () => {
             reportMarkdownOut: expect.stringContaining("community-report-sudo-review.md"),
             summaryOut: expect.stringContaining("community-report-sudo-review-summary.md"),
             questionsOut: expect.stringContaining("community-report-sudo-review-questions.md"),
+        });
+
+        const compactPacket = buildObservedHostileReviewPacketPayload(reportPayload, {
+            previewLimit: 2,
+            summaryOnly: true,
+            artifacts: artifactPlan,
+        });
+        expect(compactPacket.reportPreview).toBeUndefined();
+        expect(compactPacket.source).toMatchObject({
+            source: "store",
         });
     });
 });

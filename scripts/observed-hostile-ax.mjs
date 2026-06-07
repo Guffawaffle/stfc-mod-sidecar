@@ -194,6 +194,7 @@ export function parseObservedHostileAxArgs(argv = [], options = {}) {
         markdownOut: "",
         previewLimit: DEFAULT_REPORT_PREVIEW_LIMIT,
         full: false,
+        summaryOnly: false,
         timeoutSec: DEFAULT_REPORT_TIMEOUT_SEC,
         reportJson: "",
         outputDir: DEFAULT_REVIEW_PACKET_DIR,
@@ -214,6 +215,11 @@ export function parseObservedHostileAxArgs(argv = [], options = {}) {
 
         if (arg === "--full") {
             parsed.full = true;
+            continue;
+        }
+
+        if (arg === "--summary-only") {
+            parsed.summaryOnly = true;
             continue;
         }
 
@@ -286,6 +292,7 @@ export function parseObservedHostileAxArgs(argv = [], options = {}) {
             markdownOut: parsed.markdownOut,
             previewLimit: parsed.previewLimit,
             full: parsed.full,
+            summaryOnly: parsed.summaryOnly,
             timeoutSec: parsed.timeoutSec,
         };
     }
@@ -297,6 +304,7 @@ export function parseObservedHostileAxArgs(argv = [], options = {}) {
             reportJson: parsed.reportJson,
             jsonOut: parsed.jsonOut,
             previewLimit: parsed.previewLimit,
+            summaryOnly: parsed.summaryOnly,
             timeoutSec: parsed.timeoutSec,
         };
     }
@@ -308,6 +316,7 @@ export function parseObservedHostileAxArgs(argv = [], options = {}) {
             outputDir: parsed.outputDir,
             baseName: parsed.baseName,
             previewLimit: parsed.previewLimit,
+            summaryOnly: parsed.summaryOnly,
             timeoutSec: parsed.timeoutSec,
         };
     }
@@ -349,6 +358,7 @@ function recognizedObservedHostileAxOptions(mode) {
             "--json-out",
             "--markdown-out",
             "--full",
+            "--summary-only",
             ...common,
         ]);
     }
@@ -357,6 +367,7 @@ function recognizedObservedHostileAxOptions(mode) {
         return new Set([
             "--report-json",
             "--json-out",
+            "--summary-only",
             ...common,
         ]);
     }
@@ -365,6 +376,7 @@ function recognizedObservedHostileAxOptions(mode) {
         return new Set([
             "--output-dir",
             "--base-name",
+            "--summary-only",
             ...common,
         ]);
     }
@@ -398,6 +410,7 @@ export async function readObservedHostileCoverageCommandPayload(options = {}) {
         });
     const coverage = buildObservedHostileCoveragePayload(payload, {
         previewLimit: options.previewLimit,
+        summaryOnly: options.summaryOnly,
     });
 
     if (options.jsonOut) {
@@ -414,6 +427,7 @@ export async function readObservedHostileReviewPacketCommandPayload(options = {}
     if (payload.ok === false) {
         return buildObservedHostileReviewPacketPayload(payload, {
             previewLimit: options.previewLimit,
+            summaryOnly: options.summaryOnly,
             artifacts: null,
         });
     }
@@ -421,6 +435,7 @@ export async function readObservedHostileReviewPacketCommandPayload(options = {}
     const artifacts = writeObservedHostileReviewPacketArtifacts(payload, options);
     return buildObservedHostileReviewPacketPayload(payload, {
         previewLimit: options.previewLimit,
+        summaryOnly: options.summaryOnly,
         artifacts,
     });
 }
@@ -670,6 +685,7 @@ export function summarizeObservedHostileReportForAx(payload = {}, options = {}, 
     const previewLimit = normalizePositiveInteger(options.previewLimit, DEFAULT_REPORT_PREVIEW_LIMIT, MAX_REPORT_PREVIEW_LIMIT);
     const itemsPreview = items.slice(0, previewLimit).map(previewObservedHostileReportItem);
     const summary = report?.summary ?? null;
+    const summaryOnly = Boolean(options.summaryOnly);
     const artifactSummary = {};
     if (options.jsonOut) {
         artifactSummary.jsonOut = path.resolve(repoRoot, options.jsonOut);
@@ -683,18 +699,18 @@ export function summarizeObservedHostileReportForAx(payload = {}, options = {}, 
         protocolVersion: OBSERVED_HOSTILE_AX_PROTOCOL_VERSION,
         detail: "observed-hostile-report",
         generatedAt: payload.generatedAt ?? new Date().toISOString(),
-        source: payload.source ?? null,
+        source: normalizedObservedHostilePayloadSource(payload, report),
         reference: payload.reference ?? buildObservedHostileReferenceSummary(null),
         transport: payload.transport ?? { source: "store" },
         liveContext: payload.liveContext ?? null,
         summary,
-        previewCount: itemsPreview.length,
-        previewTotal: items.length,
-        itemsPreview,
-        markdown: options.markdown ? payload.markdown : undefined,
         artifacts: artifactSummary,
         warnings,
-        report: options.full ? report : undefined,
+        previewCount: summaryOnly ? undefined : itemsPreview.length,
+        previewTotal: summaryOnly ? undefined : items.length,
+        itemsPreview: summaryOnly ? undefined : itemsPreview,
+        markdown: summaryOnly ? undefined : (options.markdown ? payload.markdown : undefined),
+        report: summaryOnly ? undefined : (options.full ? report : undefined),
         error: payload.error,
     };
 }
@@ -723,7 +739,7 @@ export function buildObservedHostileCoveragePayload(payload = {}, options = {}) 
         protocolVersion: OBSERVED_HOSTILE_AX_PROTOCOL_VERSION,
         detail: "observed-hostile-coverage",
         generatedAt: payload.generatedAt ?? report.generatedAt ?? new Date().toISOString(),
-        source: payload.source ?? null,
+        source: normalizedObservedHostilePayloadSource(payload, report),
         reference: payload.reference ?? report.reference ?? buildObservedHostileReferenceSummary(null),
         transport: payload.transport ?? null,
         liveContext: payload.liveContext ?? null,
@@ -732,8 +748,12 @@ export function buildObservedHostileCoveragePayload(payload = {}, options = {}) 
         representativeRows: analyzed.representativeRows,
         systemFrequency: analyzed.systemFrequency,
         systemSetFrequency: analyzed.systemSetFrequency,
-        hullIdMissingPreview: analyzed.hullIdMissingRows.slice(0, previewLimit).map(previewObservedHostileReportItem),
-        nonWavePreview: analyzed.nonWaveRows.slice(0, previewLimit).map(previewObservedHostileReportItem),
+        hullIdMissingPreview: options.summaryOnly
+            ? undefined
+            : analyzed.hullIdMissingRows.slice(0, previewLimit).map(previewObservedHostileReportItem),
+        nonWavePreview: options.summaryOnly
+            ? undefined
+            : analyzed.nonWaveRows.slice(0, previewLimit).map(previewObservedHostileReportItem),
         warnings: payload.warnings ?? [],
         error: payload.error,
     };
@@ -763,7 +783,7 @@ export function buildObservedHostileReviewPacketPayload(payload = {}, options = 
         protocolVersion: OBSERVED_HOSTILE_AX_PROTOCOL_VERSION,
         detail: "observed-hostile-review-packet",
         generatedAt: payload.generatedAt ?? report.generatedAt ?? new Date().toISOString(),
-        source: payload.source ?? null,
+        source: normalizedObservedHostilePayloadSource(payload, report),
         reference: payload.reference ?? report.reference ?? buildObservedHostileReferenceSummary(null),
         transport: payload.transport ?? null,
         liveContext: payload.liveContext ?? null,
@@ -774,7 +794,9 @@ export function buildObservedHostileReviewPacketPayload(payload = {}, options = 
             nonWaveDefenseCount: analyzed.coverage.waveDefense.notLikely,
         },
         nonWaveRows: analyzed.nonWaveRows.slice(0, previewLimit).map(previewObservedHostileReportItem),
-        reportPreview: (Array.isArray(report.items) ? report.items : []).slice(0, previewLimit).map(previewObservedHostileReportItem),
+        reportPreview: options.summaryOnly
+            ? undefined
+            : (Array.isArray(report.items) ? report.items : []).slice(0, previewLimit).map(previewObservedHostileReportItem),
         artifacts: options.artifacts ?? null,
         warnings: payload.warnings ?? [],
         error: payload.error,
@@ -1026,6 +1048,29 @@ function extractObservedHostileReport(value) {
         return value?.ax?.data?.report ?? null;
     }
     return null;
+}
+
+function normalizedObservedHostilePayloadSource(payload = {}, report = null) {
+    const direct = asRecord(payload.source);
+    if (Object.keys(direct).length > 0) {
+        return direct;
+    }
+
+    const transport = asRecord(payload.transport);
+    const liveContext = asRecord(payload.liveContext);
+    const connection = asText(liveContext.storeConnection) || asText(transport.storeConnection) || null;
+    const sourceName = asText(transport.source)
+        || asText(liveContext.mode)
+        || "route";
+    const itemCount = Array.isArray(report?.items) ? report.items.length : 0;
+    return {
+        source: sourceName,
+        storageBackend: connection ? "sqlite" : null,
+        connection,
+        exists: connection ? existsSync(connection) : true,
+        totalLines: itemCount,
+        returnedLines: itemCount,
+    };
 }
 
 async function resolveObservedHostileLiveContext() {
@@ -1445,6 +1490,10 @@ function finiteIntegerOrNull(value) {
 function asText(value) {
     const text = String(value ?? "").trim();
     return text ? text : "";
+}
+
+function asRecord(value) {
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
 }
 
 function addUnique(items, value) {
