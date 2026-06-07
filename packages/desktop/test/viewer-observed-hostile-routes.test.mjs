@@ -165,6 +165,10 @@ describe("viewer observed hostile routes", () => {
         expect(response.statusCode).toBe(200);
         expect(response.headers["content-type"]).toBe("text/markdown; charset=utf-8");
         expect(response.body).toContain("# Observed Hostile Community Report");
+        expect(response.body).toContain("* Submission-ready unmapped with hullId: 0");
+        expect(response.body).toContain("* Ready for maintainer review without hullId: 0");
+        expect(response.body).toContain("* Needs identifier review: 0");
+        expect(response.body).toContain("userLocaId is included below only as a maintainer-review identifier.");
         expect(response.body).toContain("No submission-ready unmapped hostiles found.");
         expect(response.body).toContain("No high-confidence unmapped hostiles are currently ready for maintainer review.");
         expect(response.body).toContain("No high-confidence unmapped observations currently need identifier review.");

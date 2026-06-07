@@ -109,6 +109,14 @@ export function formatObservedHostileCommunityReportMarkdown(report = {}) {
         `Reference: ${markdownText(reference.label || reference.source || "Unavailable")}`,
         `Generated: ${markdownText(report.generatedAt || "Unknown")}`,
         "",
+        "## Summary",
+        "",
+        `* Submission-ready unmapped with hullId: ${Number(summary.submissionReadyCount ?? 0)}`,
+        `* Ready for maintainer review without hullId: ${Number(summary.readyForMaintainerReviewCount ?? 0)}`,
+        `* Needs identifier review: ${Number(summary.needsIdentifierReviewCount ?? 0)}`,
+        "",
+        "userLocaId is included below only as a maintainer-review identifier. It is not treated here as an accepted unique hostile id, and it can repeat across multiple level variants.",
+        "",
     ];
 
     renderMarkdownSection(
@@ -130,7 +138,7 @@ export function formatObservedHostileCommunityReportMarkdown(report = {}) {
         reviewOnlyItems,
     );
 
-    lines.push("## Summary", "");
+    lines.push("## Coverage", "");
     lines.push(`* Included high-confidence unmapped: ${Number(summary.highConfidenceUntrackedCount ?? 0)}`);
     lines.push(`* Submission-ready: ${Number(summary.submissionReadyCount ?? 0)}`);
     lines.push(`* Ready for maintainer review: ${Number(summary.readyForMaintainerReviewCount ?? 0)}`);
@@ -513,8 +521,7 @@ function renderMarkdownItem(lines, item) {
     lines.push(`* Seen: ${markdownText(seen)} (${markdownText(formatPassiveSightingCount(item.sightingCount))}; ${markdownText(formatObservationCount(item.observationCount))})`);
     lines.push(`* Source: ${markdownText(formatList(item.sourceSurfaces))}`);
     lines.push(`* Accepted IDs: ${markdownText(formatAcceptedIds(ids))}`);
-    lines.push(`* Maintainer-review IDs: ${markdownText(formatMaintainerReviewIds(ids))}`);
-    lines.push(`* Diagnostic IDs: ${markdownText(formatDiagnosticIds(ids))}`);
+    lines.push(`* Maintainer-review identifiers: ${markdownText(formatMaintainerReviewIds(ids))}`);
     if (Array.isArray(item.systems) && item.systems.length > 0) {
         lines.push("* Systems:");
         for (const system of item.systems) {
@@ -808,21 +815,7 @@ function formatAcceptedIds(ids) {
 function formatMaintainerReviewIds(ids) {
     const parts = [];
     if (asText(ids.userLocaId)) {
-        parts.push(`userLocaId=${ids.userLocaId}`);
-    }
-    return parts.length > 0 ? parts.join(", ") : "Unavailable";
-}
-
-function formatDiagnosticIds(ids) {
-    const parts = [];
-    if (Array.isArray(ids.runtimeFleetIds) && ids.runtimeFleetIds.length > 0) {
-        parts.push(`runtimeFleetIds=${ids.runtimeFleetIds.join(", ")}`);
-    }
-    if (Array.isArray(ids.galaxyIds) && ids.galaxyIds.length > 0) {
-        parts.push(`galaxyIds=${ids.galaxyIds.join(", ")}`);
-    }
-    if (Array.isArray(ids.instanceIds) && ids.instanceIds.length > 0) {
-        parts.push(`instanceIds=${ids.instanceIds.join(", ")}`);
+        parts.push(`userLocaId=${ids.userLocaId} (review aid only; not unique)`);
     }
     return parts.length > 0 ? parts.join(", ") : "Unavailable";
 }
@@ -830,16 +823,7 @@ function formatDiagnosticIds(ids) {
 function formatSystemEvidenceLine(system) {
     const systemLabel = asText(system.systemId) ? `System ${system.systemId}` : "Unknown system";
     const seen = formatSeenRange(system.firstSeen, system.lastSeen);
-    const diagnostics = [];
-    if (Array.isArray(system.galaxyIds) && system.galaxyIds.length > 0) {
-        diagnostics.push(`galaxyIds=${system.galaxyIds.join(", ")}`);
-    }
-    if (Array.isArray(system.instanceIds) && system.instanceIds.length > 0) {
-        diagnostics.push(`instanceIds=${system.instanceIds.join(", ")}`);
-    }
-
-    const suffix = diagnostics.length > 0 ? `; ${diagnostics.join("; ")}` : "";
-    return `${systemLabel}: ${formatPassiveSightingCount(system.sightingCount)} across ${formatObservationCount(system.observationCount)}; seen ${seen}; source ${formatList(system.sourceSurfaces)}${suffix}`;
+    return `${systemLabel}: ${formatPassiveSightingCount(system.sightingCount)} across ${formatObservationCount(system.observationCount)}; seen ${seen}; source ${formatList(system.sourceSurfaces)}`;
 }
 
 function formatList(items) {

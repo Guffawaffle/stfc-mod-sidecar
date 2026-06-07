@@ -216,6 +216,11 @@ describe("viewer observed hostile community report", () => {
 
         expect(markdown).toContain("# Observed Hostile Community Report");
         expect(markdown).toContain("Reference: stfc-space.hostiles 2026-06-05");
+        expect(markdown).toContain("## Summary");
+        expect(markdown).toContain("* Submission-ready unmapped with hullId: 1");
+        expect(markdown).toContain("* Ready for maintainer review without hullId: 1");
+        expect(markdown).toContain("* Needs identifier review: 1");
+        expect(markdown).toContain("userLocaId is included below only as a maintainer-review identifier.");
         expect(markdown).toContain("## Submission-ready unmapped hostiles");
         expect(markdown).toContain("## High-confidence unmapped hostiles ready for maintainer review");
         expect(markdown).toContain("## Unmapped observations needing identifier review");
@@ -226,10 +231,14 @@ describe("viewer observed hostile community report", () => {
         expect(markdown).toContain("Submission readiness: ready_for_maintainer_review");
         expect(markdown).toContain("Submission readiness: needs_identifier_review");
         expect(markdown).toContain("System 1946064743: 2 passive sightings across 1 observation window");
-        expect(markdown).toContain("* Ready for maintainer review: 1");
+        expect(markdown).toContain("Maintainer-review identifiers: userLocaId=61309 (review aid only; not unique)");
         expect(markdown).toContain("Likely Wave Defense / inferred from hull name.");
         expect(markdown).not.toContain("candidate-only");
         expect(markdown).not.toContain("Hull_L40_Battleship_Fed_Patrol_G3");
+        expect(markdown).not.toContain("runtimeFleetIds=");
+        expect(markdown).not.toContain("galaxyIds=");
+        expect(markdown).not.toContain("instanceIds=");
+        expect(markdown).toContain("## Coverage");
         expect(markdown).toContain("* Submission-ready: 1");
         expect(markdown).toContain("* Needs identifier review: 1");
         expect(markdown).toContain("* Excluded candidate: 1");
