@@ -10,8 +10,8 @@ import electronPath from "electron";
 
 const COMMANDS = new Set(["start", "start-bg", "cycle", "run-managed", "status", "stop", "logs"]);
 const DEFAULT_COMMAND = "start";
-const DEFAULT_PORT = 43127;
-const DEFAULT_LOG_LINES = 80;
+export const DEFAULT_PORT = 43127;
+export const DEFAULT_LOG_LINES = 80;
 const HEALTH_TIMEOUT_MS = 1500;
 const STARTUP_TIMEOUT_MS = 8000;
 const STOP_TIMEOUT_MS = 10000;
@@ -106,10 +106,17 @@ async function startForeground(args) {
     return launchElectron(args, { managed: false });
 }
 
-async function startBackground(args) {
+export async function startManagedDesktopDev(options = {}) {
+    const args = {
+        skipStop: Boolean(options.skipStop),
+        cycle: Boolean(options.cycle),
+        launchArgs: Array.isArray(options.launchArgs) ? [...options.launchArgs] : [],
+    };
+    const action = args.cycle ? "cycle" : "start";
+    const before = await readDesktopDevStatusSnapshot();
     const managedState = loadManagedState({ cleanupStale: true });
     if (managedState && args.cycle) {
-        await stopManagedDesktop();
+        await stopManagedDesktopDev();
     } else if (managedState) {
         throw new Error(`managed desktop dev is already running (pid ${managedState.pid})`);
     }
@@ -166,107 +173,281 @@ async function startBackground(args) {
         throw new Error(`managed desktop dev exited during startup. Inspect ${stdoutLogPath} and ${stderrLogPath}`);
     }
 
-    console.log(`[desktop-dev] started background desktop dev (pid ${state.pid})`);
-    console.log(`[desktop-dev] state ${state.statePath}`);
-    console.log(`[desktop-dev] logs ${state.stdoutLogPath} | ${state.stderrLogPath}`);
+    return {
+        ok: true,
+        action,
+        changed: true,
+        startupState: startup.state,
+        startupHealth: startup.health ?? null,
+        before,
+        after: await readDesktopDevStatusSnapshot(),
+    };
+}
 
-    if (startup.state === "healthy") {
-        console.log(`[desktop-dev] health ok at ${state.healthUrl}`);
+async function startBackground(args) {
+    const result = await startManagedDesktopDev({
+        skipStop: args.skipStop,
+        cycle: args.cycle,
+        launchArgs: args.launchArgs,
+    });
+    const after = result.after;
+    console.log(`[desktop-dev] started background desktop dev (pid ${after.pid})`);
+    console.log(`[desktop-dev] state ${after.statePath}`);
+    console.log(`[desktop-dev] logs ${after.stdoutLogPath} | ${after.stderrLogPath}`);
+
+    if (result.startupState === "healthy") {
+        console.log(`[desktop-dev] health ok at ${after.healthUrl}`);
     } else {
-        console.log(`[desktop-dev] process is running; health not ready yet at ${state.healthUrl}`);
+        console.log(`[desktop-dev] process is running; health not ready yet at ${after.healthUrl}`);
     }
 
     return 0;
 }
 
-async function cycleBackground(args) {
-    return startBackground({
-        ...args,
-        command: "cycle",
+export async function cycleManagedDesktopDev(options = {}) {
+    return startManagedDesktopDev({
+        ...options,
         cycle: true,
     });
+}
+
+async function cycleBackground(args) {
+    await cycleManagedDesktopDev({
+        skipStop: args.skipStop,
+        launchArgs: args.launchArgs,
+    });
+    return 0;
 }
 
 async function runManaged(args) {
     return launchElectron(args, { managed: true });
 }
 
-async function showStatus() {
+export async function readDesktopDevStatusSnapshot() {
+    const expectedPort = resolveSidecarPort();
+    const expectedHealthUrl = healthUrlForPort(expectedPort);
     const managedState = readManagedState();
+
     if (managedState) {
-        if (!isProcessAlive(managedState.pid)) {
-            clearManagedState();
-            console.log("state: stale");
-            console.log(`pid: ${managedState.pid}`);
-            console.log(`stateFile: ${statePath}`);
-            return 0;
+        const running = isProcessAlive(managedState.pid);
+        if (!running) {
+            return {
+                ok: true,
+                mode: "stale",
+                managed: true,
+                unmanagedDetected: false,
+                statePresent: true,
+                stale: true,
+                running: false,
+                healthy: false,
+                pid: managedState.pid ?? null,
+                port: managedState.port ?? expectedPort,
+                expectedPort,
+                healthUrl: managedState.healthUrl ?? expectedHealthUrl,
+                startedAt: managedState.startedAt ?? null,
+                pidPath,
+                statePath,
+                stdoutLogPath,
+                stderrLogPath,
+                health: null,
+            };
         }
 
-        const health = await fetchHealth(managedState.healthUrl, HEALTH_TIMEOUT_MS);
-        console.log(`state: ${health.ok ? "managed-healthy" : "managed-unavailable"}`);
-        console.log(`pid: ${managedState.pid}`);
-        console.log(`healthUrl: ${managedState.healthUrl}`);
-        console.log(`startedAt: ${managedState.startedAt}`);
-        console.log(`pidFile: ${managedState.pidPath}`);
-        console.log(`stateFile: ${managedState.statePath}`);
-        console.log(`stdoutLog: ${managedState.stdoutLogPath}`);
-        console.log(`stderrLog: ${managedState.stderrLogPath}`);
-        if (health.ok && health.payload) {
-            console.log(`healthMode: ${health.payload.mode ?? "unknown"}`);
+        const healthUrl = managedState.healthUrl ?? expectedHealthUrl;
+        const health = await fetchHealth(healthUrl, HEALTH_TIMEOUT_MS);
+        return {
+            ok: true,
+            mode: health.ok ? "managed-healthy" : "managed-unavailable",
+            managed: true,
+            unmanagedDetected: false,
+            statePresent: true,
+            stale: false,
+            running,
+            healthy: health.ok,
+            pid: managedState.pid ?? null,
+            port: managedState.port ?? expectedPort,
+            expectedPort,
+            healthUrl,
+            startedAt: managedState.startedAt ?? null,
+            pidPath,
+            statePath,
+            stdoutLogPath: managedState.stdoutLogPath ?? stdoutLogPath,
+            stderrLogPath: managedState.stderrLogPath ?? stderrLogPath,
+            health,
+        };
+    }
+
+    const health = await fetchHealth(expectedHealthUrl, HEALTH_TIMEOUT_MS);
+    if (health.ok) {
+        return {
+            ok: true,
+            mode: "unmanaged",
+            managed: false,
+            unmanagedDetected: true,
+            statePresent: false,
+            stale: false,
+            running: true,
+            healthy: true,
+            pid: health.payload?.pid ?? null,
+            port: health.payload?.port ?? expectedPort,
+            expectedPort,
+            healthUrl: expectedHealthUrl,
+            startedAt: null,
+            pidPath,
+            statePath,
+            stdoutLogPath,
+            stderrLogPath,
+            health,
+        };
+    }
+
+    return {
+        ok: true,
+        mode: "unavailable",
+        managed: false,
+        unmanagedDetected: false,
+        statePresent: false,
+        stale: false,
+        running: false,
+        healthy: false,
+        pid: null,
+        port: expectedPort,
+        expectedPort,
+        healthUrl: expectedHealthUrl,
+        startedAt: null,
+        pidPath,
+        statePath,
+        stdoutLogPath,
+        stderrLogPath,
+        health,
+    };
+}
+
+async function showStatus() {
+    const snapshot = await readDesktopDevStatusSnapshot();
+    if (snapshot.mode === "stale") {
+        clearManagedState();
+        console.log("state: stale");
+        console.log(`pid: ${snapshot.pid}`);
+        console.log(`stateFile: ${snapshot.statePath}`);
+        return 0;
+    }
+
+    if (snapshot.mode === "managed-healthy" || snapshot.mode === "managed-unavailable") {
+        console.log(`state: ${snapshot.mode}`);
+        console.log(`pid: ${snapshot.pid}`);
+        console.log(`healthUrl: ${snapshot.healthUrl}`);
+        console.log(`startedAt: ${snapshot.startedAt}`);
+        console.log(`pidFile: ${snapshot.pidPath}`);
+        console.log(`stateFile: ${snapshot.statePath}`);
+        console.log(`stdoutLog: ${snapshot.stdoutLogPath}`);
+        console.log(`stderrLog: ${snapshot.stderrLogPath}`);
+        if (snapshot.health?.ok && snapshot.health.payload) {
+            console.log(`healthMode: ${snapshot.health.payload.mode ?? "unknown"}`);
         }
         return 0;
     }
 
-    const healthUrl = healthUrlForPort(resolveSidecarPort());
-    const health = await fetchHealth(healthUrl, HEALTH_TIMEOUT_MS);
-    if (health.ok) {
+    if (snapshot.mode === "unmanaged") {
         console.log("state: unmanaged");
-        console.log(`healthUrl: ${healthUrl}`);
+        console.log(`healthUrl: ${snapshot.healthUrl}`);
         return 0;
     }
 
     console.log("state: unavailable");
-    console.log(`healthUrl: ${healthUrl}`);
+    console.log(`healthUrl: ${snapshot.healthUrl}`);
     return 0;
+}
+
+export async function stopManagedDesktopDev() {
+    const before = await readDesktopDevStatusSnapshot();
+    const managedState = readManagedState();
+    if (managedState) {
+        if (!isProcessAlive(managedState.pid)) {
+            clearManagedState();
+            return {
+                ok: true,
+                action: "stop",
+                stopped: false,
+                reason: "stale_state_removed",
+                pid: managedState.pid,
+                before,
+                after: await readDesktopDevStatusSnapshot(),
+            };
+        }
+
+        killProcessTree(managedState.pid);
+        await waitForExit(managedState.pid, STOP_TIMEOUT_MS);
+        clearManagedState();
+        return {
+            ok: true,
+            action: "stop",
+            stopped: true,
+            reason: "managed_process_stopped",
+            pid: managedState.pid,
+            before,
+            after: await readDesktopDevStatusSnapshot(),
+        };
+    }
+
+    return {
+        ok: true,
+        action: "stop",
+        stopped: false,
+        reason: "not_recorded",
+        pid: null,
+        before,
+        after: before,
+    };
 }
 
 async function stopManagedDesktop() {
-    const managedState = readManagedState();
-    if (!managedState) {
-        console.log("[desktop-dev] no managed desktop dev process is recorded");
-        return 0;
+    const result = await stopManagedDesktopDev();
+    switch (result.reason) {
+        case "not_recorded":
+            console.log("[desktop-dev] no managed desktop dev process is recorded");
+            break;
+        case "stale_state_removed":
+            console.log(`[desktop-dev] removed stale desktop dev state for pid ${result.pid}`);
+            break;
+        default:
+            console.log(`[desktop-dev] stopped managed desktop dev (pid ${result.pid})`);
+            break;
     }
-
-    if (!isProcessAlive(managedState.pid)) {
-        clearManagedState();
-        console.log(`[desktop-dev] removed stale desktop dev state for pid ${managedState.pid}`);
-        return 0;
-    }
-
-    killProcessTree(managedState.pid);
-    await waitForExit(managedState.pid, STOP_TIMEOUT_MS);
-    clearManagedState();
-    console.log(`[desktop-dev] stopped managed desktop dev (pid ${managedState.pid})`);
     return 0;
 }
 
-async function showLogs(lineCount) {
-    const stdoutTail = await readLogTail(stdoutLogPath, lineCount);
-    const stderrTail = await readLogTail(stderrLogPath, lineCount);
+export async function readDesktopDevLogsSnapshot(lineCount = DEFAULT_LOG_LINES) {
+    const normalizedLines = parseInteger(lineCount, DEFAULT_LOG_LINES);
+    const stdoutTail = await readLogTail(stdoutLogPath, normalizedLines);
+    const stderrTail = await readLogTail(stderrLogPath, normalizedLines);
+    return {
+        ok: true,
+        lineCount: normalizedLines,
+        logsDir,
+        stdoutLogPath,
+        stderrLogPath,
+        stdoutTail,
+        stderrTail,
+        available: Boolean(stdoutTail || stderrTail),
+    };
+}
 
-    if (!stdoutTail && !stderrTail) {
+async function showLogs(lineCount) {
+    const snapshot = await readDesktopDevLogsSnapshot(lineCount);
+    if (!snapshot.available) {
         console.log(`[desktop-dev] no managed desktop dev logs found at ${logsDir}`);
         return 0;
     }
 
-    if (stdoutTail) {
-        console.log(`== stdout (${stdoutLogPath}) ==`);
-        console.log(stdoutTail);
+    if (snapshot.stdoutTail) {
+        console.log(`== stdout (${snapshot.stdoutLogPath}) ==`);
+        console.log(snapshot.stdoutTail);
     }
 
-    if (stderrTail) {
-        console.log(`== stderr (${stderrLogPath}) ==`);
-        console.log(stderrTail);
+    if (snapshot.stderrTail) {
+        console.log(`== stderr (${snapshot.stderrLogPath}) ==`);
+        console.log(snapshot.stderrTail);
     }
 
     return 0;
@@ -316,7 +497,7 @@ function run(invocation, options) {
         cwd: repoRoot,
         env: invocation.env ?? process.env,
         stdio: "inherit",
-        shell: false,
+        shell: invocation.shell ?? false,
     });
 
     if (result.error) {
@@ -439,7 +620,7 @@ function killProcessTree(pid) {
     }
 }
 
-async function fetchHealth(healthUrl, timeoutMs) {
+export async function fetchHealth(healthUrl, timeoutMs = HEALTH_TIMEOUT_MS) {
     try {
         const response = await fetch(healthUrl, {
             headers: { accept: "application/json" },
@@ -465,11 +646,11 @@ async function readLogTail(filePath, lineCount) {
     return contents.split(/\r?\n/).slice(-lineCount).join("\n").trim();
 }
 
-function resolveSidecarPort() {
+export function resolveSidecarPort() {
     return parseInteger(process.env.STFC_SIDECAR_PORT, DEFAULT_PORT);
 }
 
-function healthUrlForPort(port) {
+export function healthUrlForPort(port) {
     return `http://127.0.0.1:${port}/api/health`;
 }
 
@@ -478,18 +659,34 @@ function parseInteger(value, fallback) {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function resolveNpmInvocation(args) {
+export function resolveNpmInvocation(args) {
     const npmExecPath = process.env.npm_execpath;
     if (npmExecPath) {
         return {
             command: process.execPath,
             args: [npmExecPath, ...args],
+            shell: false,
+        };
+    }
+
+    const nodeDir = path.dirname(process.execPath);
+    const npmCliCandidates = [
+        path.join(nodeDir, "node_modules", "npm", "bin", "npm-cli.js"),
+        path.join(repoRoot, "node_modules", "npm", "bin", "npm-cli.js"),
+    ];
+    const npmCliPath = npmCliCandidates.find((candidate) => existsSync(candidate));
+    if (npmCliPath) {
+        return {
+            command: process.execPath,
+            args: [npmCliPath, ...args],
+            shell: false,
         };
     }
 
     return {
         command: process.platform === "win32" ? "npm.cmd" : "npm",
         args,
+        shell: process.platform === "win32",
     };
 }
 

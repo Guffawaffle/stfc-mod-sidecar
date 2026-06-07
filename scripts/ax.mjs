@@ -5,6 +5,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { assertDesktopPackagingPreflight } from "./desktop-packaging-guard.mjs";
+import { desktopLifecycleCommand } from "./desktop-lifecycle-ax.mjs";
+import {
+    observedHostileInspectCommand,
+    observedHostileReportCommand,
+} from "./observed-hostile-ax.mjs";
+import { reproBundleCommand } from "./repro-bundle-ax.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(scriptPath), "..");
@@ -23,6 +29,10 @@ const COMMAND_METADATA = new Map([
     ["desktop:stop", { description: "Stop the managed desktop dev background process", sideEffects: "write" }],
     ["desktop:status", { description: "Show managed desktop dev process status", sideEffects: "read" }],
     ["desktop:logs", { description: "Print recent managed desktop dev logs", sideEffects: "read" }],
+    ["desktop:lifecycle", { description: "Operate the managed desktop dev lifecycle on the expected local sidecar port", sideEffects: "write" }],
+    ["observed-hostiles:report", { description: "Read the observed hostile community report route and optionally export JSON or Markdown artifacts", sideEffects: "read" }],
+    ["observed-hostiles:inspect", { description: "Inspect grouped observed hostile evidence and report inclusion from the local event store", sideEffects: "read" }],
+    ["repro:bundle", { description: "Capture one cross-repo repro bundle with native AX slices, sidecar event snapshots, report preview, and bounded Lex memory", sideEffects: "write" }],
     ["dist:win", { description: "Build Windows desktop distribution artifacts", sideEffects: "write" }],
     ["ci", { description: "Build, test, and package Windows distribution artifacts", sideEffects: "write" }],
 ]);
@@ -37,11 +47,16 @@ const COMMANDS = new Map([
     ["desktop:stop", desktopStopCommand],
     ["desktop:status", desktopStatusCommand],
     ["desktop:logs", desktopLogsCommand],
+    ["desktop:lifecycle", desktopLifecycleAxCommand],
+    ["observed-hostiles:report", observedHostilesReportCommand],
+    ["observed-hostiles:inspect", observedHostilesInspectCommand],
+    ["repro:bundle", reproBundleAxCommand],
     ["dist:win", distWinCommand],
     ["ci", ciCommand],
 ]);
 
 const commandName = process.argv[2] ?? "help";
+const commandArgs = process.argv.slice(3);
 
 async function main() {
     if (commandName === "list") {
@@ -55,7 +70,7 @@ async function main() {
             success: true,
             durationMs: 0,
             commands: commandInventory(),
-            usage: "npm run ax -- <status|build|test|check|desktop:start|desktop:cycle|desktop:stop|desktop:status|desktop:logs|dist:win|ci|list>",
+            usage: "npm run ax -- <status|build|test|check|desktop:start|desktop:cycle|desktop:stop|desktop:status|desktop:logs|desktop:lifecycle|observed-hostiles:report|observed-hostiles:inspect|repro:bundle|dist:win|ci|list>",
         });
         return;
     }
@@ -69,13 +84,14 @@ async function main() {
             errors: [`Unknown ax command: ${commandName}`],
             hints: [`Known commands: ${Array.from(COMMANDS.keys()).join(", ")}`],
         });
-        process.exit(1);
+        process.exitCode = 1;
+        return;
     }
 
     const start = Date.now();
-    const result = await command();
+    const result = await command(commandArgs);
     emitResult({ command: commandName, durationMs: Date.now() - start, ...result });
-    process.exit(result.success ? 0 : 1);
+    process.exitCode = result.success ? 0 : 1;
 }
 
 function commandInventory() {
@@ -128,33 +144,39 @@ async function checkCommand() {
 }
 
 async function desktopStartCommand() {
-    return sequence([
-        () => runNpmStep("desktop:dev:bg", ["run", "desktop:dev:bg"], { timeoutMs: 180_000 }),
-    ]);
+    return desktopLifecycleCommand(["--action", "start"]);
 }
 
 async function desktopCycleCommand() {
-    return sequence([
-        () => runNpmStep("desktop:dev:cycle", ["run", "desktop:dev:cycle"], { timeoutMs: 180_000 }),
-    ]);
+    return desktopLifecycleCommand(["--action", "cycle"]);
 }
 
 async function desktopStopCommand() {
-    return sequence([
-        () => runNpmStep("desktop:dev:stop", ["run", "desktop:dev:stop"], { timeoutMs: 60_000 }),
-    ]);
+    return desktopLifecycleCommand(["--action", "stop"]);
 }
 
-async function desktopStatusCommand() {
-    return sequence([
-        () => runNpmStep("desktop:dev:status", ["run", "desktop:dev:status"], { timeoutMs: 30_000 }),
-    ]);
+async function desktopStatusCommand(args = []) {
+    return desktopLifecycleCommand(["--action", "status", ...args]);
 }
 
-async function desktopLogsCommand() {
-    return sequence([
-        () => runNpmStep("desktop:dev:logs", ["run", "desktop:dev:logs"], { timeoutMs: 30_000 }),
-    ]);
+async function desktopLogsCommand(args = []) {
+    return desktopLifecycleCommand(["--action", "logs", ...args]);
+}
+
+async function desktopLifecycleAxCommand(args = []) {
+    return desktopLifecycleCommand(args);
+}
+
+async function observedHostilesReportCommand(args = []) {
+    return observedHostileReportCommand(args);
+}
+
+async function observedHostilesInspectCommand(args = []) {
+    return observedHostileInspectCommand(args);
+}
+
+async function reproBundleAxCommand(args = []) {
+    return reproBundleCommand(args);
 }
 
 async function ciCommand() {
@@ -415,5 +437,5 @@ main().catch((error) => {
         durationMs: 0,
         errors: [error instanceof Error ? error.message : String(error)],
     });
-    process.exit(1);
+    process.exitCode = 1;
 });

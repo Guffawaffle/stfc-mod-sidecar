@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, test } from "vitest";
-import { parseDesktopDevArgs } from "../../../scripts/desktop-dev.mjs";
+import { parseDesktopDevArgs, resolveNpmInvocation } from "../../../scripts/desktop-dev.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,8 +31,11 @@ describe("desktop dev script", () => {
         expect(desktopDevScript).toContain("const stdoutLogPath = path.join(logsDir, \"desktop-dev.out.log\")");
         expect(axScript).toContain("desktop:start");
         expect(axScript).toContain("desktop:cycle");
+        expect(axScript).toContain("desktop:lifecycle");
         expect(familyManifest.commands["desktop-start"].executionTarget.args).toEqual(["desktop:start"]);
         expect(familyManifest.commands["desktop-cycle"].executionTarget.args).toEqual(["desktop:cycle"]);
+        expect(familyManifest.commands["desktop-lifecycle"].executionTarget.args).toEqual(["desktop:lifecycle"]);
+        expect(familyManifest.commands["desktop-logs"].argsSchema.properties.lines.type).toBe("integer");
     });
 
     test("parses background and log commands without changing foreground defaults", () => {
@@ -78,5 +81,17 @@ describe("desktop dev script", () => {
             launchArgs: [],
             lines: 25,
         });
+    });
+
+    test("resolves npm invocations that remain executable from plain node and ax contexts", () => {
+        const invocation = resolveNpmInvocation(["run", "server:stop"]);
+        expect(invocation.command).toBeTruthy();
+        expect(invocation.args).toEqual(expect.arrayContaining(["run", "server:stop"]));
+        if (invocation.command === "npm.cmd") {
+            expect(invocation.shell).toBe(true);
+        } else {
+            expect(invocation.command).toBe(process.execPath);
+            expect(invocation.shell).toBe(false);
+        }
     });
 });
