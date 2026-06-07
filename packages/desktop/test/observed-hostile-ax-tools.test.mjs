@@ -5,8 +5,12 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
+    buildObservedHostileCoveragePayload,
     buildObservedHostileInspectionPayload,
+    buildObservedHostileMaintainerQuestionsMarkdown,
     buildObservedHostileReportPayload,
+    buildObservedHostileReviewPacketArtifactPlan,
+    buildObservedHostileReviewSummaryMarkdown,
     parseObservedHostileAxArgs,
     summarizeObservedHostileReportForAx,
 } from "../../../scripts/observed-hostile-ax.mjs";
@@ -40,7 +44,7 @@ describe("observed hostile ax tools", () => {
 
         expect(parseObservedHostileAxArgs([
             "--source",
-            "auto",
+            "live",
             "--server-url",
             "http://127.0.0.1:43127",
             "--markdown",
@@ -55,13 +59,51 @@ describe("observed hostile ax tools", () => {
             "9",
         ], { mode: "report" })).toEqual({
             markdown: true,
-            source: "auto",
+            source: "live",
             serverUrl: "http://127.0.0.1:43127",
             jsonOut: ".artifacts/report.json",
             markdownOut: ".artifacts/report.md",
             previewLimit: 7,
             full: true,
             timeoutSec: 9,
+        });
+
+        expect(parseObservedHostileAxArgs([
+            "--source",
+            "live",
+            "--report-json",
+            ".artifacts/community-report.json",
+            "--json-out",
+            ".artifacts/coverage.json",
+            "--preview-limit",
+            "4",
+        ], { mode: "coverage" })).toEqual({
+            source: "live",
+            serverUrl: "",
+            reportJson: ".artifacts/community-report.json",
+            jsonOut: ".artifacts/coverage.json",
+            previewLimit: 4,
+            timeoutSec: 4,
+        });
+
+        expect(parseObservedHostileAxArgs([
+            "--source",
+            "live",
+            "--output-dir",
+            ".artifacts/coverage-investigation",
+            "--base-name",
+            "community-report-sudo-review",
+            "--preview-limit",
+            "3",
+            "--timeout-sec",
+            "12",
+        ], { mode: "review-packet" })).toEqual({
+            source: "live",
+            serverUrl: "",
+            outputDir: ".artifacts/coverage-investigation",
+            baseName: "community-report-sudo-review",
+            previewLimit: 3,
+            timeoutSec: 12,
         });
     });
 
@@ -222,7 +264,9 @@ describe("observed hostile ax tools", () => {
         });
 
         expect(axScript).toContain("observed-hostiles:report");
+        expect(axScript).toContain("observed-hostiles:coverage");
         expect(axScript).toContain("observed-hostiles:inspect");
+        expect(axScript).toContain("observed-hostiles:review-packet");
         expect(familyManifest.commands["observed-hostile-report"].executionTarget.args).toEqual(["observed-hostiles:report"]);
         expect(familyManifest.commands["observed-hostile-inspect"].executionTarget.args).toEqual(["observed-hostiles:inspect"]);
         expect(familyManifest.commands["observed-hostile-report"].argsSchema.properties.markdown.type).toBe("boolean");
@@ -233,8 +277,78 @@ describe("observed hostile ax tools", () => {
         expect(familyManifest.commands["observed-hostile-report"].argsSchema.properties["preview-limit"].type).toBe("integer");
         expect(familyManifest.commands["observed-hostile-report"].argsSchema.properties["full"].type).toBe("boolean");
         expect(familyManifest.commands["observed-hostile-report"].argsSchema.properties["timeout-sec"].type).toBe("integer");
+        expect(familyManifest.commands["observed-hostile-coverage"].executionTarget.args).toEqual(["observed-hostiles:coverage"]);
+        expect(familyManifest.commands["observed-hostile-coverage"].argsSchema.properties["report-json"].type).toBe("string");
+        expect(familyManifest.commands["observed-hostile-review-packet"].executionTarget.args).toEqual(["observed-hostiles:review-packet"]);
+        expect(familyManifest.commands["observed-hostile-review-packet"].argsSchema.properties["output-dir"].type).toBe("string");
+        expect(familyManifest.commands["observed-hostile-review-packet"].argsSchema.properties["base-name"].type).toBe("string");
         expect(familyManifest.commands["observed-hostile-inspect"].argsSchema.properties["system-id"].type).toBe("string");
         expect(familyManifest.commands["observed-hostile-inspect"].argsSchema.properties["raw-limit"].type).toBe("integer");
+    });
+
+    it("builds coverage analysis and maintainer packet helpers from a report", () => {
+        const reportPayload = buildObservedHostileReportPayload(buildObservedHostileSource(), {
+            generatedAt: "2026-06-07T03:00:00.000Z",
+            includeMarkdown: true,
+            referenceCatalog: buildReferenceCatalogStub(),
+        });
+
+        const coverage = buildObservedHostileCoveragePayload(reportPayload, {
+            previewLimit: 2,
+        });
+        expect(coverage).toMatchObject({
+            ok: true,
+            detail: "observed-hostile-coverage",
+            summary: {
+                submissionReadyCount: 1,
+                readyForMaintainerReviewCount: 1,
+                needsIdentifierReviewCount: 1,
+            },
+            coverage: {
+                totalItems: 3,
+                readiness: {
+                    submissionReady: 1,
+                    readyForMaintainerReview: 1,
+                    needsIdentifierReview: 1,
+                },
+                hullId: {
+                    present: 1,
+                    missing: 2,
+                },
+                userLocaId: {
+                    present: 2,
+                    missing: 1,
+                },
+                waveDefense: {
+                    likely: 1,
+                    notLikely: 2,
+                },
+            },
+        });
+        expect(coverage.representativeRows.nonWave).toMatchObject({
+            observedKey: "hull:missing-high",
+        });
+        expect(coverage.hullIdMissingPreview).toHaveLength(2);
+
+        const summaryMarkdown = buildObservedHostileReviewSummaryMarkdown(reportPayload.report);
+        expect(summaryMarkdown).toContain("* Submission-ready with hullId: 1");
+        expect(summaryMarkdown).toContain("* Ready for maintainer review without hullId: 1");
+        expect(summaryMarkdown).toContain("`Hull_L5_Survey_Mar`");
+        expect(summaryMarkdown).toContain("Nothing is auto-submitted.");
+
+        const questionsMarkdown = buildObservedHostileMaintainerQuestionsMarkdown();
+        expect(questionsMarkdown).toContain("Is `hullId` the identifier you want for missing-hostile reports?");
+
+        const artifactPlan = buildObservedHostileReviewPacketArtifactPlan({
+            outputDir: ".artifacts/coverage-investigation",
+            baseName: "community-report-sudo-review",
+        });
+        expect(artifactPlan).toMatchObject({
+            reportJsonOut: expect.stringContaining("community-report-sudo-review.json"),
+            reportMarkdownOut: expect.stringContaining("community-report-sudo-review.md"),
+            summaryOut: expect.stringContaining("community-report-sudo-review-summary.md"),
+            questionsOut: expect.stringContaining("community-report-sudo-review-questions.md"),
+        });
     });
 });
 

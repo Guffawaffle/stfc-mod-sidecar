@@ -9,6 +9,7 @@ import {
     observedHostileSourceSurfaceInfo,
 } from "../packages/viewer/server/observed-hostile-access.mjs";
 import {
+    OBSERVED_HOSTILE_COMMUNITY_REPORT_PROTOCOL_VERSION,
     buildObservedHostileCommunityReport,
     formatObservedHostileCommunityReportMarkdown,
     highConfidenceUntrackedHostileGate,
@@ -17,6 +18,7 @@ import {
     buildObservedHostileReferenceSummary,
     loadObservedHostileReferenceCatalog,
 } from "../packages/viewer/server/observed-hostile-reference.mjs";
+import { readDesktopDevStatusSnapshot } from "./desktop-dev.mjs";
 
 const OBSERVED_HOSTILE_AX_PROTOCOL_VERSION = "stfc.observed-hostile.ax.v1";
 const OBSERVED_HOSTILE_EVENT_TYPES = Object.freeze(["observed.hostile"]);
@@ -26,6 +28,9 @@ const DEFAULT_INSPECTION_LIMIT = 25;
 const DEFAULT_RAW_EVENT_LIMIT = 25;
 const DEFAULT_REPORT_PREVIEW_LIMIT = 5;
 const DEFAULT_REPORT_TIMEOUT_SEC = 4;
+const DEFAULT_REVIEW_PACKET_DIR = ".artifacts/coverage-investigation";
+const DEFAULT_REVIEW_PACKET_BASENAME = "community-report-review";
+const DEFAULT_DESKTOP_PRODUCT_NAME = "STFC Community Mod Companion";
 const MAX_PROJECTION_EVENT_LIMIT = 5000;
 const MAX_INSPECTION_LIMIT = 250;
 const MAX_RAW_EVENT_LIMIT = 100;
@@ -57,6 +62,24 @@ export async function observedHostileInspectCommand(argv = []) {
 
     return payload.ok === false
         ? { success: false, errors: [payload.error ?? "Observed hostile inspection unavailable"], data: payload }
+        : { success: true, data: payload };
+}
+
+export async function observedHostileCoverageCommand(argv = []) {
+    const options = parseObservedHostileAxArgs(argv, { mode: "coverage" });
+    const payload = await readObservedHostileCoverageCommandPayload(options);
+
+    return payload.ok === false
+        ? { success: false, errors: [payload.error ?? "Observed hostile coverage unavailable"], data: payload }
+        : { success: true, data: payload };
+}
+
+export async function observedHostileReviewPacketCommand(argv = []) {
+    const options = parseObservedHostileAxArgs(argv, { mode: "review-packet" });
+    const payload = await readObservedHostileReviewPacketCommandPayload(options);
+
+    return payload.ok === false
+        ? { success: false, errors: [payload.error ?? "Observed hostile review packet unavailable"], data: payload }
         : { success: true, data: payload };
 }
 
@@ -155,7 +178,7 @@ export function buildObservedHostileInspectionPayload(snapshot = {}, options = {
 }
 
 export function parseObservedHostileAxArgs(argv = [], options = {}) {
-    const mode = options.mode === "report" ? "report" : "inspect";
+    const mode = normalizeObservedHostileAxMode(options.mode);
     const parsed = {
         key: "",
         q: "",
@@ -172,24 +195,11 @@ export function parseObservedHostileAxArgs(argv = [], options = {}) {
         previewLimit: DEFAULT_REPORT_PREVIEW_LIMIT,
         full: false,
         timeoutSec: DEFAULT_REPORT_TIMEOUT_SEC,
+        reportJson: "",
+        outputDir: DEFAULT_REVIEW_PACKET_DIR,
+        baseName: DEFAULT_REVIEW_PACKET_BASENAME,
     };
-    const recognized = new Set([
-        "--key",
-        "--q",
-        "--status",
-        "--reference",
-        "--system-id",
-        "--limit",
-        "--raw-limit",
-        "--markdown",
-        "--source",
-        "--server-url",
-        "--json-out",
-        "--markdown-out",
-        "--preview-limit",
-        "--full",
-        "--timeout-sec",
-    ]);
+    const recognized = recognizedObservedHostileAxOptions(mode);
 
     for (let index = 0; index < argv.length; index += 1) {
         const arg = String(argv[index] ?? "");
@@ -253,6 +263,15 @@ export function parseObservedHostileAxArgs(argv = [], options = {}) {
             case "--timeout-sec":
                 parsed.timeoutSec = normalizePositiveInteger(value, DEFAULT_REPORT_TIMEOUT_SEC, 30);
                 break;
+            case "--report-json":
+                parsed.reportJson = value;
+                break;
+            case "--output-dir":
+                parsed.outputDir = value;
+                break;
+            case "--base-name":
+                parsed.baseName = value;
+                break;
             default:
                 break;
         }
@@ -271,6 +290,28 @@ export function parseObservedHostileAxArgs(argv = [], options = {}) {
         };
     }
 
+    if (mode === "coverage") {
+        return {
+            source: parsed.source,
+            serverUrl: parsed.serverUrl,
+            reportJson: parsed.reportJson,
+            jsonOut: parsed.jsonOut,
+            previewLimit: parsed.previewLimit,
+            timeoutSec: parsed.timeoutSec,
+        };
+    }
+
+    if (mode === "review-packet") {
+        return {
+            source: parsed.source,
+            serverUrl: parsed.serverUrl,
+            outputDir: parsed.outputDir,
+            baseName: parsed.baseName,
+            previewLimit: parsed.previewLimit,
+            timeoutSec: parsed.timeoutSec,
+        };
+    }
+
     return {
         key: parsed.key,
         q: parsed.q,
@@ -283,40 +324,209 @@ export function parseObservedHostileAxArgs(argv = [], options = {}) {
     };
 }
 
+function normalizeObservedHostileAxMode(value) {
+    switch (value) {
+        case "report":
+        case "coverage":
+        case "review-packet":
+            return value;
+        default:
+            return "inspect";
+    }
+}
+
+function recognizedObservedHostileAxOptions(mode) {
+    const common = [
+        "--source",
+        "--server-url",
+        "--preview-limit",
+        "--timeout-sec",
+    ];
+
+    if (mode === "report") {
+        return new Set([
+            "--markdown",
+            "--json-out",
+            "--markdown-out",
+            "--full",
+            ...common,
+        ]);
+    }
+
+    if (mode === "coverage") {
+        return new Set([
+            "--report-json",
+            "--json-out",
+            ...common,
+        ]);
+    }
+
+    if (mode === "review-packet") {
+        return new Set([
+            "--output-dir",
+            "--base-name",
+            ...common,
+        ]);
+    }
+
+    return new Set([
+        "--key",
+        "--q",
+        "--status",
+        "--reference",
+        "--system-id",
+        "--limit",
+        "--raw-limit",
+    ]);
+}
+
 export async function readObservedHostileReportCommandPayload(options = {}) {
-    const generatedAt = new Date().toISOString();
+    const payload = await readObservedHostileReportPayloadForSource({
+        ...options,
+        includeMarkdown: Boolean(options.markdown || options.markdownOut),
+    });
+    writeObservedHostileArtifacts(payload.report, payload.markdown, options);
+    return summarizeObservedHostileReportForAx(payload, options, payload.warnings ?? []);
+}
+
+export async function readObservedHostileCoverageCommandPayload(options = {}) {
+    const payload = asText(options.reportJson)
+        ? await loadObservedHostileReportArtifactPayload(options.reportJson)
+        : await readObservedHostileReportPayloadForSource({
+            ...options,
+            includeMarkdown: false,
+        });
+    const coverage = buildObservedHostileCoveragePayload(payload, {
+        previewLimit: options.previewLimit,
+    });
+
+    if (options.jsonOut) {
+        writeJsonArtifact(options.jsonOut, coverage);
+    }
+    return coverage;
+}
+
+export async function readObservedHostileReviewPacketCommandPayload(options = {}) {
+    const payload = await readObservedHostileReportPayloadForSource({
+        ...options,
+        includeMarkdown: true,
+    });
+    if (payload.ok === false) {
+        return buildObservedHostileReviewPacketPayload(payload, {
+            previewLimit: options.previewLimit,
+            artifacts: null,
+        });
+    }
+
+    const artifacts = writeObservedHostileReviewPacketArtifacts(payload, options);
+    return buildObservedHostileReviewPacketPayload(payload, {
+        previewLimit: options.previewLimit,
+        artifacts,
+    });
+}
+
+async function readObservedHostileReportPayloadForSource(options = {}) {
+    const generatedAt = options.generatedAt ?? new Date().toISOString();
     const reportSource = normalizeReportSource(options.source ?? "route");
-    const wantMarkdown = Boolean(options.markdown || options.markdownOut);
+    const includeMarkdown = Boolean(options.includeMarkdown);
     const warnings = [];
+
+    if (reportSource === "live") {
+        return fetchObservedHostileLiveReportPayload({
+            generatedAt,
+            includeMarkdown,
+            serverUrl: options.serverUrl,
+            timeoutSec: options.timeoutSec,
+        });
+    }
 
     if (reportSource === "route" || reportSource === "auto") {
         const routePayload = await fetchObservedHostileRouteReportPayload({
             generatedAt,
-            includeMarkdown: wantMarkdown,
+            includeMarkdown,
             serverUrl: options.serverUrl,
             timeoutSec: options.timeoutSec,
         });
         if (routePayload.ok !== false) {
-            writeObservedHostileArtifacts(routePayload.report, routePayload.markdown, options);
-            return summarizeObservedHostileReportForAx(routePayload, options, warnings);
+            return routePayload;
         }
         if (reportSource === "route") {
-            return summarizeObservedHostileReportForAx(routePayload, options, warnings);
+            return routePayload;
         }
         warnings.push(`Route fetch failed; falling back to local store snapshot. ${routePayload.error ?? "Unknown route error"}`);
     }
 
-    const [snapshot, referenceCatalog] = await Promise.all([
-        readObservedHostileStoreSnapshot(),
-        loadObservedHostileReferenceCatalog(),
-    ]);
-    const directPayload = buildObservedHostileReportPayload(snapshot, {
+    return buildObservedHostileDirectReportPayload({
         generatedAt,
-        includeMarkdown: wantMarkdown,
-        referenceCatalog,
+        includeMarkdown,
+        warnings,
     });
-    writeObservedHostileArtifacts(directPayload.report, directPayload.markdown, options);
-    return summarizeObservedHostileReportForAx(directPayload, options, warnings);
+}
+
+async function buildObservedHostileDirectReportPayload(options = {}) {
+    const snapshot = await readObservedHostileStoreSnapshot({
+        backend: options.backend,
+        connection: options.connection,
+        source: options.source ?? "store",
+    });
+    const referenceCatalog = await loadObservedHostileReferenceCatalog();
+    return {
+        ...buildObservedHostileReportPayload(snapshot, {
+            generatedAt: options.generatedAt,
+            includeMarkdown: options.includeMarkdown,
+            referenceCatalog,
+        }),
+        transport: {
+            source: options.transportSource ?? snapshot.source ?? "store",
+            storeConnection: snapshot.connection ?? null,
+        },
+        liveContext: options.liveContext ?? null,
+        warnings: Array.isArray(options.warnings) ? options.warnings : [],
+    };
+}
+
+async function loadObservedHostileReportArtifactPayload(filePath) {
+    const resolved = resolveOutputPath(filePath);
+    const document = readJsonFile(resolved);
+    const report = extractObservedHostileReport(document);
+    if (!report) {
+        return {
+            ok: false,
+            protocolVersion: OBSERVED_HOSTILE_AX_PROTOCOL_VERSION,
+            detail: "observed-hostile-report",
+            generatedAt: new Date().toISOString(),
+            transport: {
+                source: "artifact",
+                artifactPath: resolved,
+            },
+            error: `No observed hostile community report found in ${resolved}`,
+            warnings: [],
+        };
+    }
+
+    return {
+        ok: report.ok !== false,
+        protocolVersion: OBSERVED_HOSTILE_AX_PROTOCOL_VERSION,
+        detail: "observed-hostile-report",
+        generatedAt: report.generatedAt ?? new Date().toISOString(),
+        source: {
+            source: "artifact",
+            storageBackend: null,
+            exists: true,
+            totalLines: finiteIntegerOrNull(report.summary?.highConfidenceUntrackedCount) ?? 0,
+            returnedLines: finiteIntegerOrNull(report.summary?.highConfidenceUntrackedCount) ?? 0,
+            connection: resolved,
+        },
+        reference: report.reference ?? buildObservedHostileReferenceSummary(null),
+        report,
+        markdown: undefined,
+        transport: {
+            source: "artifact",
+            artifactPath: resolved,
+        },
+        warnings: [],
+        error: report.ok === false ? report.error ?? "Observed hostile community report unavailable" : undefined,
+    };
 }
 
 export async function fetchObservedHostileRouteReportPayload(options = {}) {
@@ -363,6 +573,7 @@ export async function fetchObservedHostileRouteReportPayload(options = {}) {
             report,
             markdown,
             transport: { source: "route", serverUrl, jsonUrl, markdownUrl },
+            warnings: [],
             error: report.ok === false ? report.error ?? "Observed hostile community report unavailable" : undefined,
         };
     } catch (error) {
@@ -372,9 +583,85 @@ export async function fetchObservedHostileRouteReportPayload(options = {}) {
             detail: "observed-hostile-report",
             generatedAt: options.generatedAt ?? new Date().toISOString(),
             transport: { source: "route", serverUrl, jsonUrl, markdownUrl },
+            warnings: [],
             error: error instanceof Error ? error.message : String(error),
         };
     }
+}
+
+async function fetchObservedHostileLiveReportPayload(options = {}) {
+    const liveContext = await resolveObservedHostileLiveContext();
+    const warnings = [];
+    const generatedAt = options.generatedAt ?? new Date().toISOString();
+
+    if (liveContext.ok !== true) {
+        return {
+            ok: false,
+            protocolVersion: OBSERVED_HOSTILE_AX_PROTOCOL_VERSION,
+            detail: "observed-hostile-report",
+            generatedAt,
+            transport: {
+                source: "live",
+                serverUrl: liveContext.serverUrl ?? null,
+                storeConnection: liveContext.storeConnection ?? null,
+            },
+            liveContext,
+            warnings,
+            error: liveContext.error ?? "Unable to resolve live desktop sidecar context",
+        };
+    }
+
+    if (liveContext.healthy && liveContext.serverUrl) {
+        const routePayload = await fetchObservedHostileRouteReportPayload({
+            generatedAt,
+            includeMarkdown: options.includeMarkdown,
+            serverUrl: options.serverUrl || liveContext.serverUrl,
+            timeoutSec: options.timeoutSec,
+        });
+        if (routePayload.ok !== false) {
+            return {
+                ...routePayload,
+                transport: {
+                    ...routePayload.transport,
+                    source: "live-route",
+                    storeConnection: liveContext.storeConnection ?? null,
+                },
+                liveContext,
+                warnings,
+            };
+        }
+        warnings.push(`Live route fetch failed; falling back to desktop store snapshot. ${routePayload.error ?? "Unknown route error"}`);
+    } else {
+        warnings.push(`Live desktop sidecar is not healthy (mode=${liveContext.mode ?? "unknown"}); reading desktop store snapshot.`);
+    }
+
+    if (liveContext.storeConnection && existsSync(liveContext.storeConnection)) {
+        return buildObservedHostileDirectReportPayload({
+            generatedAt,
+            includeMarkdown: options.includeMarkdown,
+            backend: "sqlite",
+            connection: liveContext.storeConnection,
+            source: "live-store",
+            transportSource: "live-store",
+            warnings,
+            liveContext,
+        });
+    }
+
+    return {
+        ok: false,
+        protocolVersion: OBSERVED_HOSTILE_AX_PROTOCOL_VERSION,
+        detail: "observed-hostile-report",
+        generatedAt,
+        transport: {
+            source: "live",
+            serverUrl: liveContext.serverUrl ?? null,
+            storeConnection: liveContext.storeConnection ?? null,
+        },
+        liveContext,
+        warnings,
+        error: `Live desktop sidecar route unavailable and no desktop store snapshot found at ${liveContext.storeConnection ?? "unknown path"}`,
+    };
 }
 
 export function summarizeObservedHostileReportForAx(payload = {}, options = {}, warnings = []) {
@@ -399,6 +686,7 @@ export function summarizeObservedHostileReportForAx(payload = {}, options = {}, 
         source: payload.source ?? null,
         reference: payload.reference ?? buildObservedHostileReferenceSummary(null),
         transport: payload.transport ?? { source: "store" },
+        liveContext: payload.liveContext ?? null,
         summary,
         previewCount: itemsPreview.length,
         previewTotal: items.length,
@@ -409,6 +697,158 @@ export function summarizeObservedHostileReportForAx(payload = {}, options = {}, 
         report: options.full ? report : undefined,
         error: payload.error,
     };
+}
+
+export function buildObservedHostileCoveragePayload(payload = {}, options = {}) {
+    const report = extractObservedHostileReport(payload);
+    if (!report) {
+        return {
+            ok: false,
+            protocolVersion: OBSERVED_HOSTILE_AX_PROTOCOL_VERSION,
+            detail: "observed-hostile-coverage",
+            generatedAt: payload.generatedAt ?? new Date().toISOString(),
+            source: payload.source ?? null,
+            reference: payload.reference ?? buildObservedHostileReferenceSummary(null),
+            transport: payload.transport ?? null,
+            warnings: payload.warnings ?? [],
+            error: payload.error ?? "Observed hostile community report unavailable",
+        };
+    }
+
+    const items = Array.isArray(report.items) ? report.items : [];
+    const previewLimit = normalizePositiveInteger(options.previewLimit, DEFAULT_REPORT_PREVIEW_LIMIT, MAX_REPORT_PREVIEW_LIMIT);
+    const analyzed = analyzeObservedHostileCommunityReportItems(items);
+    return {
+        ok: report.ok !== false,
+        protocolVersion: OBSERVED_HOSTILE_AX_PROTOCOL_VERSION,
+        detail: "observed-hostile-coverage",
+        generatedAt: payload.generatedAt ?? report.generatedAt ?? new Date().toISOString(),
+        source: payload.source ?? null,
+        reference: payload.reference ?? report.reference ?? buildObservedHostileReferenceSummary(null),
+        transport: payload.transport ?? null,
+        liveContext: payload.liveContext ?? null,
+        summary: report.summary ?? null,
+        coverage: analyzed.coverage,
+        representativeRows: analyzed.representativeRows,
+        systemFrequency: analyzed.systemFrequency,
+        systemSetFrequency: analyzed.systemSetFrequency,
+        hullIdMissingPreview: analyzed.hullIdMissingRows.slice(0, previewLimit).map(previewObservedHostileReportItem),
+        nonWavePreview: analyzed.nonWaveRows.slice(0, previewLimit).map(previewObservedHostileReportItem),
+        warnings: payload.warnings ?? [],
+        error: payload.error,
+    };
+}
+
+export function buildObservedHostileReviewPacketPayload(payload = {}, options = {}) {
+    const report = extractObservedHostileReport(payload);
+    if (!report) {
+        return {
+            ok: false,
+            protocolVersion: OBSERVED_HOSTILE_AX_PROTOCOL_VERSION,
+            detail: "observed-hostile-review-packet",
+            generatedAt: payload.generatedAt ?? new Date().toISOString(),
+            source: payload.source ?? null,
+            reference: payload.reference ?? buildObservedHostileReferenceSummary(null),
+            transport: payload.transport ?? null,
+            artifacts: options.artifacts ?? null,
+            warnings: payload.warnings ?? [],
+            error: payload.error ?? "Observed hostile community report unavailable",
+        };
+    }
+
+    const previewLimit = normalizePositiveInteger(options.previewLimit, DEFAULT_REPORT_PREVIEW_LIMIT, MAX_REPORT_PREVIEW_LIMIT);
+    const analyzed = analyzeObservedHostileCommunityReportItems(Array.isArray(report.items) ? report.items : []);
+    return {
+        ok: report.ok !== false,
+        protocolVersion: OBSERVED_HOSTILE_AX_PROTOCOL_VERSION,
+        detail: "observed-hostile-review-packet",
+        generatedAt: payload.generatedAt ?? report.generatedAt ?? new Date().toISOString(),
+        source: payload.source ?? null,
+        reference: payload.reference ?? report.reference ?? buildObservedHostileReferenceSummary(null),
+        transport: payload.transport ?? null,
+        liveContext: payload.liveContext ?? null,
+        summary: report.summary ?? null,
+        packetNotes: {
+            autoSubmit: false,
+            waveDefenseLikelyCount: analyzed.coverage.waveDefense.likely,
+            nonWaveDefenseCount: analyzed.coverage.waveDefense.notLikely,
+        },
+        nonWaveRows: analyzed.nonWaveRows.slice(0, previewLimit).map(previewObservedHostileReportItem),
+        reportPreview: (Array.isArray(report.items) ? report.items : []).slice(0, previewLimit).map(previewObservedHostileReportItem),
+        artifacts: options.artifacts ?? null,
+        warnings: payload.warnings ?? [],
+        error: payload.error,
+    };
+}
+
+export function buildObservedHostileReviewSummaryMarkdown(report = {}) {
+    const extracted = extractObservedHostileReport(report) ?? {};
+    const items = Array.isArray(extracted.items) ? extracted.items : [];
+    const analyzed = analyzeObservedHostileCommunityReportItems(items);
+    const summary = extracted.summary ?? {};
+    const nonWave = analyzed.nonWaveRows.find((item) => item?.identity?.submissionReadiness === "ready_for_maintainer_review")
+        ?? analyzed.nonWaveRows[0]
+        ?? null;
+    const lines = [
+        "# Community Report Review Summary",
+        "",
+        `* Reference pack: ${extracted.reference?.label || extracted.reference?.source || "Unknown"}`,
+        `* Generated: ${extracted.generatedAt || "Unknown"}`,
+        `* Total high-confidence unmapped: ${Number(summary.highConfidenceUntrackedCount ?? 0)}`,
+        `* Submission-ready with hullId: ${Number(summary.submissionReadyCount ?? 0)}`,
+        `* Ready for maintainer review without hullId: ${Number(summary.readyForMaintainerReviewCount ?? 0)}`,
+        `* Needs identifier review: ${Number(summary.needsIdentifierReviewCount ?? 0)}`,
+        "",
+        "## Notes",
+        "",
+        "* Nothing is auto-submitted. This path only generates reviewable JSON and Markdown exports.",
+        "* `userLocaId` is carried as a maintainer-review aid only. It is not treated here as an accepted unique hostile identifier, and it repeats across multiple level variants.",
+        `* Most rows are likely Wave Defense inferred from hull name: ${analyzed.coverage.waveDefense.likely} of ${items.length}.`,
+        `* Non-WaveDefense rows in the report: ${analyzed.coverage.waveDefense.notLikely}.`,
+        nonWave
+            ? `* The non-WaveDefense row needing maintainer review is \`${nonWave.hullName ?? nonWave.observedKey ?? "Unknown"}\` with \`observedKey=${nonWave.observedKey ?? "unknown"}\`, \`userLocaId=${nonWave.ids?.userLocaId ?? "Unavailable"}\`, and readiness \`${nonWave.identity?.submissionReadiness ?? "unknown"}\`.`
+            : "* No non-WaveDefense rows were found in this report snapshot.",
+        "",
+    ];
+    return `${lines.join("\n").trimEnd()}\n`;
+}
+
+export function buildObservedHostileMaintainerQuestionsMarkdown() {
+    return [
+        "# Questions For Sudo / stfc.phd",
+        "",
+        "1. Is `hullId` the identifier you want for missing-hostile reports?",
+        "2. Is `userLocaId` useful to your pipeline when `hullId` is absent?",
+        "3. Would you prefer one item per hostile archetype with nested system evidence, or one row per hostile/system pair?",
+        "4. Are Wave Defense hostiles expected to be absent from `stfc.space`?",
+        "5. Is the Markdown report useful, or would JSON/CSV be preferred?",
+        "",
+    ].join("\n");
+}
+
+export function buildObservedHostileReviewPacketArtifactPlan(options = {}) {
+    const outputDir = resolveOutputPath(asText(options.outputDir) || DEFAULT_REVIEW_PACKET_DIR);
+    const baseName = sanitizeArtifactBaseName(asText(options.baseName) || DEFAULT_REVIEW_PACKET_BASENAME);
+    return {
+        outputDir,
+        reportJsonOut: path.join(outputDir, `${baseName}.json`),
+        reportMarkdownOut: path.join(outputDir, `${baseName}.md`),
+        summaryOut: path.join(outputDir, `${baseName}-summary.md`),
+        questionsOut: path.join(outputDir, `${baseName}-questions.md`),
+    };
+}
+
+export function writeObservedHostileReviewPacketArtifacts(payload = {}, options = {}) {
+    const plan = buildObservedHostileReviewPacketArtifactPlan(options);
+    mkdirSync(plan.outputDir, { recursive: true });
+    writeFileSync(plan.reportJsonOut, `${JSON.stringify(payload.report ?? {}, null, 2)}\n`, "utf8");
+    const markdown = typeof payload.markdown === "string"
+        ? payload.markdown
+        : formatObservedHostileCommunityReportMarkdown(payload.report ?? {});
+    writeFileSync(plan.reportMarkdownOut, markdown.endsWith("\n") ? markdown : `${markdown}\n`, "utf8");
+    writeFileSync(plan.summaryOut, buildObservedHostileReviewSummaryMarkdown(payload.report ?? {}), "utf8");
+    writeFileSync(plan.questionsOut, buildObservedHostileMaintainerQuestionsMarkdown(), "utf8");
+    return plan;
 }
 
 export function previewObservedHostileReportItem(item = {}) {
@@ -433,8 +873,125 @@ export function previewObservedHostileReportItem(item = {}) {
     };
 }
 
+function analyzeObservedHostileCommunityReportItems(items = []) {
+    const normalized = Array.isArray(items) ? items : [];
+    const readinessCounts = {
+        submissionReady: 0,
+        readyForMaintainerReview: 0,
+        needsIdentifierReview: 0,
+    };
+    const hullId = { present: 0, missing: 0 };
+    const userLocaId = { present: 0, missing: 0 };
+    const waveDefense = { likely: 0, notLikely: 0 };
+    const waveDefenseHullId = {
+        waveHullIdPresent: 0,
+        waveHullIdMissing: 0,
+        nonWaveHullIdPresent: 0,
+        nonWaveHullIdMissing: 0,
+    };
+    const systemFrequency = new Map();
+    const systemSetFrequency = new Map();
+
+    for (const item of normalized) {
+        const readiness = asText(item?.identity?.submissionReadiness);
+        switch (readiness) {
+            case "submission_ready":
+                readinessCounts.submissionReady += 1;
+                break;
+            case "ready_for_maintainer_review":
+                readinessCounts.readyForMaintainerReview += 1;
+                break;
+            default:
+                readinessCounts.needsIdentifierReview += 1;
+                break;
+        }
+
+        const hasHullId = Boolean(asText(item?.ids?.hullId));
+        const hasUserLocaId = Boolean(asText(item?.ids?.userLocaId));
+        const isWaveDefense = /WaveDefense/i.test(asText(item?.hullName));
+        if (hasHullId) {
+            hullId.present += 1;
+        } else {
+            hullId.missing += 1;
+        }
+        if (hasUserLocaId) {
+            userLocaId.present += 1;
+        } else {
+            userLocaId.missing += 1;
+        }
+        if (isWaveDefense) {
+            waveDefense.likely += 1;
+            if (hasHullId) {
+                waveDefenseHullId.waveHullIdPresent += 1;
+            } else {
+                waveDefenseHullId.waveHullIdMissing += 1;
+            }
+        } else {
+            waveDefense.notLikely += 1;
+            if (hasHullId) {
+                waveDefenseHullId.nonWaveHullIdPresent += 1;
+            } else {
+                waveDefenseHullId.nonWaveHullIdMissing += 1;
+            }
+        }
+
+        const systems = Array.isArray(item?.systems) ? item.systems : [];
+        const systemIds = systems
+            .map((system) => asText(system?.systemId))
+            .filter(Boolean);
+        for (const systemId of systemIds) {
+            systemFrequency.set(systemId, (systemFrequency.get(systemId) ?? 0) + 1);
+        }
+        const setKey = systemIds.slice().sort(comparePossiblyNumericText).join(",");
+        if (setKey) {
+            systemSetFrequency.set(setKey, (systemSetFrequency.get(setKey) ?? 0) + 1);
+        }
+    }
+
+    const representativeRows = {
+        submissionReady: normalized.find((item) => item?.identity?.submissionReadiness === "submission_ready")
+            ? previewObservedHostileReportItem(normalized.find((item) => item?.identity?.submissionReadiness === "submission_ready"))
+            : null,
+        readyForMaintainerReview: normalized.find((item) => item?.identity?.submissionReadiness === "ready_for_maintainer_review")
+            ? previewObservedHostileReportItem(normalized.find((item) => item?.identity?.submissionReadiness === "ready_for_maintainer_review"))
+            : null,
+        needsIdentifierReview: normalized.find((item) => item?.identity?.submissionReadiness === "needs_identifier_review")
+            ? previewObservedHostileReportItem(normalized.find((item) => item?.identity?.submissionReadiness === "needs_identifier_review"))
+            : null,
+        nonWave: normalized.find((item) => !/WaveDefense/i.test(asText(item?.hullName)))
+            ? previewObservedHostileReportItem(normalized.find((item) => !/WaveDefense/i.test(asText(item?.hullName))))
+            : null,
+        hullIdMissing: normalized.find((item) => !asText(item?.ids?.hullId))
+            ? previewObservedHostileReportItem(normalized.find((item) => !asText(item?.ids?.hullId)))
+            : null,
+    };
+
+    return {
+        coverage: {
+            totalItems: normalized.length,
+            readiness: readinessCounts,
+            hullId,
+            userLocaId,
+            waveDefense,
+            waveDefenseHullId,
+        },
+        representativeRows,
+        systemFrequency: [...systemFrequency.entries()]
+            .map(([systemId, count]) => ({ systemId, count }))
+            .sort((left, right) => right.count - left.count || comparePossiblyNumericText(left.systemId, right.systemId)),
+        systemSetFrequency: [...systemSetFrequency.entries()]
+            .map(([systemSet, count]) => ({
+                systemIds: systemSet.split(",").filter(Boolean),
+                count,
+            }))
+            .sort((left, right) => right.count - left.count || comparePossiblyNumericText(left.systemIds[0] ?? "", right.systemIds[0] ?? "")),
+        hullIdMissingRows: normalized.filter((item) => !asText(item?.ids?.hullId)),
+        nonWaveRows: normalized.filter((item) => !/WaveDefense/i.test(asText(item?.hullName))),
+    };
+}
+
 function writeObservedHostileArtifacts(report, markdown, options = {}) {
-    if (!options.jsonOut && !options.markdownOut) {
+    if ((!options.jsonOut && !options.markdownOut) || !report) {
         return;
     }
 
@@ -450,6 +1007,88 @@ function writeObservedHostileArtifacts(report, markdown, options = {}) {
         const content = typeof markdown === "string" ? markdown : formatObservedHostileCommunityReportMarkdown(report);
         writeFileSync(markdownPath, content.endsWith("\n") ? content : `${content}\n`, "utf8");
     }
+}
+
+function writeJsonArtifact(filePath, payload) {
+    const jsonPath = resolveOutputPath(filePath);
+    mkdirSync(path.dirname(jsonPath), { recursive: true });
+    writeFileSync(jsonPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+}
+
+function extractObservedHostileReport(value) {
+    if (value?.protocolVersion === OBSERVED_HOSTILE_COMMUNITY_REPORT_PROTOCOL_VERSION) {
+        return value;
+    }
+    if (value?.report?.protocolVersion === OBSERVED_HOSTILE_COMMUNITY_REPORT_PROTOCOL_VERSION) {
+        return value.report;
+    }
+    if (value?.ax?.data?.report?.protocolVersion === OBSERVED_HOSTILE_COMMUNITY_REPORT_PROTOCOL_VERSION) {
+        return value?.ax?.data?.report ?? null;
+    }
+    return null;
+}
+
+async function resolveObservedHostileLiveContext() {
+    const status = await readDesktopDevStatusSnapshot();
+    const userDataPath = defaultDesktopUserDataPath();
+    const storeConnection = resolveDesktopStoreConnection(userDataPath);
+    const healthUrl = asText(status?.healthUrl) || null;
+    const serverUrl = healthUrl ? resolveSidecarBaseUrl(healthUrl) : null;
+    if (status.ok !== true) {
+        return {
+            ok: false,
+            mode: status?.mode ?? null,
+            managed: Boolean(status?.managed),
+            healthy: Boolean(status?.healthy),
+            running: Boolean(status?.running),
+            serverUrl,
+            healthUrl,
+            port: finiteIntegerOrNull(status?.port),
+            userDataPath,
+            storeConnection,
+            error: status?.error ?? "Desktop lifecycle status unavailable",
+        };
+    }
+
+    return {
+        ok: true,
+        mode: status.mode ?? null,
+        managed: Boolean(status.managed),
+        healthy: Boolean(status.healthy),
+        running: Boolean(status.running),
+        serverUrl,
+        healthUrl,
+        port: finiteIntegerOrNull(status.port),
+        userDataPath,
+        storeConnection,
+    };
+}
+
+function defaultDesktopUserDataPath() {
+    const appData = asText(process.env.APPDATA);
+    if (process.platform === "win32" && appData) {
+        return path.join(appData, DEFAULT_DESKTOP_PRODUCT_NAME);
+    }
+    if (process.platform === "darwin") {
+        return path.join(process.env.HOME ?? "", "Library", "Application Support", DEFAULT_DESKTOP_PRODUCT_NAME);
+    }
+    const configHome = asText(process.env.XDG_CONFIG_HOME) || path.join(process.env.HOME ?? "", ".config");
+    return path.join(configHome, DEFAULT_DESKTOP_PRODUCT_NAME);
+}
+
+function resolveDesktopStoreConnection(userDataPath) {
+    const envConnection = asText(process.env.STFC_SIDECAR_STORE_CONNECTION);
+    if (envConnection) {
+        return resolveStoreConnection(envConnection);
+    }
+    if (!userDataPath) {
+        return null;
+    }
+    return path.join(userDataPath, "sidecar-events.sqlite");
+}
+
+function sanitizeArtifactBaseName(value) {
+    return value.replace(/[^a-z0-9._-]+/giu, "-").replace(/-+/gu, "-").replace(/^-|-$/gu, "") || DEFAULT_REVIEW_PACKET_BASENAME;
 }
 
 function resolveOutputPath(filePath) {
@@ -472,14 +1111,14 @@ function normalizeReportSource(value) {
     if (!normalized) {
         return "route";
     }
-    if (normalized === "route" || normalized === "store" || normalized === "auto") {
+    if (normalized === "route" || normalized === "store" || normalized === "auto" || normalized === "live") {
         return normalized;
     }
     throw new Error(`Unsupported observed hostile report source: ${value}`);
 }
 
 export async function readObservedHostileStoreSnapshot(options = {}) {
-    const backend = normalizeStoreBackend(process.env.STFC_SIDECAR_STORE_BACKEND ?? "sqlite");
+    const backend = normalizeStoreBackend(options.backend ?? process.env.STFC_SIDECAR_STORE_BACKEND ?? "sqlite");
     const generatedAt = new Date().toISOString();
     const limit = normalizePositiveInteger(
         options.limit,
@@ -490,20 +1129,22 @@ export async function readObservedHostileStoreSnapshot(options = {}) {
     if (backend === "none") {
         return emptyObservedHostileSnapshot({
             generatedAt,
-            source: "store",
+            source: options.source ?? "store",
             storageBackend: "none",
             exists: false,
+            connection: null,
         });
     }
 
     if (backend === "sqlite") {
-        const connection = resolveStoreConnection(process.env.STFC_SIDECAR_STORE_CONNECTION ?? DEFAULT_STORE_PATH);
+        const connection = resolveStoreConnection(options.connection ?? process.env.STFC_SIDECAR_STORE_CONNECTION ?? DEFAULT_STORE_PATH);
         if (!existsSync(connection)) {
             return emptyObservedHostileSnapshot({
                 generatedAt,
-                source: "store",
+                source: options.source ?? "store",
                 storageBackend: "sqlite",
                 exists: false,
+                connection,
             });
         }
 
@@ -512,7 +1153,12 @@ export async function readObservedHostileStoreSnapshot(options = {}) {
             connection,
         });
         try {
-            return await readObservedHostileStoreSnapshotFromStore(store, { generatedAt, limit });
+            return await readObservedHostileStoreSnapshotFromStore(store, {
+                generatedAt,
+                limit,
+                source: options.source ?? "store",
+                connection,
+            });
         } finally {
             await store.close();
         }
@@ -529,7 +1175,12 @@ export async function readObservedHostileStoreSnapshot(options = {}) {
             connection,
         });
         try {
-            return await readObservedHostileStoreSnapshotFromStore(store, { generatedAt, limit });
+            return await readObservedHostileStoreSnapshotFromStore(store, {
+                generatedAt,
+                limit,
+                source: options.source ?? "store",
+                connection,
+            });
         } finally {
             await store.close();
         }
@@ -546,8 +1197,9 @@ async function readObservedHostileStoreSnapshotFromStore(store, options) {
 
     return {
         ok: true,
-        source: "store",
+        source: options.source ?? "store",
         storageBackend: store.backend,
+        connection: options.connection ?? null,
         exists: true,
         detail: "full",
         generatedAt: options.generatedAt,
@@ -589,6 +1241,7 @@ function emptyObservedHostileSnapshot(options = {}) {
         ok: true,
         source: options.source ?? "store",
         storageBackend: options.storageBackend ?? null,
+        connection: options.connection ?? null,
         exists: options.exists ?? false,
         detail: "full",
         generatedAt: options.generatedAt ?? new Date().toISOString(),
@@ -602,6 +1255,7 @@ function snapshotSourceMetadata(snapshot = {}) {
     return {
         source: snapshot.source ?? "store",
         storageBackend: snapshot.storageBackend ?? null,
+        connection: snapshot.connection ?? null,
         exists: snapshot.exists !== false,
         totalLines: finiteIntegerOrNull(snapshot.totalLines) ?? 0,
         returnedLines: finiteIntegerOrNull(snapshot.returnedLines) ?? 0,
@@ -717,6 +1371,17 @@ function resolveStoreConnection(connection) {
 function normalizeStoreBackend(value) {
     const normalized = String(value ?? "").trim().toLowerCase();
     return normalized || "sqlite";
+}
+
+function comparePossiblyNumericText(left, right) {
+    const leftText = asText(left);
+    const rightText = asText(right);
+    const leftNumber = Number.parseInt(leftText, 10);
+    const rightNumber = Number.parseInt(rightText, 10);
+    if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber) && leftNumber !== rightNumber) {
+        return leftNumber - rightNumber;
+    }
+    return leftText.localeCompare(rightText);
 }
 
 function normalizePositiveInteger(value, fallback, max) {

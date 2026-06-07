@@ -7,8 +7,10 @@ import { fileURLToPath } from "node:url";
 import { assertDesktopPackagingPreflight } from "./desktop-packaging-guard.mjs";
 import { desktopLifecycleCommand } from "./desktop-lifecycle-ax.mjs";
 import {
+    observedHostileCoverageCommand,
     observedHostileInspectCommand,
     observedHostileReportCommand,
+    observedHostileReviewPacketCommand,
 } from "./observed-hostile-ax.mjs";
 import { reproBundleCommand } from "./repro-bundle-ax.mjs";
 
@@ -31,7 +33,9 @@ const COMMAND_METADATA = new Map([
     ["desktop:logs", { description: "Print recent managed desktop dev logs", sideEffects: "read" }],
     ["desktop:lifecycle", { description: "Operate the managed desktop dev lifecycle on the expected local sidecar port", sideEffects: "write" }],
     ["observed-hostiles:report", { description: "Read the observed hostile community report route and optionally export JSON or Markdown artifacts", sideEffects: "read" }],
+    ["observed-hostiles:coverage", { description: "Analyze current observed hostile community report coverage and hullId readiness splits", sideEffects: "read" }],
     ["observed-hostiles:inspect", { description: "Inspect grouped observed hostile evidence and report inclusion from the local event store", sideEffects: "read" }],
+    ["observed-hostiles:review-packet", { description: "Generate a maintainer review packet with report exports, summary, and question list", sideEffects: "write" }],
     ["repro:bundle", { description: "Capture one cross-repo repro bundle with native AX slices, sidecar event snapshots, report preview, and bounded Lex memory", sideEffects: "write" }],
     ["dist:win", { description: "Build Windows desktop distribution artifacts", sideEffects: "write" }],
     ["ci", { description: "Build, test, and package Windows distribution artifacts", sideEffects: "write" }],
@@ -49,7 +53,9 @@ const COMMANDS = new Map([
     ["desktop:logs", desktopLogsCommand],
     ["desktop:lifecycle", desktopLifecycleAxCommand],
     ["observed-hostiles:report", observedHostilesReportCommand],
+    ["observed-hostiles:coverage", observedHostilesCoverageCommand],
     ["observed-hostiles:inspect", observedHostilesInspectCommand],
+    ["observed-hostiles:review-packet", observedHostilesReviewPacketCommand],
     ["repro:bundle", reproBundleAxCommand],
     ["dist:win", distWinCommand],
     ["ci", ciCommand],
@@ -70,7 +76,7 @@ async function main() {
             success: true,
             durationMs: 0,
             commands: commandInventory(),
-            usage: "npm run ax -- <status|build|test|check|desktop:start|desktop:cycle|desktop:stop|desktop:status|desktop:logs|desktop:lifecycle|observed-hostiles:report|observed-hostiles:inspect|repro:bundle|dist:win|ci|list>",
+            usage: "npm run ax -- <status|build|test|check|desktop:start|desktop:cycle|desktop:stop|desktop:status|desktop:logs|desktop:lifecycle|observed-hostiles:report|observed-hostiles:coverage|observed-hostiles:inspect|observed-hostiles:review-packet|repro:bundle|dist:win|ci|list>",
         });
         return;
     }
@@ -171,8 +177,16 @@ async function observedHostilesReportCommand(args = []) {
     return observedHostileReportCommand(args);
 }
 
+async function observedHostilesCoverageCommand(args = []) {
+    return observedHostileCoverageCommand(args);
+}
+
 async function observedHostilesInspectCommand(args = []) {
     return observedHostileInspectCommand(args);
+}
+
+async function observedHostilesReviewPacketCommand(args = []) {
+    return observedHostileReviewPacketCommand(args);
 }
 
 async function reproBundleAxCommand(args = []) {
