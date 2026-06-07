@@ -180,6 +180,121 @@ export function formatObservedHostileList(items, options = {}) {
         : head.join(", ");
 }
 
+export function describeObservedHostileCommunityReportCta(report) {
+    if (!report) {
+        return {
+            visible: false,
+            disabled: true,
+            label: "Help the Community",
+            description: "Checking for high-confidence missing hostiles.",
+            actionLabel: "Export Community Report",
+            badgeText: "Checking...",
+            count: 0,
+            submissionReadyCount: 0,
+            readyForMaintainerReviewCount: 0,
+            reviewOnlyCount: 0,
+            state: "quiet",
+        };
+    }
+
+    if (report.ok === false) {
+        return {
+            visible: true,
+            disabled: true,
+            label: "Community report unavailable",
+            description: String(report.error ?? "Observed hostile community report data is unavailable."),
+            actionLabel: "Export Community Report",
+            badgeText: "Report unavailable",
+            count: 0,
+            submissionReadyCount: 0,
+            readyForMaintainerReviewCount: 0,
+            reviewOnlyCount: 0,
+            state: "quiet",
+        };
+    }
+
+    const count = Number(report?.summary?.highConfidenceUntrackedCount ?? 0);
+    const submissionReadyCount = Number(report?.summary?.submissionReadyCount ?? 0);
+    const readyForMaintainerReviewCount = Number(report?.summary?.readyForMaintainerReviewCount ?? 0);
+    const reviewOnlyCount = Number(report?.summary?.needsIdentifierReviewCount ?? 0);
+    if (submissionReadyCount > 0) {
+        const reviewTotal = readyForMaintainerReviewCount + reviewOnlyCount;
+        return {
+            visible: true,
+            disabled: false,
+            label: "Help the Community",
+            description: reviewTotal > 0
+                ? `We found ${submissionReadyCount} submission-ready unmapped observations, ${readyForMaintainerReviewCount} rows ready for maintainer review, and ${reviewOnlyCount} weaker rows that still need identifier review.`
+                : (submissionReadyCount === 1
+                    ? "We found 1 submission-ready passive observation that is not in the current reference pack."
+                    : `We found ${submissionReadyCount} submission-ready passive observations that are not in the current reference pack.`),
+            actionLabel: "Export Community Report",
+            badgeText: reviewTotal > 0
+                ? `${submissionReadyCount} submission-ready / ${readyForMaintainerReviewCount} maintainer-review / ${reviewOnlyCount} weaker`
+                : `${submissionReadyCount} submission-ready`,
+            count,
+            submissionReadyCount,
+            readyForMaintainerReviewCount,
+            reviewOnlyCount,
+            state: "ready",
+        };
+    }
+
+    if (readyForMaintainerReviewCount > 0) {
+        return {
+            visible: true,
+            disabled: false,
+            label: "Review Unmapped Observations",
+            description: reviewOnlyCount > 0
+                ? `We found ${readyForMaintainerReviewCount} high-confidence unmapped observations with maintainer-review identifiers and ${reviewOnlyCount} weaker rows that still need stronger identity coverage.`
+                : (readyForMaintainerReviewCount === 1
+                    ? "We found 1 high-confidence unmapped observation with maintainer-review identifiers, but it is not yet submission-ready."
+                    : `We found ${readyForMaintainerReviewCount} high-confidence unmapped observations with maintainer-review identifiers, but they are not yet submission-ready.`),
+            actionLabel: "Export Evidence Report",
+            badgeText: reviewOnlyCount > 0
+                ? `${readyForMaintainerReviewCount} maintainer-review / ${reviewOnlyCount} weaker`
+                : `${readyForMaintainerReviewCount} maintainer-review`,
+            count,
+            submissionReadyCount,
+            readyForMaintainerReviewCount,
+            reviewOnlyCount,
+            state: "ready",
+        };
+    }
+
+    if (reviewOnlyCount > 0) {
+        return {
+            visible: true,
+            disabled: false,
+            label: "Review Unmapped Observations",
+            description: reviewOnlyCount === 1
+                ? "We found 1 high-confidence unmapped observation, but it still needs stronger identifier coverage before maintainer review."
+                : `We found ${reviewOnlyCount} high-confidence unmapped observations, but they still need stronger identifier coverage before maintainer review.`,
+            actionLabel: "Export Evidence Report",
+            badgeText: `${reviewOnlyCount} weaker`,
+            count,
+            submissionReadyCount,
+            readyForMaintainerReviewCount,
+            reviewOnlyCount,
+            state: "quiet",
+        };
+    }
+
+    return {
+        visible: true,
+        disabled: true,
+        label: "No high-confidence missing hostiles found.",
+        description: "Observed rows are either matched, candidate, ambiguous, waiting for signal, or below the conservative evidence gate.",
+        actionLabel: "Export Community Report",
+        badgeText: "No report rows",
+        count: 0,
+        submissionReadyCount,
+        readyForMaintainerReviewCount,
+        reviewOnlyCount,
+        state: "quiet",
+    };
+}
+
 function searchableEntryText(entry) {
     const latest = asRecord(entry?.latestObservation);
     return [
@@ -197,6 +312,8 @@ function searchableEntryText(entry) {
         ...(Array.isArray(entry?.locationTranslationIds) ? entry.locationTranslationIds : []),
         ...(Array.isArray(entry?.userIds) ? entry.userIds : []),
         ...(Array.isArray(entry?.systemIds) ? entry.systemIds : []),
+        ...(Array.isArray(entry?.galaxyIds) ? entry.galaxyIds : []),
+        ...(Array.isArray(entry?.instanceIds) ? entry.instanceIds : []),
         ...(Array.isArray(entry?.userLevels) ? entry.userLevels : []),
         ...(Array.isArray(entry?.userLocaIds) ? entry.userLocaIds : []),
         ...(Array.isArray(entry?.hullTypeNames) ? entry.hullTypeNames : []),
@@ -209,6 +326,8 @@ function searchableEntryText(entry) {
         latest?.locationTranslationId,
         latest?.userId,
         latest?.systemId,
+        latest?.galaxyId,
+        latest?.instanceId,
         latest?.hullTypeName,
         latest?.fleetTypeName,
         entry?.baseline?.summary,

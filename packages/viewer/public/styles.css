@@ -3095,6 +3095,55 @@ h3,
   font-size: 0.9rem;
 }
 
+.observed-hostile-community-report {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding: 14px 16px;
+  background: rgba(5, 6, 9, 0.46);
+  border: 1px solid rgba(124, 214, 255, 0.26);
+  border-left: 8px solid var(--lcars-orange);
+  border-radius: 8px;
+}
+
+.observed-hostile-community-report[hidden] {
+  display: none;
+}
+
+.observed-hostile-community-report[data-state="quiet"] {
+  border-left-color: rgba(124, 214, 255, 0.38);
+}
+
+.observed-hostile-community-report__copy {
+  display: grid;
+  gap: 4px;
+  min-width: min(100%, 320px);
+}
+
+.observed-hostile-community-report__copy h2,
+.observed-hostile-community-report__copy p {
+  margin: 0;
+}
+
+.observed-hostile-community-report__copy p:not(.eyebrow) {
+  color: var(--muted);
+}
+
+.observed-hostile-community-report__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.observed-hostile-community-report__actions button {
+  min-height: 38px;
+}
+
 .observed-hostile-feed-heading {
   margin-bottom: 10px;
 }

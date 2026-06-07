@@ -58,21 +58,38 @@ export function buildObservedHostileCatalogSnapshot(snapshot = {}, options = {})
 }
 
 export function buildObservedHostileCatalogEntriesSnapshot(snapshot = {}, options = {}) {
+    const projection = buildObservedHostileCatalogEntriesProjection(snapshot, options);
+    const groups = projection.entries;
+    const { entries, items, ...projectionPayload } = projection;
+    const filteredGroups = filterObservedHostileCatalogEntries(groups, options);
+    const page = paginateItems(filteredGroups, options, catalogEntryCursor);
+
+    return {
+        ...projectionPayload,
+        detail: "observed-hostile-catalog-entries",
+        totalApprox: filteredGroups.length,
+        unfilteredTotalApprox: groups.length,
+        returnedEntries: page.items.length,
+        nextCursor: page.nextCursor,
+        hasMore: page.hasMore,
+        items: page.items,
+    };
+}
+
+export function buildObservedHostileCatalogEntriesProjection(snapshot = {}, options = {}) {
     const rawEvents = Array.isArray(snapshot.events) ? snapshot.events : [];
     const observedEvents = rawEvents.filter(isObservedHostileEvent);
     const catalogEvents = observedEvents.filter(isCatalogObservedHostileEntry);
     const sourceCoverage = buildObservedHostileSourceCoverage(observedEvents);
     const referenceCatalog = options.referenceCatalog ?? null;
     const groups = buildObservedHostileGroups(catalogEvents, { referenceCatalog });
-    const filteredGroups = filterObservedHostileCatalogEntries(groups, options);
-    const page = paginateItems(filteredGroups, options, catalogEntryCursor);
 
     return {
         ok: snapshot.ok !== false,
         source: resolvedObservedHostileSource(snapshot),
         storageBackend: snapshot.storageBackend ?? null,
         exists: snapshot.exists !== false,
-        detail: "observed-hostile-catalog-entries",
+        detail: "observed-hostile-catalog-entries-projection",
         generatedAt: snapshot.generatedAt ?? new Date().toISOString(),
         pollHintMs: snapshot.pollHintMs,
         totalEvents: snapshot.totalLines ?? rawEvents.length,
@@ -83,14 +100,15 @@ export function buildObservedHostileCatalogEntriesSnapshot(snapshot = {}, option
         ignoredEvents: sourceCoverage.ignored.eventCount,
         sourceSurfaceCatalog: observedHostileSourceSurfaceCatalog(),
         sourceCoverage,
-        totalApprox: filteredGroups.length,
+        totalApprox: groups.length,
         unfilteredTotalApprox: groups.length,
-        returnedEntries: page.items.length,
-        nextCursor: page.nextCursor,
-        hasMore: page.hasMore,
+        returnedEntries: groups.length,
+        nextCursor: null,
+        hasMore: false,
         probeStatus: options.probeStatus ?? null,
         referenceCatalog: buildObservedHostileReferenceSummary(referenceCatalog),
-        items: page.items,
+        entries: groups,
+        items: groups,
         error: snapshot.ok === false ? snapshot.error ?? "Observed hostile catalog unavailable" : undefined,
     };
 }
@@ -166,6 +184,8 @@ export function buildObservedHostileGroups(entries = [], options = {}) {
             locationTranslationIds: [],
             userIds: [],
             systemIds: [],
+            galaxyIds: [],
+            instanceIds: [],
             userLevels: [],
             userLocaIds: [],
             hullTypeValues: [],
@@ -193,6 +213,8 @@ export function buildObservedHostileGroups(entries = [], options = {}) {
         addUnique(group.locationTranslationIds, asText(observation.locationTranslationId));
         addUnique(group.userIds, asText(observation.userId));
         addUnique(group.systemIds, asText(observation.systemId));
+        addUnique(group.galaxyIds, asText(observation.galaxyId));
+        addUnique(group.instanceIds, asText(observation.instanceId));
         addUniqueInteger(group.userLevels, finiteIntegerOrNull(observation.userLevel));
         addUnique(group.userLocaIds, asText(observation.userLocaId));
         addUniqueInteger(group.hullTypeValues, finiteIntegerOrNull(observation.hullTypeValue));
@@ -223,6 +245,8 @@ export function buildObservedHostileGroups(entries = [], options = {}) {
                 locationTranslationId: asText(observation.locationTranslationId) || null,
                 userId: asText(observation.userId) || null,
                 systemId: asText(observation.systemId) || null,
+                galaxyId: asText(observation.galaxyId) || null,
+                instanceId: asText(observation.instanceId) || null,
                 userLevel: finiteIntegerOrNull(observation.userLevel),
                 userLocaId: asText(observation.userLocaId) || null,
                 hullTypeValue: finiteIntegerOrNull(observation.hullTypeValue),
@@ -637,6 +661,8 @@ function catalogEntrySearchText(entry) {
         ...(Array.isArray(entry?.locationTranslationIds) ? entry.locationTranslationIds : []),
         ...(Array.isArray(entry?.userIds) ? entry.userIds : []),
         ...(Array.isArray(entry?.systemIds) ? entry.systemIds : []),
+        ...(Array.isArray(entry?.galaxyIds) ? entry.galaxyIds : []),
+        ...(Array.isArray(entry?.instanceIds) ? entry.instanceIds : []),
         ...(Array.isArray(entry?.userLevels) ? entry.userLevels : []),
         ...(Array.isArray(entry?.userLocaIds) ? entry.userLocaIds : []),
         ...(Array.isArray(entry?.hullTypeNames) ? entry.hullTypeNames : []),
@@ -649,6 +675,8 @@ function catalogEntrySearchText(entry) {
         latest.locationTranslationId,
         latest.userId,
         latest.systemId,
+        latest.galaxyId,
+        latest.instanceId,
         latest.hullTypeName,
         latest.fleetTypeName,
         entry?.baseline?.summary,
@@ -796,7 +824,7 @@ function observedHostileSourceSurfaceCatalog() {
     return OBSERVED_HOSTILE_SOURCE_SURFACE_CATALOG.map((surface) => ({ ...surface }));
 }
 
-function observedHostileSourceSurfaceInfo(surface) {
+export function observedHostileSourceSurfaceInfo(surface) {
     const normalized = asText(surface);
     const known = OBSERVED_HOSTILE_SOURCE_SURFACES[normalized];
     if (known) {
@@ -882,7 +910,7 @@ function buildObservedHostileSourceCoverage(entries = []) {
     return finalizeSourceCoverage(coverage);
 }
 
-function deriveObservedHostileIdentity(observation) {
+export function deriveObservedHostileIdentity(observation) {
     const hullId = asText(observation.hullId);
     if (hullId) {
         return { key: `hull:${hullId}`, kind: "hull_id", quality: "coarse_shared" };

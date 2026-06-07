@@ -2,6 +2,7 @@ import { createBridgeStatus } from "../../shared/bridge-status.js";
 import { formatLocalInstant } from "../../shared/instant.js";
 import {
     classifyObservedHostilePayload,
+    describeObservedHostileCommunityReportCta,
     describeObservedHostileBaseline,
     describeObservedHostileEvidenceTier,
     describeObservedHostileIdentityQuality,
@@ -16,6 +17,7 @@ const OBSERVATION_PAGE_SIZE = 25;
 const state = {
     observationsSnapshot: null,
     catalogSnapshot: null,
+    communityReport: null,
     observations: [],
     catalogEntries: [],
     activeTab: "observations",
@@ -47,6 +49,12 @@ const elements = {
     limit: document.querySelector("#observed-hostile-limit"),
     autoRefresh: document.querySelector("#observed-hostile-auto-refresh"),
     refreshButton: document.querySelector("#observed-hostile-refresh"),
+    communityReport: document.querySelector("#observed-hostile-community-report"),
+    communityReportHeading: document.querySelector("#observed-hostile-community-report-heading"),
+    communityReportDescription: document.querySelector("#observed-hostile-community-report-description"),
+    communityReportCount: document.querySelector("#observed-hostile-community-report-count"),
+    communityReportJson: document.querySelector("#observed-hostile-community-report-json"),
+    communityReportMarkdown: document.querySelector("#observed-hostile-community-report-markdown"),
     feedNote: document.querySelector("#observed-hostile-feed-note"),
     tabButtons: document.querySelectorAll("[data-observed-hostile-tab]"),
     tabPanels: document.querySelectorAll("[data-observed-hostile-panel]"),
@@ -62,6 +70,8 @@ const elements = {
 const bridgeStatus = createBridgeStatus(elements.status);
 
 elements.refreshButton?.addEventListener("click", () => void refreshAll({ activityLabel: "Refreshing", clearPending: true }));
+elements.communityReportJson?.addEventListener("click", () => openCommunityReport("json"));
+elements.communityReportMarkdown?.addEventListener("click", () => openCommunityReport("markdown"));
 elements.loadMoreObservations?.addEventListener("click", () => void loadMoreObservations());
 elements.loadMore?.addEventListener("click", () => void loadMoreCatalogEntries());
 elements.limit?.addEventListener("change", () => void refreshCatalogEntries({ reset: true, activityLabel: "Refreshing entries" }));
@@ -92,12 +102,14 @@ async function refreshAll(options = {}) {
     bridgeStatus.begin(options.activityLabel ?? "Loading");
 
     try {
-        const [observationsSnapshot, catalogSnapshot] = await Promise.all([
+        const [observationsSnapshot, catalogSnapshot, communityReport] = await Promise.all([
             fetchObservations(),
             fetchCatalogEntries(),
+            fetchCommunityReport(),
         ]);
         applyObservationsSnapshot(observationsSnapshot, { reset: true });
         applyCatalogSnapshot(catalogSnapshot, { reset: true });
+        state.communityReport = communityReport;
         if (options.clearPending) {
             state.pendingData = false;
         }
@@ -188,6 +200,11 @@ async function fetchCatalogEntries(options = {}) {
     return response.json();
 }
 
+async function fetchCommunityReport() {
+    const response = await fetch("/api/observed-hostiles/community-report", { cache: "no-store" });
+    return response.json();
+}
+
 function baseProjectionParams(options = {}) {
     const params = new URLSearchParams();
     params.set("limit", String(options.limit ?? 25));
@@ -243,6 +260,7 @@ function applyLoadError(error) {
     const message = error instanceof Error ? error.message : "Unable to load observed hostile observations.";
     state.observationsSnapshot = { ok: false, error: message };
     state.catalogSnapshot = { ok: false, error: message };
+    state.communityReport = { ok: false, error: message };
     state.observations = [];
     state.catalogEntries = [];
     state.observationNextCursor = null;
@@ -265,9 +283,38 @@ function finishBridgeStatus(...snapshots) {
 function renderAll() {
     renderTabs();
     renderStatus();
+    renderCommunityReportCta();
     renderObservationList();
     renderCatalogList();
     renderDetail();
+}
+
+function renderCommunityReportCta() {
+    if (!elements.communityReport) {
+        return;
+    }
+
+    const cta = describeObservedHostileCommunityReportCta(state.communityReport);
+    elements.communityReport.hidden = cta.visible !== true;
+    elements.communityReport.dataset.state = cta.state ?? (cta.disabled ? "quiet" : "ready");
+    if (elements.communityReportHeading) {
+        elements.communityReportHeading.textContent = cta.label;
+    }
+    if (elements.communityReportDescription) {
+        elements.communityReportDescription.textContent = cta.description;
+    }
+    if (elements.communityReportCount) {
+        elements.communityReportCount.textContent = cta.badgeText ?? (cta.count > 0
+            ? `${cta.count} ready for review`
+            : "No report rows");
+    }
+    if (elements.communityReportJson) {
+        elements.communityReportJson.disabled = cta.disabled;
+        elements.communityReportJson.textContent = cta.actionLabel ?? "Export Community Report";
+    }
+    if (elements.communityReportMarkdown) {
+        elements.communityReportMarkdown.disabled = cta.disabled;
+    }
 }
 
 function setActiveTab(tab) {
@@ -739,6 +786,17 @@ function parseStreamPayload(event) {
     } catch {
         return {};
     }
+}
+
+function openCommunityReport(format) {
+    const cta = describeObservedHostileCommunityReportCta(state.communityReport);
+    if (cta.disabled) {
+        return;
+    }
+
+    const params = new URLSearchParams();
+    params.set("format", format === "markdown" ? "markdown" : "json");
+    window.open(`/api/observed-hostiles/community-report?${params}`, "_blank", "noopener");
 }
 
 function selectedObservation() {

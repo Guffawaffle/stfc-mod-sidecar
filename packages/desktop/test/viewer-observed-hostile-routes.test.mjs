@@ -97,6 +97,79 @@ describe("viewer observed hostile routes", () => {
         expect(response.statusCode).toBe(200);
     });
 
+    it("delegates observed hostile community report JSON reads", async () => {
+        const context = {
+            defaultLimit: 150,
+            readObservedHostileCommunityReport: vi.fn(async () => ({
+                ok: true,
+                protocolVersion: "stfc.observed-hostile.community-report.v1",
+                summary: {
+                    highConfidenceUntrackedCount: 1,
+                    submissionReadyCount: 1,
+                    readyForMaintainerReviewCount: 0,
+                    needsIdentifierReviewCount: 0,
+                },
+                items: [{
+                    observedKey: "hull:missing-high",
+                    identity: { submissionReadiness: "submission_ready" },
+                }],
+            })),
+        };
+        const response = captureResponse();
+
+        await expect(handleObservedHostileRoutes(
+            { method: "GET" },
+            response,
+            new URL("http://127.0.0.1/api/observed-hostiles/community-report?format=json"),
+            context,
+        )).resolves.toBe(true);
+
+        expect(context.readObservedHostileCommunityReport).toHaveBeenCalledOnce();
+        expect(response.statusCode).toBe(200);
+        expect(response.headers["content-type"]).toBe("application/json; charset=utf-8");
+        expect(JSON.parse(response.body)).toMatchObject({
+            protocolVersion: "stfc.observed-hostile.community-report.v1",
+            items: [{
+                observedKey: "hull:missing-high",
+                identity: { submissionReadiness: "submission_ready" },
+            }],
+        });
+    });
+
+    it("renders observed hostile community report Markdown", async () => {
+        const context = {
+            defaultLimit: 150,
+            readObservedHostileCommunityReport: vi.fn(async () => ({
+                ok: true,
+                protocolVersion: "stfc.observed-hostile.community-report.v1",
+                generatedAt: "2026-06-07T01:00:00.000Z",
+                reference: { label: "stfc-space.hostiles 2026-06-05" },
+                summary: {
+                    highConfidenceUntrackedCount: 0,
+                    submissionReadyCount: 0,
+                    readyForMaintainerReviewCount: 0,
+                    needsIdentifierReviewCount: 0,
+                },
+                items: [],
+            })),
+        };
+        const response = captureResponse();
+
+        await expect(handleObservedHostileRoutes(
+            { method: "GET" },
+            response,
+            new URL("http://127.0.0.1/api/observed-hostiles/community-report?format=markdown"),
+            context,
+        )).resolves.toBe(true);
+
+        expect(response.statusCode).toBe(200);
+        expect(response.headers["content-type"]).toBe("text/markdown; charset=utf-8");
+        expect(response.body).toContain("# Observed Hostile Community Report");
+        expect(response.body).toContain("No submission-ready unmapped hostiles found.");
+        expect(response.body).toContain("No high-confidence unmapped hostiles are currently ready for maintainer review.");
+        expect(response.body).toContain("No high-confidence unmapped observations currently need identifier review.");
+    });
+
     it("keeps method gates for observed hostile routes", async () => {
         const response = captureResponse();
         await handleObservedHostileRoutes(

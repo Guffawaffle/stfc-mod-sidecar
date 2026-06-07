@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
     classifyObservedHostilePayload,
+    describeObservedHostileCommunityReportCta,
     describeObservedHostileBaseline,
     describeObservedHostileEvidenceTier,
     describeObservedHostileIdentityQuality,
@@ -111,5 +112,90 @@ describe("viewer observed hostile view model", () => {
         expect(formatObservedHostileList([], { fallback: "None" })).toBe("None");
         expect(formatObservedHostileList(["one", "two"])).toBe("one, two");
         expect(formatObservedHostileList(["one", "two", "three"], { limit: 2 })).toBe("one, two +1");
+    });
+
+    test("describes community report CTA visibility from readiness split counts", () => {
+        expect(describeObservedHostileCommunityReportCta(null)).toMatchObject({
+            visible: false,
+            disabled: true,
+            actionLabel: "Export Community Report",
+            count: 0,
+        });
+        expect(describeObservedHostileCommunityReportCta({
+            ok: true,
+            summary: {
+                highConfidenceUntrackedCount: 5,
+                submissionReadyCount: 2,
+                readyForMaintainerReviewCount: 2,
+                needsIdentifierReviewCount: 1,
+            },
+        })).toMatchObject({
+            visible: true,
+            disabled: false,
+            label: "Help the Community",
+            actionLabel: "Export Community Report",
+            badgeText: "2 submission-ready / 2 maintainer-review / 1 weaker",
+            count: 5,
+            submissionReadyCount: 2,
+            readyForMaintainerReviewCount: 2,
+            reviewOnlyCount: 1,
+            state: "ready",
+        });
+        expect(describeObservedHostileCommunityReportCta({
+            ok: true,
+            summary: {
+                highConfidenceUntrackedCount: 4,
+                submissionReadyCount: 0,
+                readyForMaintainerReviewCount: 3,
+                needsIdentifierReviewCount: 1,
+            },
+        })).toMatchObject({
+            visible: true,
+            disabled: false,
+            label: "Review Unmapped Observations",
+            actionLabel: "Export Evidence Report",
+            badgeText: "3 maintainer-review / 1 weaker",
+            count: 4,
+            submissionReadyCount: 0,
+            readyForMaintainerReviewCount: 3,
+            reviewOnlyCount: 1,
+            state: "ready",
+        });
+        expect(describeObservedHostileCommunityReportCta({
+            ok: true,
+            summary: {
+                highConfidenceUntrackedCount: 2,
+                submissionReadyCount: 0,
+                readyForMaintainerReviewCount: 0,
+                needsIdentifierReviewCount: 2,
+            },
+        })).toMatchObject({
+            visible: true,
+            disabled: false,
+            label: "Review Unmapped Observations",
+            actionLabel: "Export Evidence Report",
+            badgeText: "2 weaker",
+            count: 2,
+            submissionReadyCount: 0,
+            readyForMaintainerReviewCount: 0,
+            reviewOnlyCount: 2,
+            state: "quiet",
+        });
+        expect(describeObservedHostileCommunityReportCta({
+            ok: true,
+            summary: {
+                highConfidenceUntrackedCount: 0,
+                submissionReadyCount: 0,
+                readyForMaintainerReviewCount: 0,
+                needsIdentifierReviewCount: 0,
+            },
+        })).toMatchObject({
+            visible: true,
+            disabled: true,
+            label: "No high-confidence missing hostiles found.",
+            actionLabel: "Export Community Report",
+            count: 0,
+            state: "quiet",
+        });
     });
 });

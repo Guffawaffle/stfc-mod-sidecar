@@ -1,4 +1,5 @@
-import { sendJson } from "../static-files.mjs";
+import { formatObservedHostileCommunityReportMarkdown } from "../observed-hostile-community-report.mjs";
+import { sendJson, sendText } from "../static-files.mjs";
 
 export async function handleObservedHostileRoutes(request, response, requestUrl, context) {
     if (!isObservedHostileRoute(requestUrl.pathname)) {
@@ -7,6 +8,21 @@ export async function handleObservedHostileRoutes(request, response, requestUrl,
 
     if (request.method && request.method !== "GET") {
         sendJson(response, 405, { ok: false, error: "Method not allowed" });
+        return true;
+    }
+
+    if (requestUrl.pathname === "/api/observed-hostiles/community-report") {
+        const report = await context.readObservedHostileCommunityReport();
+        if (readReportFormat(requestUrl) === "markdown") {
+            sendText(
+                response,
+                report.ok === false ? report.statusCode ?? 500 : 200,
+                formatObservedHostileCommunityReportMarkdown(report),
+                "text/markdown; charset=utf-8",
+            );
+            return true;
+        }
+        sendJson(response, report.ok === false ? report.statusCode ?? 500 : 200, report);
         return true;
     }
 
@@ -29,8 +45,14 @@ export async function handleObservedHostileRoutes(request, response, requestUrl,
 
 function isObservedHostileRoute(pathname) {
     return pathname === "/api/observed-hostiles"
+        || pathname === "/api/observed-hostiles/community-report"
         || pathname === "/api/observed-hostiles/catalog-entries"
         || pathname === "/api/observed-hostiles/observations";
+}
+
+function readReportFormat(requestUrl) {
+    const format = String(requestUrl.searchParams.get("format") ?? "json").trim().toLowerCase();
+    return format === "md" || format === "markdown" || format === "text" ? "markdown" : "json";
 }
 
 function readPagingOptions(requestUrl, defaultLimit) {

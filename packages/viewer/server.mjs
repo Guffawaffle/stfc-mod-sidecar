@@ -66,6 +66,7 @@ import {
     buildObservedHostileCatalogSnapshot,
     buildObservedHostileObservationSnapshot,
 } from "./server/observed-hostile-access.mjs";
+import { buildObservedHostileCommunityReport } from "./server/observed-hostile-community-report.mjs";
 import { readObservedHostileProbeStatus } from "./server/observed-hostile-probe-status.mjs";
 import { loadObservedHostileReferenceCatalog } from "./server/observed-hostile-reference.mjs";
 import { ingestSidecarEnvelope } from "./server/sidecar-ingest.mjs";
@@ -267,6 +268,7 @@ const server = createServer(async (request, response) => {
         defaultLimit,
         readObservedHostileCatalog,
         readObservedHostileCatalogEntries,
+        readObservedHostileCommunityReport,
         readObservedHostileObservations,
     })) {
         return;
@@ -1992,6 +1994,14 @@ async function readObservedHostileObservations(options = {}) {
         probeStatus,
         referenceCatalog,
     });
+}
+
+async function readObservedHostileCommunityReport() {
+    const [snapshot, referenceCatalog] = await Promise.all([
+        readObservedHostileEventsSnapshot(OBSERVED_HOSTILE_PROJECTION_EVENT_LIMIT),
+        loadObservedHostileReferenceCatalog(),
+    ]);
+    return buildObservedHostileCommunityReport(snapshot, { referenceCatalog });
 }
 
 async function readObservedHostileProjectionInputs() {
