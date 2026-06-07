@@ -31,7 +31,9 @@ export function parseReproBundleAxArgs(argv = []) {
         skipMark: false,
         skipLex: false,
         lexDryRun: false,
+        summaryOnly: false,
         jsonOut: "",
+        outputDir: "",
     };
 
     for (let index = 0; index < argv.length; index += 1) {
@@ -67,6 +69,9 @@ export function parseReproBundleAxArgs(argv = []) {
             case "--json-out":
                 parsed.jsonOut = readRequiredValue(argv, ++index, arg);
                 break;
+            case "--output-dir":
+                parsed.outputDir = readRequiredValue(argv, ++index, arg);
+                break;
             case "--skip-mark":
                 parsed.skipMark = true;
                 break;
@@ -75,6 +80,9 @@ export function parseReproBundleAxArgs(argv = []) {
                 break;
             case "--lex-dry-run":
                 parsed.lexDryRun = true;
+                break;
+            case "--summary-only":
+                parsed.summaryOnly = true;
                 break;
             default:
                 throw new Error(`Unknown repro bundle option: ${arg}`);
@@ -99,6 +107,7 @@ export async function buildReproBundlePayload(options = {}) {
     const serverUrl = resolveSidecarBaseUrl(options.serverUrl || desktop.healthUrl);
     const label = options.label || `ax repro bundle ${generatedAt}`;
     const warnings = [];
+    const artifactPlan = resolveReproBundleArtifactPlan(options);
 
     const nativeMark = options.skipMark
         ? {
@@ -130,6 +139,8 @@ export async function buildReproBundlePayload(options = {}) {
             serverUrl,
             previewLimit: options.reportPreview,
             timeoutSec: options.timeoutSec,
+            jsonOut: artifactPlan.observedHostileReportJsonOut,
+            markdownOut: artifactPlan.observedHostileReportMarkdownOut,
         }),
     ]);
 
@@ -190,18 +201,26 @@ export async function buildReproBundlePayload(options = {}) {
         }
     }
 
-    if (options.jsonOut) {
-        const outputPath = resolveOutputPath(options.jsonOut);
-        mkdirSync(path.dirname(outputPath), { recursive: true });
-        writeFileSync(outputPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-        payload.artifacts = { jsonOut: outputPath };
+    const artifacts = {
+        ...(artifactPlan.outputDir ? { outputDir: artifactPlan.outputDir } : {}),
+        ...(artifactPlan.bundleJsonOut ? { jsonOut: artifactPlan.bundleJsonOut } : {}),
+        ...(artifactPlan.observedHostileReportJsonOut ? { observedHostileReportJsonOut: artifactPlan.observedHostileReportJsonOut } : {}),
+        ...(artifactPlan.observedHostileReportMarkdownOut ? { observedHostileReportMarkdownOut: artifactPlan.observedHostileReportMarkdownOut } : {}),
+    };
+    if (Object.keys(artifacts).length > 0) {
+        payload.artifacts = artifacts;
+    }
+
+    if (artifactPlan.bundleJsonOut) {
+        mkdirSync(path.dirname(artifactPlan.bundleJsonOut), { recursive: true });
+        writeFileSync(artifactPlan.bundleJsonOut, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
     }
 
     if (!payload.ok && !payload.error) {
         payload.error = "Repro bundle did not capture every required section.";
     }
 
-    return payload;
+    return options.summaryOnly ? summarizeReproBundlePayload(payload) : payload;
 }
 
 export function buildReproBundleLexFrame(bundle = {}) {
@@ -217,6 +236,49 @@ export function buildReproBundleLexFrame(bundle = {}) {
         modules: "stfc-mod-sidecar,stfc-mod",
         keywords: "repro-bundle,observed-hostiles,sidecar,native-log",
         permissions: "local-files,localhost",
+    };
+}
+
+export function summarizeReproBundlePayload(payload = {}) {
+    return {
+        ok: payload.ok !== false,
+        protocolVersion: REPRO_BUNDLE_PROTOCOL_VERSION,
+        detail: "repro-bundle-summary",
+        generatedAt: payload.generatedAt ?? null,
+        label: payload.label ?? null,
+        modRepoRoot: payload.modRepoRoot ?? null,
+        sidecarRepoRoot: payload.sidecarRepoRoot ?? null,
+        serverUrl: payload.serverUrl ?? null,
+        summaryOnly: true,
+        desktop: summarizeDesktopSnapshot(payload.desktop),
+        summary: {
+            report: payload.sidecar?.observedHostileReport?.summary ?? null,
+            sidecarDebugReturned: payload.sidecar?.debugEvents?.returnedLines ?? 0,
+            sidecarObservedReturned: payload.sidecar?.observedEvents?.returnedLines ?? 0,
+            nativeLogSelectedCount: payload.native?.logSlice?.data?.selectedCount ?? 0,
+            nativeRecentEventsReturned: extractRecentEventsReturned(payload.native?.recentEvents),
+        },
+        sections: {
+            native: {
+                markOk: payload.native?.mark?.ok ?? false,
+                logSliceOk: payload.native?.logSlice?.ok ?? false,
+                recentEventsOk: payload.native?.recentEvents?.ok ?? false,
+            },
+            sidecar: {
+                debugEventsOk: payload.sidecar?.debugEvents?.ok ?? false,
+                observedEventsOk: payload.sidecar?.observedEvents?.ok ?? false,
+                observedHostileReportOk: payload.sidecar?.observedHostileReport?.ok ?? false,
+            },
+            lex: {
+                attempted: payload.lex?.attempted ?? false,
+                ok: payload.lex?.ok ?? false,
+                dryRun: payload.lex?.dryRun ?? false,
+                skipped: payload.lex?.skipped ?? false,
+            },
+        },
+        artifacts: payload.artifacts ?? {},
+        warnings: Array.isArray(payload.warnings) ? payload.warnings : [],
+        error: payload.error ?? undefined,
     };
 }
 
@@ -395,6 +457,24 @@ function resolveSidecarBaseUrl(serverUrl) {
     return "http://127.0.0.1:43127";
 }
 
+export function resolveReproBundleArtifactPlan(options = {}) {
+    const outputDir = String(options.outputDir ?? "").trim()
+        ? resolveOutputPath(String(options.outputDir ?? "").trim())
+        : "";
+    const bundleJsonOut = String(options.jsonOut ?? "").trim()
+        ? resolveOutputPath(String(options.jsonOut ?? "").trim())
+        : outputDir
+            ? path.join(outputDir, "repro-bundle.json")
+            : "";
+
+    return {
+        outputDir,
+        bundleJsonOut,
+        observedHostileReportJsonOut: outputDir ? path.join(outputDir, "observed-hostile-community-report.json") : "",
+        observedHostileReportMarkdownOut: outputDir ? path.join(outputDir, "observed-hostile-community-report.md") : "",
+    };
+}
+
 function resolveOutputPath(filePath) {
     return path.isAbsolute(filePath) ? filePath : path.resolve(repoRoot, filePath);
 }
@@ -487,4 +567,37 @@ function firstNonEmpty(...values) {
 
 function existsPath(filePath) {
     return path.isAbsolute(filePath) && Boolean(filePath) && existsSync(filePath);
+}
+
+function summarizeDesktopSnapshot(snapshot = {}) {
+    return {
+        mode: snapshot.mode ?? null,
+        managed: snapshot.managed ?? false,
+        healthy: snapshot.healthy ?? false,
+        running: snapshot.running ?? false,
+        pid: snapshot.pid ?? null,
+        port: snapshot.port ?? null,
+        healthUrl: snapshot.healthUrl ?? null,
+        startedAt: snapshot.startedAt ?? null,
+    };
+}
+
+function extractRecentEventsReturned(recentEvents = {}) {
+    const returnedCount = recentEvents?.data?.returnedCount;
+    if (typeof returnedCount === "number" && Number.isFinite(returnedCount)) {
+        return Math.trunc(returnedCount);
+    }
+    const serverReturnedCount = recentEvents?.data?.serverReturnedCount;
+    if (typeof serverReturnedCount === "number" && Number.isFinite(serverReturnedCount)) {
+        return Math.trunc(serverReturnedCount);
+    }
+    const resultItems = Array.isArray(recentEvents?.data?.result) ? recentEvents.data.result : null;
+    if (resultItems) {
+        return resultItems.length;
+    }
+    const lineItems = Array.isArray(recentEvents?.data?.lines) ? recentEvents.data.lines : null;
+    if (lineItems) {
+        return lineItems.length;
+    }
+    return 0;
 }
