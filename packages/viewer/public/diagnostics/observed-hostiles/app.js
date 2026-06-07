@@ -883,10 +883,11 @@ function formatHull(latest) {
 function formatMatchHealth(matchHealth) {
     const health = asRecord(matchHealth);
     const matched = Number(health.matched ?? 0);
+    const candidate = Number(health.candidate ?? 0);
     const ambiguous = Number(health.ambiguous ?? 0);
     const unmapped = Number(health.unmapped ?? 0);
     const insufficient = Number(health.insufficientSignal ?? 0);
-    return `${matched} matched / ${ambiguous} ambiguous / ${unmapped} unmapped / ${insufficient} insufficient`;
+    return `${matched} matched / ${candidate} candidate / ${ambiguous} ambiguous / ${unmapped} unmapped / ${insufficient} needs signal`;
 }
 
 function formatObservationReferencePresence(referencePresence) {

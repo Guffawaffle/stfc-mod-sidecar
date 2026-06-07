@@ -22,21 +22,22 @@
             <input id="observed-hostile-search" type="search" placeholder="System, hostile, ID, source..." />
           </label>
           <label class="control">
-            <span>Match</span>
+            <span>Baseline</span>
             <select id="observed-hostile-status-filter">
               <option value="">All</option>
               <option value="matched">Matched</option>
+              <option value="candidate">Candidate</option>
               <option value="ambiguous">Ambiguous</option>
               <option value="unmapped">Unmapped</option>
-              <option value="insufficient_signal">Insufficient</option>
+              <option value="insufficient_signal">Needs Signal</option>
             </select>
           </label>
           <label class="control">
-            <span>Reference</span>
+            <span>Reference Pack</span>
             <select id="observed-hostile-reference-filter">
               <option value="">All</option>
-              <option value="known">Known by STFC.space</option>
-              <option value="unknown">Gap Candidates</option>
+              <option value="known">Known in Pack</option>
+              <option value="unknown">Gap Candidate</option>
               <option value="needs_signal">Needs Signal</option>
             </select>
           </label>

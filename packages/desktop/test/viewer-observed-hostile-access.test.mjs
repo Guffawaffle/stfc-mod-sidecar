@@ -598,6 +598,62 @@ describe("viewer observed hostile access", () => {
         });
     });
 
+    it("keeps baseline candidate matches distinct from insufficient-signal filters", () => {
+        const source = {
+            ok: true,
+            source: "store",
+            storageBackend: "sqlite",
+            totalLines: 1,
+            events: [
+                observedLine(1, {
+                    timestamp: "2026-06-06T08:00:00.000Z",
+                    observation: {
+                        sourceSurface: "fleet_data_system",
+                        confidence: "strong",
+                        runtimeFleetId: "candidate-1",
+                        systemId: "818257505",
+                    },
+                }),
+            ],
+        };
+
+        const catalogCandidate = buildObservedHostileCatalogEntriesSnapshot(source, {
+            limit: 10,
+            status: "candidate",
+            referenceCatalog: buildReferenceCatalogStub(),
+        });
+        const catalogInsufficient = buildObservedHostileCatalogEntriesSnapshot(source, {
+            limit: 10,
+            status: "insufficient_signal",
+            referenceCatalog: buildReferenceCatalogStub(),
+        });
+        const observationCandidate = buildObservedHostileObservationSnapshot(source, {
+            limit: 10,
+            windowMs: 60000,
+            status: "candidate",
+            referenceCatalog: buildReferenceCatalogStub(),
+        });
+
+        expect(catalogCandidate.items).toHaveLength(1);
+        expect(catalogCandidate.items[0]).toMatchObject({
+            matchHealthStatus: "candidate",
+            referencePresence: "known",
+            baseline: {
+                available: true,
+                status: "candidate",
+            },
+        });
+        expect(catalogInsufficient.items).toEqual([]);
+        expect(observationCandidate.items).toHaveLength(1);
+        expect(observationCandidate.items[0].matchHealth).toEqual({
+            matched: 0,
+            candidate: 1,
+            ambiguous: 0,
+            unmapped: 0,
+            insufficientSignal: 0,
+        });
+    });
+
     it("paginates catalog entries after server-side projection filters", () => {
         const source = {
             ok: true,

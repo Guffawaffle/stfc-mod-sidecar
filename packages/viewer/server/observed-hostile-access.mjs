@@ -397,6 +397,9 @@ function finishSystemObservation(windows, window, entryByKey, windowMs) {
             case "matched":
                 summary.matched += 1;
                 break;
+            case "candidate":
+                summary.candidate += 1;
+                break;
             case "ambiguous":
                 summary.ambiguous += 1;
                 break;
@@ -408,7 +411,7 @@ function finishSystemObservation(windows, window, entryByKey, windowMs) {
                 break;
         }
         return summary;
-    }, { matched: 0, ambiguous: 0, unmapped: 0, insufficientSignal: 0 });
+    }, { matched: 0, candidate: 0, ambiguous: 0, unmapped: 0, insufficientSignal: 0 });
     const systemId = window.systemId || null;
     const observationId = [
         "observation",
@@ -682,6 +685,8 @@ function observationMatchHealthCount(observation, status) {
     switch (status) {
         case "matched":
             return finiteIntegerOrNull(health.matched) ?? 0;
+        case "candidate":
+            return finiteIntegerOrNull(health.candidate) ?? 0;
         case "ambiguous":
             return finiteIntegerOrNull(health.ambiguous) ?? 0;
         case "unmapped":
@@ -713,6 +718,8 @@ function matchHealthStatusFromBaseline(baseline) {
     switch (String(baseline?.status ?? "").trim().toLowerCase()) {
         case "matched":
             return "matched";
+        case "candidate":
+            return "candidate";
         case "ambiguous":
             return "ambiguous";
         case "unmapped":
@@ -755,7 +762,7 @@ function normalizeStatusFilter(value) {
     if (normalized === "insufficientsignal") {
         return "insufficient_signal";
     }
-    return ["matched", "ambiguous", "unmapped", "insufficient_signal"].includes(normalized) ? normalized : "";
+    return ["matched", "candidate", "ambiguous", "unmapped", "insufficient_signal"].includes(normalized) ? normalized : "";
 }
 
 function normalizeReferencePresenceFilter(value) {
