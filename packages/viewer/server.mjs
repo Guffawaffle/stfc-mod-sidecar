@@ -97,13 +97,19 @@ const STREAM_KEEPALIVE_MS = 30000;
 const SHUTDOWN_GRACE_MS = 5000;
 const BATTLE_EVENT_TYPES = Object.freeze(["battle.event", "battle.capture", "battle.analytics", "battle.report", "catalog.snapshot"]);
 const OBSERVED_HOSTILE_EVENT_TYPES = Object.freeze(["observed.hostile"]);
+const FLEET_ALERT_EVIDENCE_EVENT_TYPES = Object.freeze(["fleet.alert_evidence"]);
 const OBSERVED_HOSTILE_PROJECTION_EVENT_LIMIT = 5000;
 const BATTLE_FRESHNESS_EVENT_TYPES = new Set(BATTLE_EVENT_TYPES);
 const SHIP_COMBAT_PREVIEW_SOURCE = "fleet.ship_recent_combat.preview";
 const SHIP_COMBAT_PREVIEW_LIMIT = 3;
 const SHIP_COMBAT_PREVIEW_EVENT_WINDOW = 60;
 const DEVELOPER_EVENT_TYPE_LIST = Object.freeze(["debug.event", "hook.event", "session.event", "integration.event"]);
-const ALL_EVENT_TYPES = Object.freeze([...BATTLE_EVENT_TYPES, ...OBSERVED_HOSTILE_EVENT_TYPES, ...DEVELOPER_EVENT_TYPE_LIST]);
+const ALL_EVENT_TYPES = Object.freeze([
+    ...BATTLE_EVENT_TYPES,
+    ...OBSERVED_HOSTILE_EVENT_TYPES,
+    ...FLEET_ALERT_EVIDENCE_EVENT_TYPES,
+    ...DEVELOPER_EVENT_TYPE_LIST,
+]);
 const DEVELOPER_EVENT_TYPES = new Set(DEVELOPER_EVENT_TYPE_LIST);
 const BARE_UTC_ISO_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/;
 const EXPLICIT_TIMEZONE_PATTERN = /(?:[zZ]|[+-]\d{2}:\d{2})$/;
@@ -1667,6 +1673,7 @@ async function handleSidecarIngest(request, response) {
             isDeveloperEvent,
             normalizeBattleEvents: normalizeIncomingEvents,
             normalizeObservedHostileEvents: normalizeIncomingEvents,
+            normalizeFleetAlertEvidenceEvents: normalizeIncomingEvents,
             battleUnavailablePayload: unavailableEventStorePayload,
             appendBattleEvents: eventStore ? async (events) => {
                 const result = await eventStore.append(events);
@@ -1689,6 +1696,20 @@ async function handleSidecarIngest(request, response) {
                     appended: result.stored ?? result.appended ?? events.length,
                     received: result.received ?? events.length,
                     observedHostileCount: events.length,
+                    storeStatus: "idle",
+                });
+                return {
+                    backend: eventStore.backend,
+                    ...result,
+                };
+            } : null,
+            fleetAlertEvidenceUnavailablePayload: unavailableEventStorePayload,
+            appendFleetAlertEvidenceEvents: eventStore ? async (events) => {
+                const result = await eventStore.append(events);
+                broadcastEventUpdate("fleet-alert-evidence-ingest", {
+                    appended: result.stored ?? result.appended ?? events.length,
+                    received: result.received ?? events.length,
+                    fleetAlertEvidenceCount: events.length,
                     storeStatus: "idle",
                 });
                 return {

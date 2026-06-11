@@ -123,6 +123,38 @@ describe("viewer event routes", () => {
         });
     });
 
+    it("exposes fleet alert evidence events without developer mode", async () => {
+        const context = baseContext({ developerMode: false });
+        const scopeResponse = captureResponse();
+
+        await handleEventRoutes(
+            { method: "GET" },
+            scopeResponse,
+            new URL("http://127.0.0.1/api/events?scope=fleet-alerts&detail=summary"),
+            context,
+        );
+
+        expect(scopeResponse.statusCode).toBe(200);
+        expect(context.readEventsSnapshot).toHaveBeenCalledWith(150, {
+            includeDetails: false,
+            eventTypes: ["fleet.alert_evidence"],
+        });
+
+        const typeResponse = captureResponse();
+        await handleEventRoutes(
+            { method: "GET" },
+            typeResponse,
+            new URL("http://127.0.0.1/api/events?types=fleet.alert_evidence&limit=1"),
+            context,
+        );
+
+        expect(typeResponse.statusCode).toBe(200);
+        expect(context.readEventsSnapshot).toHaveBeenLastCalledWith(1, {
+            includeDetails: true,
+            eventTypes: ["fleet.alert_evidence"],
+        });
+    });
+
     it("delegates event ingest and stream handlers", async () => {
         const context = baseContext();
         const ingestResponse = captureResponse();

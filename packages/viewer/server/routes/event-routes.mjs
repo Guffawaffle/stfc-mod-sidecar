@@ -10,6 +10,9 @@ const BATTLE_EVENT_TYPES = Object.freeze([
 const OBSERVED_EVENT_TYPES = Object.freeze([
     "observed.hostile",
 ]);
+const FLEET_ALERT_EVIDENCE_EVENT_TYPES = Object.freeze([
+    "fleet.alert_evidence",
+]);
 const DEVELOPER_EVENT_TYPES = Object.freeze([
     "debug.event",
     "hook.event",
@@ -17,7 +20,12 @@ const DEVELOPER_EVENT_TYPES = Object.freeze([
     "integration.event",
 ]);
 const DEVELOPER_EVENT_TYPE_SET = new Set(DEVELOPER_EVENT_TYPES);
-const KNOWN_EVENT_TYPES = new Set([...BATTLE_EVENT_TYPES, ...OBSERVED_EVENT_TYPES, ...DEVELOPER_EVENT_TYPES]);
+const KNOWN_EVENT_TYPES = new Set([
+    ...BATTLE_EVENT_TYPES,
+    ...OBSERVED_EVENT_TYPES,
+    ...FLEET_ALERT_EVIDENCE_EVENT_TYPES,
+    ...DEVELOPER_EVENT_TYPES,
+]);
 
 export async function handleEventRoutes(request, response, requestUrl, context) {
     if (requestUrl.pathname === "/api/battles") {
@@ -147,6 +155,10 @@ function eventTypesForScope(scope) {
 
     if (scope === "observed") {
         return [...OBSERVED_EVENT_TYPES];
+    }
+
+    if (scope === "fleet-alerts") {
+        return [...FLEET_ALERT_EVIDENCE_EVENT_TYPES];
     }
 
     if (scope === "all") {

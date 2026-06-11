@@ -12,6 +12,7 @@ export type SidecarEventType =
   | "battle.report"
   | "catalog.snapshot"
   | "observed.hostile"
+  | "fleet.alert_evidence"
   | "session.event"
   | "integration.event";
 
@@ -202,6 +203,7 @@ export interface CatalogSnapshotEvent extends SidecarEventBase<"catalog.snapshot
 }
 
 export const OBSERVED_HOSTILE_SCHEMA_VERSION = "stfc.observed.hostile.v0" as const;
+export const FLEET_ALERT_EVIDENCE_SCHEMA_VERSION = "stfc.fleet.alert_evidence.v0" as const;
 
 export interface ObservedHostileObservation {
   sourceSurface: string;
@@ -230,6 +232,20 @@ export interface ObservedHostileObservation {
 export interface ObservedHostileEvent extends SidecarEventBase<"observed.hostile"> {
   schemaVersion: typeof OBSERVED_HOSTILE_SCHEMA_VERSION;
   observation: ObservedHostileObservation;
+}
+
+export interface FleetAlertEvidenceEvent extends SidecarEventBase<"fleet.alert_evidence"> {
+  schemaVersion: typeof FLEET_ALERT_EVIDENCE_SCHEMA_VERSION;
+  eventType: string;
+  capturedAtUnixMs?: number;
+  observedAtUnixMs?: number;
+  dispatch?: JsonObject;
+  fleet?: JsonObject;
+  ship?: JsonObject;
+  target?: JsonObject;
+  attacker?: JsonObject;
+  location?: JsonObject;
+  missingEvidence?: string[];
 }
 
 export type SessionPhase =
@@ -263,5 +279,6 @@ export type SidecarEvent =
   | BattleReportEvent
   | CatalogSnapshotEvent
   | ObservedHostileEvent
+  | FleetAlertEvidenceEvent
   | SessionEvent
   | IntegrationEvent;

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
     ingestSidecarEnvelope,
     SIDECAR_BATTLE_EVENTS_PROTOCOL_VERSION,
+    SIDECAR_FLEET_ALERT_EVIDENCE_PROTOCOL_VERSION,
     SIDECAR_FLEET_RUNTIME_PROTOCOL_VERSION,
     SIDECAR_INGEST_PROTOCOL_VERSION,
     SIDECAR_OBSERVED_HOSTILES_PROTOCOL_VERSION,
@@ -123,6 +124,39 @@ describe("viewer sidecar ingest", () => {
         }));
     });
 
+    it("accepts fleet.alert_evidence and appends it through the sidecar event store", async () => {
+        const appendFleetAlertEvidenceEvents = vi.fn(async (events) => ({
+            backend: "sqlite",
+            received: events.length,
+            stored: events.length,
+            duplicates: 0,
+        }));
+        const evidenceEvent = sampleFleetAlertEvidenceEvent();
+
+        const result = await ingestSidecarEnvelope(sampleEnvelope({
+            kind: "fleet.alert_evidence",
+            payloadProtocol: SIDECAR_FLEET_ALERT_EVIDENCE_PROTOCOL_VERSION,
+            payload: [evidenceEvent],
+        }), {
+            normalizeFleetAlertEvidenceEvents: (payload) => payload,
+            appendFleetAlertEvidenceEvents,
+            ingestFleetRuntimePayload: vi.fn(),
+        });
+
+        expect(result.statusCode).toBe(202);
+        expect(result.body).toMatchObject({
+            ok: true,
+            protocolVersion: SIDECAR_INGEST_PROTOCOL_VERSION,
+            kind: "fleet.alert_evidence",
+            stored: 1,
+            duplicates: 0,
+        });
+        expect(appendFleetAlertEvidenceEvents).toHaveBeenCalledWith([evidenceEvent], expect.objectContaining({
+            kind: "fleet.alert_evidence",
+            batchId: "batch-1",
+        }));
+    });
+
     it("rejects unknown kinds", async () => {
         await expect(ingestSidecarEnvelope(sampleEnvelope({ kind: "diagnostics", payload: {} }), {}))
             .rejects.toThrow("Unsupported sidecar ingest kind");
@@ -146,6 +180,12 @@ describe("viewer sidecar ingest", () => {
             payloadProtocol: SIDECAR_FLEET_RUNTIME_PROTOCOL_VERSION,
             payload: [sampleObservedHostileEvent()],
         }), {})).rejects.toThrow(`observed.hostiles requires payloadProtocol '${SIDECAR_OBSERVED_HOSTILES_PROTOCOL_VERSION}'.`);
+
+        await expect(ingestSidecarEnvelope(sampleEnvelope({
+            kind: "fleet.alert_evidence",
+            payloadProtocol: SIDECAR_FLEET_RUNTIME_PROTOCOL_VERSION,
+            payload: [sampleFleetAlertEvidenceEvent()],
+        }), {})).rejects.toThrow(`fleet.alert_evidence requires payloadProtocol '${SIDECAR_FLEET_ALERT_EVIDENCE_PROTOCOL_VERSION}'.`);
     });
 
     it("rejects malformed envelopes and invalid payload shapes", async () => {
@@ -177,6 +217,12 @@ describe("viewer sidecar ingest", () => {
             payloadProtocol: SIDECAR_OBSERVED_HOSTILES_PROTOCOL_VERSION,
             payload: { type: "observed.hostile" },
         }), {})).rejects.toThrow("observed.hostiles payload must be an array of sidecar events.");
+
+        await expect(ingestSidecarEnvelope(sampleEnvelope({
+            kind: "fleet.alert_evidence",
+            payloadProtocol: SIDECAR_FLEET_ALERT_EVIDENCE_PROTOCOL_VERSION,
+            payload: { type: "fleet.alert_evidence" },
+        }), {})).rejects.toThrow("fleet.alert_evidence payload must be an array of sidecar events.");
     });
 });
 
@@ -248,5 +294,40 @@ function sampleObservedHostileEvent() {
             runtimeFleetId: "4001",
             locationTranslationId: "847108551",
         },
+    };
+}
+
+function sampleFleetAlertEvidenceEvent() {
+    return {
+        protocolVersion: SIDECAR_BATTLE_EVENTS_PROTOCOL_VERSION,
+        type: "fleet.alert_evidence",
+        schemaVersion: "stfc.fleet.alert_evidence.v0",
+        timestamp: "2026-05-18T12:05:04.000Z",
+        source: "stfc-community-mod",
+        capturedAtUnixMs: 1747569904000,
+        observedAtUnixMs: 1747569904000,
+        eventType: "fleet.arrived_in_system",
+        dispatch: {
+            source: "fleet-slot-arrived-in-system",
+            owner: "FleetArrivalHooks",
+            seam: "Digit.Prime.HUD.FleetStateWidget.SetWidgetData",
+            reason: "fleet-slot-arrived-in-system",
+            effect: "publish-fleet-alert-evidence",
+        },
+        fleet: {
+            fleetId: "12345678901234567890",
+            state: {
+                previous: 256,
+                previousName: "Warping",
+                current: 512,
+                currentName: "Impulsing",
+            },
+        },
+        ship: {
+            shipId: "9876543210987654321",
+            hullSpecId: "1307832955",
+            displayName: "Squall",
+        },
+        missingEvidence: ["systemId"],
     };
 }

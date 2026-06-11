@@ -4,6 +4,7 @@ import {
   BATTLE_CAPTURE_SCHEMA_VERSION,
   BATTLE_REPORT_SCHEMA_VERSION,
   CATALOG_SNAPSHOT_SCHEMA_VERSION,
+  FLEET_ALERT_EVIDENCE_SCHEMA_VERSION,
   OBSERVED_HOSTILE_SCHEMA_VERSION,
   type BattleAnalyticsEvent,
   type BattleEvent,
@@ -14,6 +15,7 @@ import {
   type HookEvent,
   type IntegrationEvent,
   type JsonObject,
+  type FleetAlertEvidenceEvent,
   type ObservedHostileEvent,
   type SessionEvent,
   type SidecarEvent,
@@ -29,6 +31,7 @@ const EVENT_TYPES = new Set<SidecarEventType>([
   "battle.report",
   "catalog.snapshot",
   "observed.hostile",
+  "fleet.alert_evidence",
   "session.event",
   "integration.event",
 ]);
@@ -75,6 +78,8 @@ export function isSidecarEvent(value: unknown): value is SidecarEvent {
       return isCatalogSnapshotEvent(value);
     case "observed.hostile":
       return isObservedHostileEvent(value);
+    case "fleet.alert_evidence":
+      return isFleetAlertEvidenceEvent(value);
     case "session.event":
       return isSessionEvent(value);
     case "integration.event":
@@ -166,6 +171,15 @@ export function isObservedHostileEvent(value: unknown): value is ObservedHostile
     isRecord(value.observation) &&
     isString(value.observation.sourceSurface) &&
     isString(value.observation.confidence)
+  );
+}
+
+export function isFleetAlertEvidenceEvent(value: unknown): value is FleetAlertEvidenceEvent {
+  return (
+    isRecord(value) &&
+    value.type === "fleet.alert_evidence" &&
+    value.schemaVersion === FLEET_ALERT_EVIDENCE_SCHEMA_VERSION &&
+    isString(value.eventType)
   );
 }
 

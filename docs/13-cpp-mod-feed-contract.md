@@ -27,6 +27,7 @@ Rules:
 - The mod authenticates with the local sidecar sync token.
 - The outer runtime envelope uses `protocolVersion: "stfc.sidecar.ingest.v1"`.
 - `kind: "battle.events"` carries arrays of sidecar battle events with `payloadProtocol: "stfc.sidecar.events.v0"`.
+- `kind: "fleet.alert_evidence"` carries arrays of copied fleet alert evidence events with `payloadProtocol: "stfc.sidecar.events.v0"`.
 - `kind: "fleet.runtime"` carries fleet runtime snapshots with `payloadProtocol: "stfc.fleet.runtime_snapshot.v1"`.
 - The sidecar persists accepted runtime payloads in sidecar-owned SQL storage.
 - The mod must not write sidecar SQL or SQLite files directly.
@@ -84,6 +85,12 @@ The sidecar currently recognizes these battle event families:
 - `battle.analytics` with `schemaVersion: "stfc.battle.analytics.v0"`
 - `catalog.snapshot` with `schemaVersion: "stfc.catalog.snapshot.v0"`
 - transitional `battle.event` lines for simple parsed text events
+
+The sidecar also recognizes `fleet.alert_evidence` events with
+`schemaVersion: "stfc.fleet.alert_evidence.v0"` when they arrive through the
+dedicated `fleet.alert_evidence` sidecar ingest kind. These events are copied
+operator-alert evidence only. They are not gameplay commands and should be
+interpreted by sidecar alert rules/providers later.
 
 The canonical battle schema rules live in [docs/08-canonical-battle-schema.md](08-canonical-battle-schema.md).
 

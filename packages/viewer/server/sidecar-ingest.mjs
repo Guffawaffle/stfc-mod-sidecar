@@ -1,14 +1,17 @@
 export const SIDECAR_INGEST_PROTOCOL_VERSION = "stfc.sidecar.ingest.v1";
 export const SIDECAR_BATTLE_EVENTS_KIND = "battle.events";
 export const SIDECAR_OBSERVED_HOSTILES_KIND = "observed.hostiles";
+export const SIDECAR_FLEET_ALERT_EVIDENCE_KIND = "fleet.alert_evidence";
 export const SIDECAR_FLEET_RUNTIME_KIND = "fleet.runtime";
 export const SIDECAR_EVENTS_PROTOCOL_VERSION = "stfc.sidecar.events.v0";
 export const SIDECAR_BATTLE_EVENTS_PROTOCOL_VERSION = SIDECAR_EVENTS_PROTOCOL_VERSION;
 export const SIDECAR_OBSERVED_HOSTILES_PROTOCOL_VERSION = SIDECAR_EVENTS_PROTOCOL_VERSION;
+export const SIDECAR_FLEET_ALERT_EVIDENCE_PROTOCOL_VERSION = SIDECAR_EVENTS_PROTOCOL_VERSION;
 export const SIDECAR_FLEET_RUNTIME_PROTOCOL_VERSION = "stfc.fleet.runtime_snapshot.v1";
 
 const BATTLE_EVENT_TYPES = new Set(["battle.event", "battle.capture", "battle.analytics", "battle.report", "catalog.snapshot"]);
 const OBSERVED_HOSTILE_EVENT_TYPES = new Set(["observed.hostile"]);
+const FLEET_ALERT_EVIDENCE_EVENT_TYPES = new Set(["fleet.alert_evidence"]);
 
 export async function ingestSidecarEnvelope(envelope, options = {}) {
     const parsed = parseSidecarIngestEnvelope(envelope);
@@ -86,6 +89,35 @@ export async function ingestSidecarEnvelope(envelope, options = {}) {
         };
     }
 
+    if (parsed.kind === SIDECAR_FLEET_ALERT_EVIDENCE_KIND) {
+        if (typeof options.appendFleetAlertEvidenceEvents !== "function") {
+            return unavailableResult(options.fleetAlertEvidenceUnavailablePayload, "Fleet alert evidence storage is unavailable.");
+        }
+
+        const normalizeFleetAlertEvidenceEvents = typeof options.normalizeFleetAlertEvidenceEvents === "function"
+            ? options.normalizeFleetAlertEvidenceEvents
+            : defaultNormalizeBattleEvents;
+        const events = normalizeFleetAlertEvidenceEvents(parsed.payload);
+        if (!Array.isArray(events) || events.length === 0) {
+            throw new Error("fleet.alert_evidence payload must contain at least one recognized sidecar event.");
+        }
+        if (events.some((event) => !FLEET_ALERT_EVIDENCE_EVENT_TYPES.has(String(event?.type ?? "")))) {
+            throw new Error("fleet.alert_evidence payload must contain only fleet.alert_evidence sidecar event types.");
+        }
+
+        const result = await options.appendFleetAlertEvidenceEvents(events, parsed);
+        return {
+            statusCode: 202,
+            body: {
+                ok: true,
+                protocolVersion: SIDECAR_INGEST_PROTOCOL_VERSION,
+                kind: parsed.kind,
+                received: events.length,
+                ...result,
+            },
+        };
+    }
+
     if (typeof options.ingestFleetRuntimePayload !== "function") {
         return unavailableResult(options.fleetUnavailablePayload, "Fleet broker is unavailable.");
     }
@@ -113,7 +145,10 @@ export function parseSidecarIngestEnvelope(value) {
     }
 
     const kind = requiredString(value.kind, "kind");
-    if (kind !== SIDECAR_BATTLE_EVENTS_KIND && kind !== SIDECAR_OBSERVED_HOSTILES_KIND && kind !== SIDECAR_FLEET_RUNTIME_KIND) {
+    if (kind !== SIDECAR_BATTLE_EVENTS_KIND
+        && kind !== SIDECAR_OBSERVED_HOSTILES_KIND
+        && kind !== SIDECAR_FLEET_ALERT_EVIDENCE_KIND
+        && kind !== SIDECAR_FLEET_RUNTIME_KIND) {
         throw new Error(`Unsupported sidecar ingest kind '${kind}'.`);
     }
 
@@ -151,6 +186,19 @@ export function parseSidecarIngestEnvelope(value) {
         }
         if (parsed.payload.length === 0) {
             throw new Error("observed.hostiles payload must contain at least one event.");
+        }
+        return parsed;
+    }
+
+    if (parsed.kind === SIDECAR_FLEET_ALERT_EVIDENCE_KIND) {
+        if (parsed.payloadProtocol !== SIDECAR_EVENTS_PROTOCOL_VERSION) {
+            throw new Error(`fleet.alert_evidence requires payloadProtocol '${SIDECAR_EVENTS_PROTOCOL_VERSION}'.`);
+        }
+        if (!Array.isArray(parsed.payload)) {
+            throw new Error("fleet.alert_evidence payload must be an array of sidecar events.");
+        }
+        if (parsed.payload.length === 0) {
+            throw new Error("fleet.alert_evidence payload must contain at least one event.");
         }
         return parsed;
     }
