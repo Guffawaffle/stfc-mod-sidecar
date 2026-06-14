@@ -8,6 +8,7 @@ export * from "./broker/sql-broker-store.js";
 export * from "./broker/fleet-broker.js";
 export * from "./battle-log/parser.js";
 export * from "./diagnostics/diagnostic-bundle.js";
+export * from "./alerts/fleet-alert-intents.js";
 export * from "./settings/hotkeys.js";
 export * from "./settings/notifications.js";
 export * from "./settings/diagnostics.js";
