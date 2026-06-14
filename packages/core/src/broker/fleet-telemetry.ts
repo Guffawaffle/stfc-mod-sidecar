@@ -39,6 +39,8 @@ export interface FleetProjectionSlot {
   shipKeyHash?: string;
   shipType?: string;
   hullSpecId?: number;
+  activeTimerRemainingMs?: number;
+  activeTimerSource?: string;
   levelBand?: string;
   healthBand?: string;
 }
@@ -51,6 +53,7 @@ export interface FleetRuntimeSnapshotSlot {
   currentStateName?: unknown;
   hullName?: unknown;
   hullSpecId?: unknown;
+  activeTimer?: unknown;
   [key: string]: unknown;
 }
 
@@ -366,6 +369,7 @@ function fleetRuntimeSlotToProjectionSlot(
   const hullName = safeText(slot.hullName);
   const hullSpecId = finiteInteger(slot.hullSpecId);
   const shipIdentityId = exactStringIdFromShipIdentityProbe(slot.shipIdentityProbe);
+  const activeTimer = activeTimerObservation(slot.activeTimer);
   const currentStateName = safeText(slot.currentStateName);
   const slotKey = `slot-${slotIndex}`;
   const fleetKey = present && fleetId !== null
@@ -392,8 +396,30 @@ function fleetRuntimeSlotToProjectionSlot(
   if (present && hullName) {
     projectionSlot.shipType = `hull:${hullName}`;
   }
+  if (present && activeTimer) {
+    projectionSlot.activeTimerRemainingMs = activeTimer.remainingMs;
+    projectionSlot.activeTimerSource = activeTimer.source;
+  }
 
   return projectionSlot;
+}
+
+function activeTimerObservation(value: unknown): { remainingMs: number; source: string } | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const remainingMs = nonNegativeFiniteNumber(value.remainingMs)
+    ?? timerRemainingSecondsToMs(value.remainingSeconds)
+    ?? timerRemainingTicksToMs(value.remainingTicks);
+  if (remainingMs === null) {
+    return null;
+  }
+
+  return {
+    remainingMs,
+    source: safeText(value.source) ?? "unknown",
+  };
 }
 
 function runtimeSlotState(present: boolean, fleetBarTracked: boolean, currentStateName: string | null): string {
@@ -423,6 +449,21 @@ function finiteNumber(value: unknown): number | null {
 function finiteInteger(value: unknown): number | null {
   const number = finiteNumber(value);
   return number !== null ? Math.trunc(number) : null;
+}
+
+function nonNegativeFiniteNumber(value: unknown): number | null {
+  const number = finiteNumber(value);
+  return number !== null && number >= 0 ? number : null;
+}
+
+function timerRemainingSecondsToMs(value: unknown): number | null {
+  const seconds = nonNegativeFiniteNumber(value);
+  return seconds !== null ? Math.trunc(seconds * 1000) : null;
+}
+
+function timerRemainingTicksToMs(value: unknown): number | null {
+  const ticks = nonNegativeFiniteNumber(value);
+  return ticks !== null ? Math.trunc(ticks / 10000) : null;
 }
 
 function chunk<T>(items: readonly T[], size: number): T[][] {

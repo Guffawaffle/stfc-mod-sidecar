@@ -112,6 +112,43 @@ describe.sequential("viewer fleet runtime", () => {
         expect(page.elements.view.innerHTML.indexOf("Slot 1")).toBeLessThan(page.elements.view.innerHTML.indexOf("Slot 10"));
     });
 
+    test("renders passive ETA for warping rows with observed active timer data", async () => {
+        const observedAt = new Date(Date.now() + 5000).toISOString();
+        const page = await loadFleetPage({
+            ok: true,
+            available: true,
+            projection: {
+                stateVersion: 13,
+                updatedAt: observedAt,
+                slots: [
+                    {
+                        fleetKey: "fleet:A",
+                        slotKey: "slot-0",
+                        state: "warping",
+                        assignmentKind: "player_ship",
+                        activeTimerRemainingMs: 65000,
+                        activeTimerSource: "FleetPlayerData.Timer.RemainingTime",
+                        updatedAt: observedAt,
+                    },
+                    {
+                        fleetKey: "fleet:B",
+                        slotKey: "slot-1",
+                        state: "docked",
+                        assignmentKind: "player_ship",
+                        activeTimerRemainingMs: 65000,
+                        updatedAt: observedAt,
+                    },
+                ],
+            },
+        });
+
+        expect(page.elements.view.innerHTML).toContain("Warping");
+        expect(page.elements.view.innerHTML).toContain("ETA 1:05");
+        expect(page.elements.view.innerHTML).toContain("Docked");
+        expect(page.elements.view.innerHTML.match(/ETA/g)).toHaveLength(1);
+        expect(page.setIntervalCalls).toBe(1);
+    });
+
     test("can show empty slots without refetching", async () => {
         const now = new Date().toISOString();
         const page = await loadFleetPage({

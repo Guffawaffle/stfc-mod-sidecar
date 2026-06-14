@@ -207,6 +207,46 @@ describe("fleet runtime telemetry conversion", () => {
     });
   });
 
+  it("projects active timer observations onto runtime fleet rows", () => {
+    const payload = runtimeEnvelope({
+      payload: {
+        type: "fleet.runtime",
+        schemaVersion: "stfc.fleet.runtime_snapshot.v1",
+        source: "fleet-slot-warping",
+        observedAtMs: 1747569900000,
+        fleetBarTracked: true,
+        selectedIndex: 2,
+        slots: [
+          {
+            slotIndex: 0,
+            present: true,
+            fleetId: 4001,
+            currentStateName: "Warping",
+            hullName: "Enterprise",
+            activeTimer: {
+              remainingTicks: 905000000,
+              remainingMs: 90500,
+              remainingSeconds: 90.5,
+              source: "FleetPlayerData.Timer.RemainingTime",
+            },
+          },
+        ],
+      },
+    });
+
+    const envelopes = extractFleetRuntimeMajelEnvelopes(payload);
+    const events = buildFleetRuntimeTelemetryEvents(envelopes, {
+      installId: "install-test",
+      sidecarVersion: "0.1.0-test",
+    });
+
+    expect(events[0]?.slots[0]).toMatchObject({
+      state: "warping",
+      activeTimerRemainingMs: 90500,
+      activeTimerSource: "FleetPlayerData.Timer.RemainingTime",
+    });
+  });
+
   it("does not trust numeric ship identity probe fields for projection", () => {
     const payload = runtimeEnvelope({
       payload: {

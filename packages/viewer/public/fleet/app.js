@@ -10,6 +10,7 @@ const MAX_SHIP_COMBAT_PREVIEW_BATTLES = 3;
 let refreshSequence = 0;
 let activeRefreshPromise = null;
 let fallbackRefreshTimer = null;
+let warpEtaRenderTimer = null;
 let fleetEventSource = null;
 let lastProjectionPayload = null;
 let activeActivityRefreshPromise = null;
@@ -499,7 +500,7 @@ function alertIntentMeta(label, value) {
 }
 
 function startLiveUpdateLoop() {
-  closeLiveUpdateLoop();
+  closeLiveUpdateLoop({ clearWarpEta: false });
 
   if (!window.EventSource) {
     ensureFallbackRefresh();
@@ -544,8 +545,12 @@ function ensureFallbackRefresh() {
   }, FALLBACK_REFRESH_MS);
 }
 
-function closeLiveUpdateLoop() {
+function closeLiveUpdateLoop(options = {}) {
+  const clearWarpEta = options.clearWarpEta !== false;
   clearFallbackRefresh();
+  if (clearWarpEta) {
+    clearWarpEtaRenderLoop();
+  }
   if (fleetEventSource) {
     fleetEventSource.close();
     fleetEventSource = null;
@@ -559,6 +564,29 @@ function clearFallbackRefresh() {
 
   window.clearInterval(fallbackRefreshTimer);
   fallbackRefreshTimer = null;
+}
+
+function ensureWarpEtaRenderLoop() {
+  if (warpEtaRenderTimer) {
+    return;
+  }
+
+  warpEtaRenderTimer = window.setInterval(() => {
+    if (document.visibilityState !== "visible" || !lastProjectionPayload) {
+      return;
+    }
+
+    renderProjection(lastProjectionPayload);
+  }, 1000);
+}
+
+function clearWarpEtaRenderLoop() {
+  if (!warpEtaRenderTimer) {
+    return;
+  }
+
+  window.clearInterval(warpEtaRenderTimer);
+  warpEtaRenderTimer = null;
 }
 
 function renderProjection(payload) {
@@ -584,6 +612,7 @@ function renderProjection(payload) {
 }
 
 function renderUnavailable(payload) {
+  clearWarpEtaRenderLoop();
   elements.endpoint.textContent = "/api/fleet/projection";
   elements.rowCount.textContent = "0";
   elements.updated.textContent = "Unavailable";
@@ -595,6 +624,7 @@ function renderUnavailable(payload) {
 }
 
 function renderEmpty(payload) {
+  clearWarpEtaRenderLoop();
   const projection = payload.projection ?? null;
   elements.endpoint.textContent = "/api/fleet/projection";
   elements.rowCount.textContent = "0";
@@ -653,6 +683,11 @@ function renderRows(payload, options = {}) {
     </div>
   `;
   markProjectionRendered(Number.isFinite(projection?.stateVersion) ? `v${projection.stateVersion}` : "Unknown");
+  if (visibleRows.some((row) => row.hasWarpEtaTimer)) {
+    ensureWarpEtaRenderLoop();
+  } else {
+    clearWarpEtaRenderLoop();
+  }
 
   if (stale) {
     bridgeStatus.off("Possibly stale");
@@ -690,7 +725,12 @@ function renderFleetRow(row) {
           ${row.canShowCombatSummary ? `<span class="fleet-table__toggle">${escapeHtml(toggleLabel)}</span>` : ""}
         </div>
       </td>
-      <td><div class="fleet-table__cell"><strong>${escapeHtml(row.stateLabel)}</strong></div></td>
+      <td>
+        <div class="fleet-table__cell">
+          <strong>${escapeHtml(row.stateLabel)}</strong>
+          ${row.warpEtaLabel ? `<span class="fleet-table__secondary">${escapeHtml(row.warpEtaLabel)}</span>` : ""}
+        </div>
+      </td>
       <td>
         <div class="fleet-table__cell">
           <span>${escapeHtml(row.assignmentLabel)}</span>
@@ -774,12 +814,13 @@ function viewModelForSlot(slot, recentCombatMatch) {
     : [];
   const canShowCombatSummary = assignmentKind === "player_ship" && !isEmptyState(slot.state);
 
-  return {
+  const row = {
     slotKey: String(slot.slotKey ?? ""),
     fleetLabel: safeOpaqueLabel("Fleet", slot.fleetKey),
     slotLabel: slotLabelForSlot(slot),
     slotOrder: slotOrderForSlot(slot),
     stateLabel: formatState(slot.state),
+    stateValue: normalizedState(slot.state),
     assignmentLabel: formatAssignment(slot.assignmentKind),
     observedSignals: observedSignals(slot),
     shipId,
@@ -791,7 +832,12 @@ function viewModelForSlot(slot, recentCombatMatch) {
     shipCombatDetailLabel: shipCombatDetailLabel({ recentBattles, shipId }),
     isEmpty: isEmptyState(slot.state),
     updatedAt: String(slot.updatedAt ?? ""),
+    activeTimerRemainingMs: activeTimerRemainingMs(slot),
   };
+
+  row.hasWarpEtaTimer = row.stateValue === "warping" && row.activeTimerRemainingMs !== null;
+  row.warpEtaLabel = row.hasWarpEtaTimer ? formatWarpEtaLabel(row) : "";
+  return row;
 }
 
 function compareRows(left, right) {
@@ -824,7 +870,11 @@ function slotOrderForSlot(slot) {
 }
 
 function isEmptyState(value) {
-  return String(value ?? "").trim().toLowerCase() === "empty";
+  return normalizedState(value) === "empty";
+}
+
+function normalizedState(value) {
+  return String(value ?? "").trim().toLowerCase();
 }
 
 function visibleShipCombatSummarySlotKeys() {
@@ -1120,6 +1170,51 @@ function formatAge(value) {
 
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+function activeTimerRemainingMs(slot) {
+  const value = Number(slot?.activeTimerRemainingMs);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function formatWarpEtaLabel(row) {
+  const remainingMs = adjustedRemainingMs(row);
+  if (remainingMs === null) {
+    return "";
+  }
+
+  if (remainingMs <= 0) {
+    return "ETA due";
+  }
+
+  return `ETA ${formatDuration(remainingMs)}`;
+}
+
+function adjustedRemainingMs(row) {
+  if (row.activeTimerRemainingMs === null) {
+    return null;
+  }
+
+  const observedAt = Date.parse(row.updatedAt);
+  if (!Number.isFinite(observedAt)) {
+    return Math.max(0, Math.trunc(row.activeTimerRemainingMs));
+  }
+
+  const elapsedMs = Math.max(0, Date.now() - observedAt);
+  return Math.max(0, Math.trunc(row.activeTimerRemainingMs - elapsedMs));
+}
+
+function formatDuration(milliseconds) {
+  const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${String(minutes).padStart(2, "0")}m`;
+  }
+
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 function titleCase(value) {

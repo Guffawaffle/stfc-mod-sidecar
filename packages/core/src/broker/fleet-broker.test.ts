@@ -138,6 +138,8 @@ describe("fleet telemetry broker", () => {
       shipType: "hull:Discovery",
       hullSpecId: 1307832955,
       shipIdentityId: "2667207912673592502",
+      activeTimerRemainingMs: 185000,
+      activeTimerSource: "FleetPlayerData.Timer.RemainingTime",
     });
     expect(slots[0]).not.toHaveProperty("token");
     expect(slots[0]).not.toHaveProperty("rawJson");
@@ -194,6 +196,8 @@ describe("fleet telemetry broker", () => {
       shipType: "hull:Discovery",
       hullSpecId: 1307832955,
       shipIdentityId: "2667207912673592502",
+      activeTimerRemainingMs: 185000,
+      activeTimerSource: "FleetPlayerData.Timer.RemainingTime",
     });
     expect(slots[0]).not.toHaveProperty("token");
     expect(slots[0]).not.toHaveProperty("rawJson");
@@ -287,6 +291,12 @@ function runtimeEnvelope(overrides: Record<string, unknown> = {}) {
           hullName: "Discovery",
           hullSpecId: 1307832955,
           shipIdentityProbe: { shipId: "2667207912673592502", source: "FleetPlayerData.Ship.ID" },
+          activeTimer: {
+            remainingTicks: 1850000000,
+            remainingMs: 185000,
+            remainingSeconds: 185,
+            source: "FleetPlayerData.Timer.RemainingTime",
+          },
           coordinates: { x: 1, y: 2 },
         },
         { slotIndex: 4, present: true, fleetId: 1004, currentStateName: "Docked", hullName: "Franklin" },
