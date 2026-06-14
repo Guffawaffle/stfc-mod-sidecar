@@ -270,4 +270,4 @@ scripts/               validation, smoke, and release helper scripts
 
 The C++ Community Mod remains the production mod. The Companion is a local helper around install/update/uninstall, settings, diagnostics, and event viewing. It does not control gameplay and should not grow gameplay automation features.
 
-Architecture notes live in [docs/12-production-mod-boundary.md](docs/12-production-mod-boundary.md), and the current C++ mod feed contract is documented in [docs/13-cpp-mod-feed-contract.md](docs/13-cpp-mod-feed-contract.md).
+Architecture notes live in [docs/12-production-mod-boundary.md](docs/12-production-mod-boundary.md), the current C++ mod feed contract is documented in [docs/13-cpp-mod-feed-contract.md](docs/13-cpp-mod-feed-contract.md), and the shared payload resource contract is defined in [docs/24-stfc-mod-payload-resource-contract.md](docs/24-stfc-mod-payload-resource-contract.md).
