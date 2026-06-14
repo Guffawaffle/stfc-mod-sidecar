@@ -423,6 +423,91 @@ describe.sequential("viewer fleet runtime", () => {
         expect(page.elements.view.innerHTML).toContain("Initiator Victory");
     });
 
+    test("delegated row clicks expand combat summaries", async () => {
+        const now = "2026-05-24T19:59:00.000Z";
+        const page = await loadFleetPage(
+            projectionPayload({
+                stateVersion: 12,
+                updatedAt: now,
+                slots: [{
+                    fleetKey: "fleet:ALPHA-1234567890",
+                    slotKey: "slot-0",
+                    state: "assigned",
+                    assignmentKind: "player_ship",
+                    shipIdentityId: "2682548280591992155",
+                    shipType: "hull:USS Relativity",
+                    updatedAt: now,
+                }],
+            }),
+            {
+                combatPreviewPayload: combatPreviewPayload([
+                    {
+                        slotKey: "slot-0",
+                        shipId: "2682548280591992155",
+                        recentBattles: [{
+                            observedAt: now,
+                            outcome: "initiator_victory",
+                            opponentName: "Klingon Patrol",
+                            opponentType: "hostile",
+                            rounds: 8,
+                            source: "battle.report",
+                        }],
+                    },
+                ]),
+            },
+        );
+
+        expect(page.elements.view.innerHTML).not.toContain("Recent combat");
+
+        await page.clickProjectionView(createFleetRowClickTarget(page, "slot-0"));
+
+        expect(page.elements.view.innerHTML).toContain("Recent combat");
+        expect(page.elements.view.innerHTML).toContain("Klingon Patrol");
+    });
+
+    test("nested row controls do not trigger row expansion", async () => {
+        const now = new Date(Date.now() + 5000).toISOString();
+        const page = await loadFleetPage(
+            projectionPayload({
+                stateVersion: 12,
+                updatedAt: now,
+                slots: [{
+                    fleetKey: "fleet:ALPHA-1234567890",
+                    slotKey: "slot-0",
+                    state: "warping",
+                    assignmentKind: "player_ship",
+                    shipIdentityId: "2682548280591992155",
+                    shipType: "hull:USS Relativity",
+                    activeTimerRemainingMs: 65000,
+                    updatedAt: now,
+                }],
+            }),
+            {
+                combatPreviewPayload: combatPreviewPayload([
+                    {
+                        slotKey: "slot-0",
+                        shipId: "2682548280591992155",
+                        recentBattles: [{
+                            observedAt: now,
+                            outcome: "initiator_victory",
+                            opponentName: "Klingon Patrol",
+                            opponentType: "hostile",
+                            rounds: 8,
+                            source: "battle.report",
+                        }],
+                    },
+                ]),
+            },
+        );
+
+        expect(page.elements.view.innerHTML).toContain("ETA 1:05");
+        expect(page.elements.view.innerHTML).not.toContain("Recent combat");
+
+        await page.clickProjectionView(createFleetRowClickTarget(page, "slot-0", { controlSelector: "[data-fleet-row-control]" }));
+
+        expect(page.elements.view.innerHTML).not.toContain("Recent combat");
+    });
+
     test("expand all and collapse all control ship combat summaries without extra fetches", async () => {
         const now = "2026-05-24T19:59:00.000Z";
         const page = await loadFleetPage(
@@ -534,6 +619,7 @@ async function loadFleetPage(payload, options = {}) {
     return {
         clickCollapseAllShipCombat: () => dispatchElementEvent(dom.elements.collapseAllShipCombatButton, "click"),
         clickExpandAllShipCombat: () => dispatchElementEvent(dom.elements.expandAllShipCombatButton, "click"),
+        clickProjectionView: (target) => dispatchElementEvent(dom.elements.view, "click", { target }),
         clickRefresh: () => dispatchElementEvent(dom.elements.refreshButton, "click"),
         clickToggleEmptySlots: () => dispatchElementEvent(dom.elements.toggleEmptySlotsButton, "click"),
         dispatchDocumentEvent: (type, init) => dom.document.dispatchEvent(new MockEvent(type, init)),
@@ -680,6 +766,7 @@ class MockEvent {
         this.type = type;
         this.detail = init.detail;
         this.data = init.data;
+        this.target = init.target;
     }
 }
 
@@ -704,13 +791,53 @@ function createEventTarget(base = {}) {
     };
 }
 
-function dispatchElementEvent(element, type) {
+function dispatchElementEvent(element, type, init = {}) {
     const handler = element.listeners.get(type);
     if (!handler) {
         return;
     }
 
-    return handler(new MockEvent(type));
+    return handler(new MockEvent(type, init));
+}
+
+function createFleetRowClickTarget(page, slotKey, options = {}) {
+    const token = dataSlotTokenFor(page, slotKey);
+    const row = {
+        getAttribute(name) {
+            return name === "data-slot-token" ? token : null;
+        },
+    };
+    const control = options.controlSelector ? {} : null;
+
+    return {
+        closest(selector) {
+            if (selector === "[data-ship-combat-close]") {
+                return null;
+            }
+            if (selector === "[data-ship-combat-row]") {
+                return row;
+            }
+            if (control && selectorListContains(selector, options.controlSelector)) {
+                return control;
+            }
+            return null;
+        },
+    };
+}
+
+function dataSlotTokenFor(page, slotKey) {
+    const matches = [...page.elements.view.innerHTML.matchAll(/data-slot-token="([^"]+)"/gu)];
+    if (matches.length !== 1 || !matches[0]?.[1]) {
+        throw new Error(`Expected one data-slot-token for ${slotKey}, found ${matches.length}`);
+    }
+    return matches[0][1];
+}
+
+function selectorListContains(selector, expected) {
+    return String(selector ?? "")
+        .split(",")
+        .map((part) => part.trim())
+        .includes(expected);
 }
 
 function projectionPayload(projection) {

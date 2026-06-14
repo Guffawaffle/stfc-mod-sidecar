@@ -68,6 +68,10 @@ elements.view?.addEventListener("click", (event) => {
     return;
   }
 
+  if (isFleetRowControlTarget(target)) {
+    return;
+  }
+
   const row = target.closest("[data-ship-combat-row]");
   if (row) {
     toggleShipCombatSummary(shipCombatSlotKeyFromDomToken(row.getAttribute("data-slot-token")));
@@ -701,6 +705,10 @@ function markProjectionRendered(versionLabel) {
   lastRenderAt = new Date().toISOString();
   currentRenderedStateVersion = versionLabel || "No projection";
   renderDebugStamps();
+}
+
+function isFleetRowControlTarget(target) {
+  return Boolean(target.closest("button, a, input, select, textarea, [role='button'], [data-fleet-row-control]"));
 }
 
 function renderFleetRow(row) {
