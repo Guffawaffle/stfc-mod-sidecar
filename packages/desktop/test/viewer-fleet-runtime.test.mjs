@@ -146,6 +146,8 @@ describe.sequential("viewer fleet runtime", () => {
         expect(page.elements.view.innerHTML).toContain("ETA 1:05");
         expect(page.elements.view.innerHTML).toContain("Docked");
         expect(page.elements.view.innerHTML.match(/ETA/g)).toHaveLength(1);
+        expect(arrivalBellTokensFor(page)).toHaveLength(1);
+        expect(page.elements.view.innerHTML).toContain(">Notify</button>");
         expect(page.setIntervalCalls).toBe(1);
     });
 
@@ -508,6 +510,169 @@ describe.sequential("viewer fleet runtime", () => {
         expect(page.elements.view.innerHTML).not.toContain("Recent combat");
     });
 
+    test("arrival bell click arms and disarms without expanding the row", async () => {
+        const observedAt = new Date(Date.now() + 5000).toISOString();
+        const audio = createMockAudioContext();
+        const page = await loadFleetPage(
+            projectionPayload({
+                stateVersion: 12,
+                updatedAt: observedAt,
+                slots: [{
+                    fleetKey: "fleet:ALPHA-1234567890",
+                    slotKey: "slot-0",
+                    state: "warping",
+                    assignmentKind: "player_ship",
+                    shipIdentityId: "2682548280591992155",
+                    shipType: "hull:USS Relativity",
+                    activeTimerRemainingMs: 65000,
+                    updatedAt: observedAt,
+                }],
+            }),
+            {
+                AudioContext: audio.AudioContext,
+                combatPreviewPayload: combatPreviewPayload([
+                    {
+                        slotKey: "slot-0",
+                        shipId: "2682548280591992155",
+                        recentBattles: [{
+                            observedAt,
+                            outcome: "initiator_victory",
+                            opponentName: "Klingon Patrol",
+                            opponentType: "hostile",
+                            rounds: 8,
+                            source: "battle.report",
+                        }],
+                    },
+                ]),
+            },
+        );
+
+        expect(page.elements.view.innerHTML).toContain(">Notify</button>");
+        expect(page.elements.view.innerHTML).not.toContain("Recent combat");
+
+        await page.clickProjectionView(createArrivalBellClickTarget(page, "slot-0"));
+        await page.flushAsync();
+
+        expect(page.elements.view.innerHTML).toContain("aria-pressed=\"true\"");
+        expect(page.elements.view.innerHTML).toContain(">Armed</button>");
+        expect(page.elements.view.innerHTML).not.toContain("Recent combat");
+        expect(audio.calls.resumes).toBe(1);
+        expect(audio.calls.starts).toBe(0);
+
+        await page.clickProjectionView(createArrivalBellClickTarget(page, "slot-0"));
+
+        expect(page.elements.view.innerHTML).not.toContain("aria-pressed=\"true\"");
+        expect(page.elements.view.innerHTML).toContain(">Notify</button>");
+        expect(page.elements.view.innerHTML).not.toContain("Recent combat");
+    });
+
+    test("arrival bell reports unavailable audio instead of arming silently", async () => {
+        const observedAt = new Date(Date.now() + 5000).toISOString();
+        const page = await loadFleetPage(
+            projectionPayload({
+                stateVersion: 12,
+                updatedAt: observedAt,
+                slots: [{
+                    fleetKey: "fleet:ALPHA-1234567890",
+                    slotKey: "slot-0",
+                    state: "warping",
+                    assignmentKind: "player_ship",
+                    activeTimerRemainingMs: 65000,
+                    updatedAt: observedAt,
+                }],
+            }),
+        );
+
+        await page.clickProjectionView(createArrivalBellClickTarget(page, "slot-0"));
+
+        expect(page.elements.view.innerHTML).not.toContain("aria-pressed=\"true\"");
+        expect(page.elements.view.innerHTML).toContain("Audio unavailable");
+    });
+
+    test("arrival bell fires one chime and clears armed state when the observed timer is due", async () => {
+        const observedAt = new Date(Date.now() - 2000).toISOString();
+        const audio = createMockAudioContext();
+        const page = await loadFleetPage(
+            projectionPayload({
+                stateVersion: 12,
+                updatedAt: observedAt,
+                slots: [{
+                    fleetKey: "fleet:ALPHA-1234567890",
+                    slotKey: "slot-0",
+                    state: "warping",
+                    assignmentKind: "player_ship",
+                    shipIdentityId: "2682548280591992155",
+                    activeTimerRemainingMs: 500,
+                    updatedAt: observedAt,
+                }],
+            }),
+            { AudioContext: audio.AudioContext },
+        );
+
+        expect(page.elements.view.innerHTML).toContain("ETA due");
+        expect(audio.calls.starts).toBe(0);
+
+        await page.clickProjectionView(createArrivalBellClickTarget(page, "slot-0"));
+        page.runIntervals();
+
+        expect(audio.calls.starts).toBe(1);
+        expect(page.elements.view.innerHTML).not.toContain("aria-pressed=\"true\"");
+        expect(page.elements.view.innerHTML).toContain(">Notify</button>");
+
+        page.runIntervals();
+
+        expect(audio.calls.starts).toBe(1);
+    });
+
+    test("arrival bell cancels when the row identity changes before arrival", async () => {
+        const futureObservedAt = new Date(Date.now() + 5000).toISOString();
+        const dueObservedAt = new Date(Date.now() - 2000).toISOString();
+        const audio = createMockAudioContext();
+        const page = await loadFleetPage(
+            [
+                projectionPayload({
+                    stateVersion: 12,
+                    updatedAt: futureObservedAt,
+                    slots: [{
+                        fleetKey: "fleet:ALPHA-1234567890",
+                        slotKey: "slot-0",
+                        state: "warping",
+                        assignmentKind: "player_ship",
+                        shipIdentityId: "2682548280591992155",
+                        activeTimerRemainingMs: 65000,
+                        updatedAt: futureObservedAt,
+                    }],
+                }),
+                projectionPayload({
+                    stateVersion: 13,
+                    updatedAt: dueObservedAt,
+                    slots: [{
+                        fleetKey: "fleet:BRAVO-1234567890",
+                        slotKey: "slot-0",
+                        state: "warping",
+                        assignmentKind: "player_ship",
+                        shipIdentityId: "998877665544332211",
+                        activeTimerRemainingMs: 500,
+                        updatedAt: dueObservedAt,
+                    }],
+                }),
+            ],
+            { AudioContext: audio.AudioContext },
+        );
+
+        await page.clickProjectionView(createArrivalBellClickTarget(page, "slot-0"));
+        await page.flushAsync();
+
+        expect(page.elements.view.innerHTML).toContain("aria-pressed=\"true\"");
+
+        await page.clickRefresh();
+        page.runIntervals();
+
+        expect(page.elements.version.textContent).toBe("v13");
+        expect(page.elements.view.innerHTML).not.toContain("aria-pressed=\"true\"");
+        expect(audio.calls.starts).toBe(0);
+    });
+
     test("expand all and collapse all control ship combat summaries without extra fetches", async () => {
         const now = "2026-05-24T19:59:00.000Z";
         const page = await loadFleetPage(
@@ -567,16 +732,24 @@ async function loadFleetPage(payload, options = {}) {
         ? [...configuredCombatPreviewPayload]
         : [configuredCombatPreviewPayload];
     let setIntervalCalls = 0;
+    let nextIntervalId = 0;
+    const intervalCallbacks = new Map();
     const MockEventSource = createMockEventSourceClass(eventSources);
     const windowMock = createEventTarget({
+        AudioContext: options.AudioContext,
         clearTimeout,
         setTimeout,
         EventSource: options.eventSource === false ? undefined : MockEventSource,
-        setInterval() {
+        webkitAudioContext: options.webkitAudioContext,
+        setInterval(callback) {
             setIntervalCalls += 1;
-            return 1;
+            const id = nextIntervalId += 1;
+            intervalCallbacks.set(id, callback);
+            return id;
         },
-        clearInterval() { },
+        clearInterval(id) {
+            intervalCallbacks.delete(id);
+        },
     });
 
     globalThis.document = dom.document;
@@ -629,7 +802,14 @@ async function loadFleetPage(payload, options = {}) {
         flushAsync,
         module,
         requests,
-        setIntervalCalls,
+        runIntervals() {
+            for (const callback of intervalCallbacks.values()) {
+                callback();
+            }
+        },
+        get setIntervalCalls() {
+            return setIntervalCalls;
+        },
         setVisibilityState(value) {
             dom.document.visibilityState = value;
         },
@@ -767,6 +947,11 @@ class MockEvent {
         this.detail = init.detail;
         this.data = init.data;
         this.target = init.target;
+        this.propagationStopped = false;
+    }
+
+    stopPropagation() {
+        this.propagationStopped = true;
     }
 }
 
@@ -825,12 +1010,57 @@ function createFleetRowClickTarget(page, slotKey, options = {}) {
     };
 }
 
+function createArrivalBellClickTarget(page, slotKey) {
+    const bellToken = dataArrivalBellTokenFor(page);
+    const rowToken = dataSlotTokenFor(page, slotKey);
+    const button = {
+        getAttribute(name) {
+            return name === "data-arrival-bell-token" ? bellToken : null;
+        },
+    };
+    const row = {
+        getAttribute(name) {
+            return name === "data-slot-token" ? rowToken : null;
+        },
+    };
+
+    return {
+        closest(selector) {
+            if (selector === "[data-arrival-bell-token]") {
+                return button;
+            }
+            if (selector === "[data-ship-combat-close]") {
+                return null;
+            }
+            if (selector === "[data-ship-combat-row]") {
+                return row;
+            }
+            if (selectorListContains(selector, "button") || selectorListContains(selector, "[data-fleet-row-control]")) {
+                return button;
+            }
+            return null;
+        },
+    };
+}
+
 function dataSlotTokenFor(page, slotKey) {
     const matches = [...page.elements.view.innerHTML.matchAll(/data-slot-token="([^"]+)"/gu)];
     if (matches.length !== 1 || !matches[0]?.[1]) {
         throw new Error(`Expected one data-slot-token for ${slotKey}, found ${matches.length}`);
     }
     return matches[0][1];
+}
+
+function dataArrivalBellTokenFor(page) {
+    const tokens = arrivalBellTokensFor(page);
+    if (tokens.length !== 1 || !tokens[0]) {
+        throw new Error(`Expected one data-arrival-bell-token, found ${tokens.length}`);
+    }
+    return tokens[0];
+}
+
+function arrivalBellTokensFor(page) {
+    return [...page.elements.view.innerHTML.matchAll(/data-arrival-bell-token="([^"]+)"/gu)].map((match) => match[1]);
 }
 
 function selectorListContains(selector, expected) {
@@ -893,6 +1123,57 @@ function combatPreviewPayload(matches = [], options = {}) {
             matches,
             unmatchedBattles: options.unmatchedBattles ?? [],
             unmatchedFleetRows: options.unmatchedFleetRows ?? [],
+        },
+    };
+}
+
+function createMockAudioContext() {
+    const calls = {
+        instances: 0,
+        resumes: 0,
+        starts: 0,
+        stops: 0,
+    };
+
+    return {
+        calls,
+        AudioContext: class MockAudioContext {
+            constructor() {
+                calls.instances += 1;
+                this.currentTime = 0;
+                this.destination = {};
+            }
+
+            resume() {
+                calls.resumes += 1;
+                return Promise.resolve();
+            }
+
+            createOscillator() {
+                return {
+                    type: "",
+                    frequency: {
+                        setValueAtTime() { },
+                    },
+                    connect() { },
+                    start() {
+                        calls.starts += 1;
+                    },
+                    stop() {
+                        calls.stops += 1;
+                    },
+                };
+            }
+
+            createGain() {
+                return {
+                    gain: {
+                        setValueAtTime() { },
+                        exponentialRampToValueAtTime() { },
+                    },
+                    connect() { },
+                };
+            }
         },
     };
 }

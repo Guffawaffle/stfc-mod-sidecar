@@ -26,6 +26,11 @@ let showEmptySlots = false;
 let expandedShipCombatSlotKeys = new Set();
 let shipCombatDomTokenBySlotKey = new Map();
 let shipCombatSlotKeyByDomToken = new Map();
+let arrivalBellDomTokenByKey = new Map();
+let arrivalBellKeyByDomToken = new Map();
+const arrivalBellArms = new Map();
+const arrivalBellStatusByKey = new Map();
+let arrivalAudioContext = null;
 
 const elements = {
   collapseAllShipCombatButton: document.querySelector("#collapse-all-ship-combat-button"),
@@ -59,6 +64,13 @@ elements.collapseAllShipCombatButton?.addEventListener("click", () => collapseAl
 elements.view?.addEventListener("click", (event) => {
   const target = event?.target;
   if (!target || typeof target.closest !== "function") {
+    return;
+  }
+
+  const arrivalBellButton = target.closest("[data-arrival-bell-token]");
+  if (arrivalBellButton) {
+    event.stopPropagation?.();
+    toggleArrivalBell(arrivalBellKeyFromDomToken(arrivalBellButton.getAttribute("data-arrival-bell-token")));
     return;
   }
 
@@ -654,6 +666,8 @@ function renderRows(payload, options = {}) {
 
   rebuildShipCombatDomTokenMaps(visibleRows);
   pruneExpandedShipCombatSlotKeys(combatSummarySlotKeys);
+  reconcileArrivalBellArms(visibleRows);
+  rebuildArrivalBellDomTokenMaps(visibleRows);
   updateShipCombatSummaryControls(combatSummarySlotKeys);
 
   elements.endpoint.textContent = "/api/fleet/projection";
@@ -711,6 +725,44 @@ function isFleetRowControlTarget(target) {
   return Boolean(target.closest("button, a, input, select, textarea, [role='button'], [data-fleet-row-control]"));
 }
 
+function toggleArrivalBell(key) {
+  const normalized = String(key ?? "").trim();
+  if (!normalized) {
+    return;
+  }
+
+  if (arrivalBellArms.has(normalized)) {
+    arrivalBellArms.delete(normalized);
+    arrivalBellStatusByKey.delete(normalized);
+    if (lastProjectionPayload) {
+      renderProjection(lastProjectionPayload);
+    }
+    return;
+  }
+
+  if (!ensureArrivalAudioContext()) {
+    arrivalBellStatusByKey.set(normalized, "Audio unavailable");
+    if (lastProjectionPayload) {
+      renderProjection(lastProjectionPayload);
+    }
+    return;
+  }
+
+  arrivalBellArms.set(normalized, { armedAt: new Date().toISOString() });
+  arrivalBellStatusByKey.delete(normalized);
+  void prepareArrivalAudio().catch(() => {
+    arrivalBellArms.delete(normalized);
+    arrivalBellStatusByKey.set(normalized, "Audio unavailable");
+    if (lastProjectionPayload) {
+      renderProjection(lastProjectionPayload);
+    }
+  });
+
+  if (lastProjectionPayload) {
+    renderProjection(lastProjectionPayload);
+  }
+}
+
 function renderFleetRow(row) {
   const toggleLabel = row.expanded
     ? "Hide summary"
@@ -737,6 +789,7 @@ function renderFleetRow(row) {
         <div class="fleet-table__cell">
           <strong>${escapeHtml(row.stateLabel)}</strong>
           ${row.warpEtaLabel ? `<span class="fleet-table__secondary">${escapeHtml(row.warpEtaLabel)}</span>` : ""}
+          ${renderArrivalBellControl(row)}
         </div>
       </td>
       <td>
@@ -752,6 +805,32 @@ function renderFleetRow(row) {
       </td>
     </tr>
     ${row.expanded ? renderShipCombatSummaryRow(row) : ""}
+  `;
+}
+
+function renderArrivalBellControl(row) {
+  if (!row.arrivalBellKey) {
+    return "";
+  }
+
+  const buttonLabel = row.arrivalBellArmed ? "Armed" : "Notify";
+  const actionLabel = row.arrivalBellArmed ? "Disarm arrival chime" : "Notify on arrival";
+  const statusMarkup = row.arrivalBellStatus
+    ? `<span class="fleet-arrival-bell__status">${escapeHtml(row.arrivalBellStatus)}</span>`
+    : "";
+
+  return `
+    <div class="fleet-arrival-bell-row">
+      <button
+        type="button"
+        class="fleet-arrival-bell${row.arrivalBellArmed ? " fleet-arrival-bell--armed" : ""}"
+        data-fleet-row-control="true"
+        data-arrival-bell-token="${escapeHtml(domTokenForArrivalBellKey(row.arrivalBellKey))}"
+        aria-label="${escapeHtml(`${actionLabel} for ${row.slotLabel}`)}"
+        aria-pressed="${row.arrivalBellArmed ? "true" : "false"}"
+      >${escapeHtml(buttonLabel)}</button>
+      ${statusMarkup}
+    </div>
   `;
 }
 
@@ -824,6 +903,7 @@ function viewModelForSlot(slot, recentCombatMatch) {
 
   const row = {
     slotKey: String(slot.slotKey ?? ""),
+    fleetKey: String(slot.fleetKey ?? ""),
     fleetLabel: safeOpaqueLabel("Fleet", slot.fleetKey),
     slotLabel: slotLabelForSlot(slot),
     slotOrder: slotOrderForSlot(slot),
@@ -845,6 +925,8 @@ function viewModelForSlot(slot, recentCombatMatch) {
 
   row.hasWarpEtaTimer = row.stateValue === "warping" && row.activeTimerRemainingMs !== null;
   row.warpEtaLabel = row.hasWarpEtaTimer ? formatWarpEtaLabel(row) : "";
+  row.arrivalBellKey = arrivalBellKeyForRow(row);
+  applyArrivalBellState(row);
   return row;
 }
 
@@ -920,6 +1002,31 @@ function shipCombatSlotKeyFromDomToken(token) {
   return shipCombatSlotKeyByDomToken.get(String(token ?? "").trim()) ?? "";
 }
 
+function rebuildArrivalBellDomTokenMaps(visibleRows) {
+  arrivalBellDomTokenByKey = new Map();
+  arrivalBellKeyByDomToken = new Map();
+
+  let index = 0;
+  for (const row of visibleRows) {
+    if (!row.arrivalBellKey) {
+      continue;
+    }
+
+    index += 1;
+    const token = `arrival-bell-${index}`;
+    arrivalBellDomTokenByKey.set(row.arrivalBellKey, token);
+    arrivalBellKeyByDomToken.set(token, row.arrivalBellKey);
+  }
+}
+
+function domTokenForArrivalBellKey(key) {
+  return arrivalBellDomTokenByKey.get(key) ?? "";
+}
+
+function arrivalBellKeyFromDomToken(token) {
+  return arrivalBellKeyByDomToken.get(String(token ?? "").trim()) ?? "";
+}
+
 function pruneExpandedShipCombatSlotKeys(visibleSlotKeys) {
   const visible = new Set(visibleSlotKeys);
   expandedShipCombatSlotKeys = new Set(
@@ -937,6 +1044,119 @@ function updateShipCombatSummaryControls(visibleSlotKeys) {
 
   if (elements.collapseAllShipCombatButton) {
     elements.collapseAllShipCombatButton.disabled = expandedCount === 0;
+  }
+}
+
+function reconcileArrivalBellArms(visibleRows) {
+  const rowsByBellKey = new Map();
+  for (const row of visibleRows) {
+    if (row.arrivalBellKey) {
+      rowsByBellKey.set(row.arrivalBellKey, row);
+    }
+  }
+
+  for (const key of [...arrivalBellArms.keys()]) {
+    if (!rowsByBellKey.has(key)) {
+      arrivalBellArms.delete(key);
+    }
+  }
+
+  for (const key of [...arrivalBellStatusByKey.keys()]) {
+    if (!rowsByBellKey.has(key)) {
+      arrivalBellStatusByKey.delete(key);
+    }
+  }
+
+  for (const row of rowsByBellKey.values()) {
+    if (!arrivalBellArms.has(row.arrivalBellKey)) {
+      continue;
+    }
+
+    const remainingMs = adjustedRemainingMs(row);
+    if (remainingMs !== null && remainingMs <= 0) {
+      arrivalBellArms.delete(row.arrivalBellKey);
+      if (playArrivalChime()) {
+        arrivalBellStatusByKey.delete(row.arrivalBellKey);
+      } else {
+        arrivalBellStatusByKey.set(row.arrivalBellKey, "Audio unavailable");
+      }
+    }
+  }
+
+  for (const row of visibleRows) {
+    applyArrivalBellState(row);
+  }
+}
+
+function arrivalBellKeyForRow(row) {
+  if (!row.hasWarpEtaTimer) {
+    return "";
+  }
+
+  const slotKey = exactText(row.slotKey);
+  const shipOrFleetKey = exactText(row.shipId) || exactText(row.fleetKey);
+  if (!slotKey || !shipOrFleetKey) {
+    return "";
+  }
+
+  return `${slotKey}|${shipOrFleetKey}`;
+}
+
+function applyArrivalBellState(row) {
+  row.arrivalBellArmed = row.arrivalBellKey ? arrivalBellArms.has(row.arrivalBellKey) : false;
+  row.arrivalBellStatus = row.arrivalBellKey ? (arrivalBellStatusByKey.get(row.arrivalBellKey) ?? "") : "";
+}
+
+function ensureArrivalAudioContext() {
+  if (arrivalAudioContext) {
+    return arrivalAudioContext;
+  }
+
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextCtor) {
+    return null;
+  }
+
+  try {
+    arrivalAudioContext = new AudioContextCtor();
+    return arrivalAudioContext;
+  } catch {
+    arrivalAudioContext = null;
+    return null;
+  }
+}
+
+async function prepareArrivalAudio() {
+  const context = ensureArrivalAudioContext();
+  if (!context || typeof context.resume !== "function") {
+    return;
+  }
+
+  await context.resume();
+}
+
+function playArrivalChime() {
+  const context = ensureArrivalAudioContext();
+  if (!context || typeof context.createOscillator !== "function" || typeof context.createGain !== "function") {
+    return false;
+  }
+
+  try {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const now = Number.isFinite(context.currentTime) ? context.currentTime : 0;
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(880, now);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.18, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.45);
+    return true;
+  } catch {
+    return false;
   }
 }
 

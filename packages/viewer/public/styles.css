@@ -1159,6 +1159,34 @@ button {
   font-weight: 600;
 }
 
+.fleet-arrival-bell-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  align-items: center;
+}
+
+.fleet-arrival-bell {
+  min-height: 28px;
+  padding: 5px 10px;
+  border: 1px solid rgba(124, 214, 255, 0.28);
+  color: var(--lcars-blue);
+  background: rgba(124, 214, 255, 0.12);
+  box-shadow: none;
+  font-size: 0.72rem;
+}
+
+.fleet-arrival-bell--armed {
+  border-color: rgba(255, 157, 46, 0.72);
+  color: #050609;
+  background: var(--lcars-orange);
+}
+
+.fleet-arrival-bell__status {
+  color: rgba(255, 248, 217, 0.64);
+  font-size: 0.78rem;
+}
+
 .fleet-combat-preview__row td {
   padding-top: 0;
 }
