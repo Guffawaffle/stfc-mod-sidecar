@@ -2992,7 +2992,23 @@ h3,
   border-left-color: var(--lcars-peach);
 }
 
+.fleet-alert-intents-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+  border-left-color: var(--lcars-blue);
+}
+
 .fleet-activity-panel__heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: end;
+  justify-content: space-between;
+  margin-bottom: 0;
+}
+
+.fleet-alert-intents-panel__heading {
   display: flex;
   flex-wrap: wrap;
   gap: 10px 16px;
@@ -3005,7 +3021,15 @@ h3,
   font-size: 1.18rem;
 }
 
+.fleet-alert-intents-panel__heading h2 {
+  font-size: 1.18rem;
+}
+
 .fleet-activity-panel__heading p {
+  margin: 4px 0 0;
+}
+
+.fleet-alert-intents-panel__heading p {
   margin: 4px 0 0;
 }
 
@@ -3013,7 +3037,16 @@ h3,
   margin-top: 0;
 }
 
+.fleet-alert-intents-panel__raw {
+  margin-top: 0;
+}
+
 .fleet-activity-list {
+  display: grid;
+  gap: 8px;
+}
+
+.fleet-alert-intents-list {
   display: grid;
   gap: 8px;
 }
@@ -3027,6 +3060,26 @@ h3,
   border-left: 10px solid var(--lcars-peach);
   border-radius: 0 14px 14px 0;
   background: rgba(5, 6, 9, 0.28);
+}
+
+.fleet-alert-intent-row {
+  border-left-color: var(--lcars-blue);
+}
+
+.fleet-alert-intent-row__missing {
+  color: rgba(255, 248, 217, 0.78);
+}
+
+.fleet-alert-intent-row__meta {
+  display: grid;
+  gap: 4px;
+  color: rgba(255, 248, 217, 0.62);
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.fleet-alert-intent-row__meta strong {
+  color: rgba(255, 248, 217, 0.86);
 }
 
 .fleet-activity-row__top {

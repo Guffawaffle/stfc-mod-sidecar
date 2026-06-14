@@ -98,6 +98,9 @@ const SHUTDOWN_GRACE_MS = 5000;
 const BATTLE_EVENT_TYPES = Object.freeze(["battle.event", "battle.capture", "battle.analytics", "battle.report", "catalog.snapshot"]);
 const OBSERVED_HOSTILE_EVENT_TYPES = Object.freeze(["observed.hostile"]);
 const FLEET_ALERT_EVIDENCE_EVENT_TYPES = Object.freeze(["fleet.alert_evidence"]);
+const FLEET_ALERT_INTENT_SOURCE = "fleet.alert_intents";
+const FLEET_ALERT_INTENT_DEFAULT_LIMIT = 25;
+const FLEET_ALERT_INTENT_MAX_LIMIT = 100;
 const OBSERVED_HOSTILE_PROJECTION_EVENT_LIMIT = 5000;
 const BATTLE_FRESHNESS_EVENT_TYPES = new Set(BATTLE_EVENT_TYPES);
 const SHIP_COMBAT_PREVIEW_SOURCE = "fleet.ship_recent_combat.preview";
@@ -165,6 +168,7 @@ let applyCommunityModNotificationSettingsPatch;
 let buildCommunityModDiagnosticSettingsSnapshot;
 let buildCommunityModHotkeySettingsSnapshot;
 let buildCommunityModNotificationSettingsSnapshot;
+let buildFleetAlertIntentProjectionFromStoredEvents;
 let buildFleetShipRecentCombatPreview;
 let normalizeCommunityModSettingsProfile;
 let isSidecarEvent;
@@ -178,6 +182,7 @@ try {
         buildCommunityModDiagnosticSettingsSnapshot,
         buildCommunityModHotkeySettingsSnapshot,
         buildCommunityModNotificationSettingsSnapshot,
+        buildFleetAlertIntentProjectionFromStoredEvents,
         buildFleetShipRecentCombatPreview,
         countFleetRuntimeMajelEnvelopes,
         createFleetTelemetryBroker,
@@ -284,6 +289,7 @@ const server = createServer(async (request, response) => {
         readFleetActivity,
         handleFleetSyncIngest,
         handleFleetStream,
+        readFleetAlertIntents,
         readFleetProjection,
         readFleetShipCombatPreview,
     })) {
@@ -1769,6 +1775,54 @@ async function readFleetActivity(limit) {
     return buildFleetActivitySnapshot(snapshot, { limit });
 }
 
+async function readFleetAlertIntents(limit) {
+    const generatedAt = new Date().toISOString();
+    const resolvedLimit = resolveFleetAlertIntentLimit(limit);
+    const store = eventStore;
+    const storeRevision = eventStoreRevision;
+    if (!store) {
+        return buildFleetAlertIntentReadPayload({
+            generatedAt,
+            limit: resolvedLimit,
+            storageBackend: null,
+            storeExists: false,
+            totalEvidenceEvents: 0,
+            storedEvents: [],
+        });
+    }
+
+    try {
+        const [totalEvidenceEvents, storedEvents] = await Promise.all([
+            store.countByTypes(FLEET_ALERT_EVIDENCE_EVENT_TYPES),
+            store.listRecentByTypes(FLEET_ALERT_EVIDENCE_EVENT_TYPES, resolvedLimit),
+        ]);
+
+        if (store !== eventStore || storeRevision !== eventStoreRevision) {
+            return readFleetAlertIntents(limit);
+        }
+
+        return buildFleetAlertIntentReadPayload({
+            generatedAt,
+            limit: resolvedLimit,
+            storageBackend: store.backend,
+            storeExists: true,
+            totalEvidenceEvents,
+            storedEvents,
+        });
+    } catch (error) {
+        console.warn(`[sidecar-viewer] fleet alert intent snapshot unavailable: ${error instanceof Error ? error.message : String(error)}`);
+        return {
+            ok: false,
+            statusCode: 500,
+            source: FLEET_ALERT_INTENT_SOURCE,
+            dataSource: fleetAlertIntentDataSource(store.backend, true),
+            limit: resolvedLimit,
+            generatedAt,
+            error: error instanceof Error ? error.message : String(error),
+        };
+    }
+}
+
 async function readFleetShipCombatPreview() {
     const generatedAt = new Date().toISOString();
     const projection = await readFleetProjection();
@@ -1802,6 +1856,49 @@ async function readFleetShipCombatPreview() {
         },
         preview,
     };
+}
+
+function buildFleetAlertIntentReadPayload({
+    generatedAt,
+    limit,
+    storageBackend,
+    storeExists,
+    totalEvidenceEvents,
+    storedEvents,
+}) {
+    const projection = buildFleetAlertIntentProjectionFromStoredEvents(
+        storedEvents.map((storedEvent) => ({
+            sequenceId: storedEvent.sequenceId,
+            eventKey: storedEvent.eventKey,
+            event: storedEvent.event,
+        })),
+        { generatedAt },
+    );
+
+    return {
+        ok: true,
+        source: FLEET_ALERT_INTENT_SOURCE,
+        dataSource: fleetAlertIntentDataSource(storageBackend, storeExists),
+        limit,
+        totalEvidenceEvents,
+        returnedEvidenceEvents: storedEvents.length,
+        ...projection,
+    };
+}
+
+function fleetAlertIntentDataSource(storageBackend, exists) {
+    return {
+        source: "store",
+        storageBackend,
+        exists,
+        eventTypes: [...FLEET_ALERT_EVIDENCE_EVENT_TYPES],
+    };
+}
+
+function resolveFleetAlertIntentLimit(limit) {
+    const parsed = Number.parseInt(limit ?? `${FLEET_ALERT_INTENT_DEFAULT_LIMIT}`, 10);
+    const safeValue = Number.isFinite(parsed) ? parsed : FLEET_ALERT_INTENT_DEFAULT_LIMIT;
+    return Math.min(Math.max(safeValue, 1), FLEET_ALERT_INTENT_MAX_LIMIT);
 }
 
 async function handleMajelIngest(request, response) {

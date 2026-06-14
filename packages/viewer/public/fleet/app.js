@@ -4,6 +4,7 @@ import { classifyProjectionPayload } from "./projection-view-state.js";
 const STALE_PROJECTION_MS = 5 * 60 * 1000;
 const FALLBACK_REFRESH_MS = 15000;
 const FLEET_PAGE_ENTER_EVENT = "stfc:viewer-page-enter";
+const FLEET_ALERT_INTENTS_ROUTE = "/api/fleet/alert-intents?limit=8";
 const MAX_SHIP_COMBAT_PREVIEW_BATTLES = 3;
 
 let refreshSequence = 0;
@@ -12,6 +13,7 @@ let fallbackRefreshTimer = null;
 let fleetEventSource = null;
 let lastProjectionPayload = null;
 let activeActivityRefreshPromise = null;
+let activeAlertIntentRefreshPromise = null;
 let activeCombatPreviewRefreshPromise = null;
 let lastCombatPreviewPayload = null;
 let lastProjectionFetchAt = null;
@@ -38,6 +40,7 @@ const elements = {
   toggleEmptySlotsButton: document.querySelector("#toggle-empty-slots-button"),
   debug: document.querySelector("#projection-debug"),
   activityView: document.querySelector("#fleet-activity-view"),
+  alertIntentsView: document.querySelector("#fleet-alert-intents-view"),
 };
 
 const bridgeStatus = createBridgeStatus(elements.status);
@@ -149,6 +152,7 @@ async function refreshFleetPage(options = {}) {
   await Promise.all([
     refreshProjection(options),
     refreshActivity(),
+    refreshAlertIntents(),
     refreshCombatPreview(),
   ]);
 }
@@ -227,6 +231,35 @@ async function refreshActivity() {
   }
 }
 
+async function refreshAlertIntents() {
+  if (!elements.alertIntentsView) {
+    return undefined;
+  }
+
+  if (activeAlertIntentRefreshPromise) {
+    return activeAlertIntentRefreshPromise;
+  }
+
+  const refreshPromise = (async () => {
+    try {
+      const response = await fetch(FLEET_ALERT_INTENTS_ROUTE, { cache: "no-store" });
+      const payload = await response.json();
+      renderAlertIntents(payload);
+    } catch {
+      renderAlertIntentsUnavailable();
+    }
+  })();
+
+  activeAlertIntentRefreshPromise = refreshPromise;
+  try {
+    return await refreshPromise;
+  } finally {
+    if (activeAlertIntentRefreshPromise === refreshPromise) {
+      activeAlertIntentRefreshPromise = null;
+    }
+  }
+}
+
 async function refreshCombatPreview() {
   if (activeCombatPreviewRefreshPromise) {
     return activeCombatPreviewRefreshPromise;
@@ -256,6 +289,66 @@ async function refreshCombatPreview() {
       activeCombatPreviewRefreshPromise = null;
     }
   }
+}
+
+function renderAlertIntents(payload) {
+  if (!elements.alertIntentsView) {
+    return;
+  }
+
+  if (payload?.ok === false) {
+    renderAlertIntentsUnavailable(payload.error);
+    return;
+  }
+
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  if (items.length === 0) {
+    elements.alertIntentsView.innerHTML = '<div class="empty-state">No fleet alert intents from stored evidence yet.</div>';
+    return;
+  }
+
+  elements.alertIntentsView.innerHTML = items.map(renderAlertIntentRow).join("");
+}
+
+function renderAlertIntentsUnavailable(message) {
+  if (!elements.alertIntentsView) {
+    return;
+  }
+
+  elements.alertIntentsView.innerHTML = `<div class="empty-state">${escapeHtml(message || "Fleet alert intents are unavailable.")}</div>`;
+}
+
+function renderAlertIntentRow(item) {
+  const intent = item?.intent ?? {};
+  const missingEvidence = Array.isArray(intent.missingEvidence)
+    ? intent.missingEvidence.filter(Boolean).map(String)
+    : [];
+  const chips = [
+    alertIntentKindLabel(intent.kind),
+    intent.eventType,
+    Number.isFinite(item?.sequenceId) ? `S${item.sequenceId}` : "",
+  ].filter(Boolean);
+  const chipMarkup = chips.map((chip) => `<span>${escapeHtml(chip)}</span>`).join("");
+  const missingMarkup = missingEvidence.length > 0
+    ? `<p class="fleet-alert-intent-row__missing">Missing: ${escapeHtml(missingEvidence.join(", "))}</p>`
+    : "";
+
+  return `
+    <article class="fleet-activity-row fleet-alert-intent-row">
+      <div class="fleet-activity-row__top">
+        <div class="chip-row">${chipMarkup}</div>
+        <time>${escapeHtml(intent.timestamp ? formatDateTime(intent.timestamp) : "No timestamp")}</time>
+      </div>
+      <strong>${escapeHtml(alertIntentTitle(intent))}</strong>
+      <p>${escapeHtml(alertIntentSummary(intent))}</p>
+      ${missingMarkup}
+      <div class="fleet-alert-intent-row__meta">
+        ${alertIntentMeta("Intent", intent.intentId)}
+        ${alertIntentMeta("Dedupe", intent.dedupeKey)}
+        ${alertIntentMeta("Event", item?.eventKey)}
+      </div>
+    </article>
+  `;
 }
 
 function renderActivity(payload) {
@@ -303,6 +396,108 @@ function renderActivityRow(item) {
   `;
 }
 
+function alertIntentKindLabel(kind) {
+  if (kind === "fleet_arrival") {
+    return "Fleet arrival";
+  }
+
+  if (kind === "fleet_incoming_attack") {
+    return "Incoming attack";
+  }
+
+  return "Fleet alert";
+}
+
+function alertIntentTitle(intent) {
+  if (intent?.kind === "fleet_arrival") {
+    return "Fleet arrival intent";
+  }
+
+  if (intent?.kind === "fleet_incoming_attack") {
+    return "Incoming attack intent";
+  }
+
+  return "Fleet alert intent";
+}
+
+function alertIntentSummary(intent) {
+  const details = [
+    alertIntentFleetLabel(intent),
+    alertIntentShipLabel(intent),
+    alertIntentTargetLabel(intent),
+    alertIntentAttackerLabel(intent),
+    alertIntentLocationLabel(intent),
+  ].filter(Boolean);
+
+  return details.length > 0 ? details.join(" | ") : "No fleet details available in evidence.";
+}
+
+function alertIntentFleetLabel(intent) {
+  const fleetId = exactText(intent?.fleet?.fleetId);
+  const slotIndex = Number.isFinite(intent?.fleet?.slotIndex) ? intent.fleet.slotIndex : NaN;
+  const state = exactText(intent?.fleet?.state?.currentName)
+    || (Number.isFinite(intent?.fleet?.state?.current) ? `state ${intent.fleet.state.current}` : "");
+  const parts = [
+    fleetId ? `fleet ${fleetId}` : "",
+    Number.isInteger(slotIndex) ? `slot ${slotIndex}` : "",
+    state,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(", ") : "";
+}
+
+function alertIntentShipLabel(intent) {
+  const displayName = exactText(intent?.ship?.displayName) || exactText(intent?.fleet?.shipDisplayName);
+  const shipId = exactText(intent?.ship?.shipId);
+  const hullName = exactText(intent?.ship?.hullName);
+  const parts = [
+    displayName ? `ship ${displayName}` : "",
+    hullName,
+    shipId ? `ship ID ${shipId}` : "",
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(", ") : "";
+}
+
+function alertIntentTargetLabel(intent) {
+  const targetFleetId = exactText(intent?.target?.fleetId);
+  const targetType = exactText(intent?.target?.targetTypeName)
+    || (Number.isFinite(intent?.target?.targetType) ? `type ${intent.target.targetType}` : "");
+  const parts = [
+    targetFleetId ? `target fleet ${targetFleetId}` : "",
+    targetType,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(", ") : "";
+}
+
+function alertIntentAttackerLabel(intent) {
+  const attackerKind = exactText(intent?.attacker?.kind);
+  const attackerIdentity = exactText(intent?.attacker?.identity);
+  const attackerType = Number.isFinite(intent?.attacker?.fleetType) ? `fleet type ${intent.attacker.fleetType}` : "";
+  const parts = [
+    attackerKind ? `attacker ${attackerKind}` : "",
+    attackerIdentity ? `identity ${attackerIdentity}` : "",
+    attackerType,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(", ") : "";
+}
+
+function alertIntentLocationLabel(intent) {
+  const systemId = exactText(intent?.location?.systemId);
+  if (systemId) {
+    return `system ${systemId}`;
+  }
+
+  return Array.isArray(intent?.missingEvidence) && intent.missingEvidence.includes("systemId")
+    ? "system evidence missing"
+    : "";
+}
+
+function alertIntentMeta(label, value) {
+  const text = exactText(value);
+  return text
+    ? `<span><strong>${escapeHtml(label)}</strong> ${escapeHtml(text)}</span>`
+    : "";
+}
+
 function startLiveUpdateLoop() {
   closeLiveUpdateLoop();
 
@@ -319,6 +514,7 @@ function startLiveUpdateLoop() {
     renderDebugStamps();
     void Promise.all([
       refreshProjection({ announce: false, activityLabel: "Updating" }),
+      refreshAlertIntents(),
       refreshCombatPreview(),
     ]);
   });
@@ -768,6 +964,11 @@ function formatCombatOpponent(battle) {
 function exactShipId(value) {
   const normalized = String(value ?? "").trim();
   return /^\d+$/u.test(normalized) ? normalized : "";
+}
+
+function exactText(value) {
+  const normalized = String(value ?? "").trim();
+  return normalized;
 }
 
 function updateEmptySlotsToggle() {

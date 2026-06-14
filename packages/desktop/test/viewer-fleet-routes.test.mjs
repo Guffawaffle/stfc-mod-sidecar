@@ -98,6 +98,101 @@ describe("viewer fleet routes", () => {
         });
     });
 
+    it("returns provider-neutral alert intents from the dedicated Fleet alert read path", async () => {
+        const response = captureResponse();
+        const context = baseContext({
+            readFleetAlertIntents: vi.fn(async (limit) => ({
+                ok: true,
+                source: "fleet.alert_intents",
+                dataSource: {
+                    source: "store",
+                    storageBackend: "sqlite",
+                    exists: true,
+                    eventTypes: ["fleet.alert_evidence"],
+                },
+                limit,
+                totalEvidenceEvents: 1,
+                returnedEvidenceEvents: 1,
+                schemaVersion: "stfc.sidecar.fleet-alert-intent-projection.v0",
+                sourceEventCount: 1,
+                intentCount: 1,
+                skippedCount: 0,
+                items: [{
+                    sequenceId: 42,
+                    eventKey: "fleet-alert-42",
+                    intent: {
+                        type: "fleet.alert_intent",
+                        schemaVersion: "stfc.sidecar.fleet-alert-intent.v0",
+                        intentId: "fleet-alert-intent:abc123",
+                        dedupeKey: "fleet-alert-dedupe-key",
+                        kind: "fleet_arrival",
+                        eventType: "fleet.arrived_in_system",
+                        timestamp: "2026-06-11T12:34:56.000Z",
+                        evidence: {
+                            protocolVersion: "stfc.sidecar.events.v0",
+                            type: "fleet.alert_evidence",
+                            schemaVersion: "stfc.fleet.alert_evidence.v0",
+                            eventType: "fleet.arrived_in_system",
+                            timestamp: "2026-06-11T12:34:56.000Z",
+                            source: "stfc-community-mod",
+                        },
+                        fleet: { fleetId: "12345678901234567890" },
+                        missingEvidence: ["systemId"],
+                    },
+                }],
+                skipped: [],
+            })),
+        });
+
+        await expect(handleFleetRoutes(
+            { method: "GET" },
+            response,
+            new URL("http://127.0.0.1/api/fleet/alert-intents?limit=12"),
+            context,
+        )).resolves.toBe(true);
+
+        expect(context.readFleetAlertIntents).toHaveBeenCalledWith(12);
+        expect(response.statusCode).toBe(200);
+        expect(JSON.parse(response.body)).toMatchObject({
+            ok: true,
+            source: "fleet.alert_intents",
+            dataSource: { eventTypes: ["fleet.alert_evidence"] },
+            limit: 12,
+            items: [{
+                sequenceId: 42,
+                eventKey: "fleet-alert-42",
+                intent: {
+                    kind: "fleet_arrival",
+                    fleet: { fleetId: "12345678901234567890" },
+                    missingEvidence: ["systemId"],
+                },
+            }],
+        });
+    });
+
+    it("clamps Fleet alert intent limits defensively", async () => {
+        const response = captureResponse();
+        const context = baseContext({
+            readFleetAlertIntents: vi.fn(async (limit) => ({
+                ok: true,
+                source: "fleet.alert_intents",
+                limit,
+                items: [],
+                skipped: [],
+            })),
+        });
+
+        await expect(handleFleetRoutes(
+            { method: "GET" },
+            response,
+            new URL("http://127.0.0.1/api/fleet/alert-intents?limit=9999"),
+            context,
+        )).resolves.toBe(true);
+
+        expect(context.readFleetAlertIntents).toHaveBeenCalledWith(100);
+        expect(JSON.parse(response.body)).toMatchObject({ ok: true, limit: 100 });
+    });
+
     it("returns exact-ID ship combat preview from the dedicated Fleet preview path", async () => {
         const response = captureResponse();
         const context = baseContext({
@@ -178,6 +273,16 @@ describe("viewer fleet routes", () => {
         expect(activityResponse.statusCode).toBe(405);
         expect(JSON.parse(activityResponse.body)).toEqual({ ok: false, error: "Method not allowed" });
 
+        const alertIntentsResponse = captureResponse();
+        await handleFleetRoutes(
+            { method: "POST" },
+            alertIntentsResponse,
+            new URL("http://127.0.0.1/api/fleet/alert-intents"),
+            baseContext(),
+        );
+        expect(alertIntentsResponse.statusCode).toBe(405);
+        expect(JSON.parse(alertIntentsResponse.body)).toEqual({ ok: false, error: "Method not allowed" });
+
         const combatPreviewResponse = captureResponse();
         await handleFleetRoutes(
             { method: "POST" },
@@ -233,6 +338,7 @@ function baseContext(overrides = {}) {
             response.end("stream");
         }),
         readFleetActivity: vi.fn(async () => ({ ok: true, provisional: true, items: [] })),
+        readFleetAlertIntents: vi.fn(async () => ({ ok: true, source: "fleet.alert_intents", items: [], skipped: [] })),
         readFleetShipCombatPreview: vi.fn(async () => ({
             ok: true,
             source: "fleet.ship_recent_combat.preview",

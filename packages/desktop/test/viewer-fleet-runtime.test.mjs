@@ -2,8 +2,14 @@ import { afterEach, describe, expect, test } from "vitest";
 
 const FLEET_PROJECTION_ROUTE = "/api/fleet/projection";
 const FLEET_ACTIVITY_ROUTE = "/api/fleet/activity?limit=6";
+const FLEET_ALERT_INTENTS_ROUTE = "/api/fleet/alert-intents?limit=8";
 const FLEET_SHIP_COMBAT_PREVIEW_ROUTE = "/api/fleet/ship-combat-preview";
-const INITIAL_FLEET_REQUESTS = [FLEET_PROJECTION_ROUTE, FLEET_ACTIVITY_ROUTE, FLEET_SHIP_COMBAT_PREVIEW_ROUTE];
+const INITIAL_FLEET_REQUESTS = [
+    FLEET_PROJECTION_ROUTE,
+    FLEET_ACTIVITY_ROUTE,
+    FLEET_ALERT_INTENTS_ROUTE,
+    FLEET_SHIP_COMBAT_PREVIEW_ROUTE,
+];
 
 let importSequence = 0;
 let restoreActiveGlobals = null;
@@ -141,6 +147,58 @@ describe.sequential("viewer fleet runtime", () => {
 
         expect(page.requests).toContain("/api/fleet/projection");
         expect(page.requests).toContain("/api/fleet/activity?limit=6");
+        expect(page.requests).toContain("/api/fleet/alert-intents?limit=8");
+        expect(page.requests.some((request) => request.includes("/api/events"))).toBe(false);
+    });
+
+    test("renders provider-neutral fleet alert intents from the dedicated read route", async () => {
+        const page = await loadFleetPage(
+            projectionPayload({ stateVersion: 7, updatedAt: "2026-05-18T12:00:00.000Z" }),
+            {
+                alertIntentPayload: alertIntentPayload([{
+                    sequenceId: 42,
+                    eventKey: "fleet-alert-42",
+                    intent: {
+                        type: "fleet.alert_intent",
+                        schemaVersion: "stfc.sidecar.fleet-alert-intent.v0",
+                        intentId: "fleet-alert-intent:abc123",
+                        dedupeKey: "kind=fleet_arrival|fleetId=12345678901234567890|observedAt=1781181296000",
+                        kind: "fleet_arrival",
+                        eventType: "fleet.arrived_in_system",
+                        timestamp: "2026-06-11T12:34:56.000Z",
+                        evidence: {
+                            protocolVersion: "stfc.sidecar.events.v0",
+                            type: "fleet.alert_evidence",
+                            schemaVersion: "stfc.fleet.alert_evidence.v0",
+                            eventType: "fleet.arrived_in_system",
+                            timestamp: "2026-06-11T12:34:56.000Z",
+                            source: "stfc-community-mod",
+                        },
+                        fleet: {
+                            fleetId: "12345678901234567890",
+                            slotIndex: 2,
+                            state: { current: 512, currentName: "Impulsing" },
+                        },
+                        ship: {
+                            shipId: "9876543210987654321",
+                            displayName: "Squall",
+                        },
+                        missingEvidence: ["systemId"],
+                    },
+                }]),
+            },
+        );
+
+        expect(page.requests).toEqual(INITIAL_FLEET_REQUESTS);
+        expect(page.elements.alertIntentsView.innerHTML).toContain("Fleet arrival intent");
+        expect(page.elements.alertIntentsView.innerHTML).toContain("fleet.arrived_in_system");
+        expect(page.elements.alertIntentsView.innerHTML).toContain("fleet 12345678901234567890");
+        expect(page.elements.alertIntentsView.innerHTML).toContain("ship ID 9876543210987654321");
+        expect(page.elements.alertIntentsView.innerHTML).toContain("system evidence missing");
+        expect(page.elements.alertIntentsView.innerHTML).toContain("Missing: systemId");
+        expect(page.elements.alertIntentsView.innerHTML).toContain("fleet-alert-intent:abc123");
+        expect(page.elements.alertIntentsView.innerHTML).toContain("kind=fleet_arrival|fleetId=12345678901234567890");
+        expect(page.elements.alertIntentsView.innerHTML).not.toContain("notification");
         expect(page.requests.some((request) => request.includes("/api/events"))).toBe(false);
     });
 
@@ -182,6 +240,7 @@ describe.sequential("viewer fleet runtime", () => {
 
         expect(projectionRequests(page)).toHaveLength(2);
         expect(activityRequests(page)).toHaveLength(2);
+        expect(alertIntentRequests(page)).toHaveLength(2);
         expect(combatPreviewRequests(page)).toHaveLength(2);
         expect(page.elements.version.textContent).toBe("v8");
     });
@@ -201,12 +260,14 @@ describe.sequential("viewer fleet runtime", () => {
         await page.dispatchDocumentEvent("visibilitychange");
         expect(projectionRequests(page)).toHaveLength(2);
         expect(activityRequests(page)).toHaveLength(2);
+        expect(alertIntentRequests(page)).toHaveLength(2);
         expect(combatPreviewRequests(page)).toHaveLength(2);
         expect(page.elements.version.textContent).toBe("v8");
 
         await page.dispatchWindowEvent("focus");
         expect(projectionRequests(page)).toHaveLength(3);
         expect(activityRequests(page)).toHaveLength(3);
+        expect(alertIntentRequests(page)).toHaveLength(3);
         expect(combatPreviewRequests(page)).toHaveLength(3);
         expect(page.elements.version.textContent).toBe("v9");
         expect(page.setIntervalCalls).toBe(0);
@@ -237,6 +298,7 @@ describe.sequential("viewer fleet runtime", () => {
 
         expect(projectionRequests(page)).toHaveLength(2);
         expect(activityRequests(page)).toHaveLength(1);
+        expect(alertIntentRequests(page)).toHaveLength(2);
         expect(combatPreviewRequests(page)).toHaveLength(2);
         expect(page.requests.some((request) => request.includes("/api/events"))).toBe(false);
         expect(page.elements.version.textContent).toBe("v8");
@@ -269,12 +331,14 @@ describe.sequential("viewer fleet runtime", () => {
         await page.dispatchWindowEvent(routeEvent, { detail: { page: "fleet" } });
         expect(projectionRequests(page)).toHaveLength(2);
         expect(activityRequests(page)).toHaveLength(2);
+        expect(alertIntentRequests(page)).toHaveLength(2);
         expect(combatPreviewRequests(page)).toHaveLength(2);
         expect(page.elements.version.textContent).toBe("v8");
 
         await page.dispatchWindowEvent(routeEvent, { detail: { page: "fleet" } });
         expect(projectionRequests(page)).toHaveLength(3);
         expect(activityRequests(page)).toHaveLength(3);
+        expect(alertIntentRequests(page)).toHaveLength(3);
         expect(combatPreviewRequests(page)).toHaveLength(3);
         expect(page.elements.version.textContent).toBe("v9");
     });
@@ -372,6 +436,10 @@ async function loadFleetPage(payload, options = {}) {
     const projectionResponses = Array.isArray(payload) ? [...payload] : [payload];
     const configuredActivityPayload = options.activityPayload ?? activityPayload();
     const activityResponses = Array.isArray(configuredActivityPayload) ? [...configuredActivityPayload] : [configuredActivityPayload];
+    const configuredAlertIntentPayload = options.alertIntentPayload ?? alertIntentPayload();
+    const alertIntentResponses = Array.isArray(configuredAlertIntentPayload)
+        ? [...configuredAlertIntentPayload]
+        : [configuredAlertIntentPayload];
     const configuredCombatPreviewPayload = options.combatPreviewPayload ?? combatPreviewPayload();
     const combatPreviewResponses = Array.isArray(configuredCombatPreviewPayload)
         ? [...configuredCombatPreviewPayload]
@@ -403,7 +471,9 @@ async function loadFleetPage(payload, options = {}) {
         requests.push(request);
         const responseSet = request.startsWith("/api/fleet/activity")
             ? activityResponses
-            : (request === FLEET_SHIP_COMBAT_PREVIEW_ROUTE ? combatPreviewResponses : projectionResponses);
+            : (request === FLEET_ALERT_INTENTS_ROUTE
+                ? alertIntentResponses
+                : (request === FLEET_SHIP_COMBAT_PREVIEW_ROUTE ? combatPreviewResponses : projectionResponses));
         const currentPayload = responseSet.length > 1 ? responseSet.shift() : responseSet[0];
         return {
             async json() {
@@ -451,6 +521,10 @@ function activityRequests(page) {
     return page.requests.filter((request) => request === FLEET_ACTIVITY_ROUTE);
 }
 
+function alertIntentRequests(page) {
+    return page.requests.filter((request) => request === FLEET_ALERT_INTENTS_ROUTE);
+}
+
 function combatPreviewRequests(page) {
     return page.requests.filter((request) => request === FLEET_SHIP_COMBAT_PREVIEW_ROUTE);
 }
@@ -458,6 +532,7 @@ function combatPreviewRequests(page) {
 function createFleetDom() {
     const elements = {
         activityView: new MockElement({ innerHTML: '<div class="empty-state">Loading recent activity preview...</div>' }),
+        alertIntentsView: new MockElement({ innerHTML: '<div class="empty-state">Loading fleet alert intents...</div>' }),
         collapseAllShipCombatButton: new MockElement(),
         debug: new MockElement(),
         endpoint: new MockElement(),
@@ -473,6 +548,7 @@ function createFleetDom() {
     };
     const selectors = new Map([
         ["#fleet-activity-view", elements.activityView],
+        ["#fleet-alert-intents-view", elements.alertIntentsView],
         ["#collapse-all-ship-combat-button", elements.collapseAllShipCombatButton],
         ["#expand-all-ship-combat-button", elements.expandAllShipCombatButton],
         ["#projection-debug", elements.debug],
@@ -618,6 +694,28 @@ function activityPayload(items = []) {
         provisional: true,
         stability: "preview",
         items,
+    };
+}
+
+function alertIntentPayload(items = []) {
+    return {
+        ok: true,
+        source: "fleet.alert_intents",
+        dataSource: {
+            source: "store",
+            storageBackend: "sqlite",
+            exists: true,
+            eventTypes: ["fleet.alert_evidence"],
+        },
+        limit: 8,
+        totalEvidenceEvents: items.length,
+        returnedEvidenceEvents: items.length,
+        schemaVersion: "stfc.sidecar.fleet-alert-intent-projection.v0",
+        sourceEventCount: items.length,
+        intentCount: items.length,
+        skippedCount: 0,
+        items,
+        skipped: [],
     };
 }
 
