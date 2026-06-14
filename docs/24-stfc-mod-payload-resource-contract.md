@@ -182,6 +182,10 @@ Future work should converge toward a shared payload-resource envelope, but the
 project should avoid churn until a second resource family proves what the shared
 base actually needs.
 
+The initial core contract seed may define shared envelope vocabulary as
+TypeScript types. That seed is not a migration requirement for existing payload
+families.
+
 Before introducing a reusable schema/type package, prefer:
 
 1. documenting the profile and its category,
