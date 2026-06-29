@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+    createSidecarChunkAssembler,
     ingestSidecarEnvelope,
     SIDECAR_BATTLE_EVENTS_PROTOCOL_VERSION,
     SIDECAR_FLEET_ALERT_EVIDENCE_PROTOCOL_VERSION,
     SIDECAR_FLEET_RUNTIME_PROTOCOL_VERSION,
     SIDECAR_INGEST_PROTOCOL_VERSION,
     SIDECAR_OBSERVED_HOSTILES_PROTOCOL_VERSION,
+    SIDECAR_TRANSPORT_CHUNK_PROTOCOL_VERSION,
 } from "../../viewer/server/sidecar-ingest.mjs";
 
 describe("viewer sidecar ingest", () => {
@@ -157,6 +159,72 @@ describe("viewer sidecar ingest", () => {
         }));
     });
 
+    it("reassembles transport chunks and then ingests the original battle.events envelope", async () => {
+        const appendBattleEvents = vi.fn(async (events) => ({
+            backend: "sqlite",
+            received: events.length,
+            stored: events.length,
+            duplicates: 0,
+        }));
+        const originalEnvelope = sampleEnvelope({
+            batchId: "chunked-batch-1",
+            payload: [sampleBattleEvent(), {
+                ...sampleBattleEvent(),
+                type: "battle.capture",
+                schemaVersion: "stfc.battle.capture.v1",
+                capture: {
+                    battleLog: {
+                        encoding: "string_tokens.v1",
+                        tokens: ["\u0411\u043e\u0439", "caf\u00e9", "alpha"],
+                    },
+                },
+            }],
+        });
+        const assembler = createSidecarChunkAssembler();
+        const chunkEnvelopes = buildTransportChunks(originalEnvelope, 80);
+
+        for (let index = 0; index < chunkEnvelopes.length - 1; index += 1) {
+            const result = await ingestSidecarEnvelope(chunkEnvelopes[index], {
+                chunkAssembler: assembler,
+                normalizeBattleEvents: (payload) => payload,
+                appendBattleEvents,
+                ingestFleetRuntimePayload: vi.fn(),
+            });
+
+            expect(result.statusCode).toBe(202);
+            expect(result.body).toMatchObject({
+                ok: true,
+                kind: "transport.chunk",
+                chunked: true,
+                reassembled: false,
+                chunkGroupId: "chunked-batch-1",
+                chunkCount: chunkEnvelopes.length,
+            });
+        }
+
+        const finalResult = await ingestSidecarEnvelope(chunkEnvelopes[chunkEnvelopes.length - 1], {
+            chunkAssembler: assembler,
+            normalizeBattleEvents: (payload) => payload,
+            appendBattleEvents,
+            ingestFleetRuntimePayload: vi.fn(),
+        });
+
+        expect(finalResult.statusCode).toBe(202);
+        expect(finalResult.body).toMatchObject({
+            ok: true,
+            kind: "battle.events",
+            stored: 2,
+            chunked: true,
+            transportKind: "transport.chunk",
+            chunkGroupId: "chunked-batch-1",
+            chunkCount: chunkEnvelopes.length,
+        });
+        expect(appendBattleEvents).toHaveBeenCalledWith(originalEnvelope.payload, expect.objectContaining({
+            kind: "battle.events",
+            batchId: "chunked-batch-1",
+        }));
+    });
+
     it("rejects unknown kinds", async () => {
         await expect(ingestSidecarEnvelope(sampleEnvelope({ kind: "diagnostics", payload: {} }), {}))
             .rejects.toThrow("Unsupported sidecar ingest kind");
@@ -223,6 +291,22 @@ describe("viewer sidecar ingest", () => {
             payloadProtocol: SIDECAR_FLEET_ALERT_EVIDENCE_PROTOCOL_VERSION,
             payload: { type: "fleet.alert_evidence" },
         }), {})).rejects.toThrow("fleet.alert_evidence payload must be an array of sidecar events.");
+
+        await expect(ingestSidecarEnvelope(sampleEnvelope({
+            kind: "transport.chunk",
+            payloadProtocol: SIDECAR_TRANSPORT_CHUNK_PROTOCOL_VERSION,
+            payload: {
+                schemaVersion: SIDECAR_TRANSPORT_CHUNK_PROTOCOL_VERSION,
+                chunkGroupId: "group-1",
+                chunkIndex: 1,
+                chunkCount: 1,
+                totalBytes: 32,
+                originalKind: "battle.events",
+                originalBatchId: "batch-1",
+                chunkEncoding: "base64",
+                chunkBase64: "QUJD",
+            },
+        }), {})).rejects.toThrow("transport.chunk payload.chunkIndex must be less than chunkCount.");
     });
 });
 
@@ -277,6 +361,34 @@ function sampleFleetRuntimePayload() {
             { slotIndex: 1, present: false },
         ],
     };
+}
+
+function buildTransportChunks(originalEnvelope, chunkSize) {
+    const serialized = Buffer.from(JSON.stringify(originalEnvelope), "utf8");
+    const chunkCount = Math.ceil(serialized.length / chunkSize);
+    const chunks = [];
+
+    for (let index = 0; index < chunkCount; index += 1) {
+        const slice = serialized.subarray(index * chunkSize, (index + 1) * chunkSize);
+        chunks.push(sampleEnvelope({
+            kind: "transport.chunk",
+            batchId: `chunked-batch-1:chunk:${index + 1}`,
+            payloadProtocol: SIDECAR_TRANSPORT_CHUNK_PROTOCOL_VERSION,
+            payload: {
+                schemaVersion: SIDECAR_TRANSPORT_CHUNK_PROTOCOL_VERSION,
+                chunkGroupId: "chunked-batch-1",
+                chunkIndex: index,
+                chunkCount,
+                totalBytes: serialized.length,
+                originalKind: "battle.events",
+                originalBatchId: "chunked-batch-1",
+                chunkEncoding: "base64",
+                chunkBase64: slice.toString("base64"),
+            },
+        }));
+    }
+
+    return chunks;
 }
 
 function sampleObservedHostileEvent() {
