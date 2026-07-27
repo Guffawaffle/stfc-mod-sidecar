@@ -1,4 +1,5 @@
 const path = require("node:path");
+const signWithAzureCli = require("./build/trusted-signing.cjs");
 
 const ELECTRON_VERSION = "41.5.0";
 const DEFAULT_TIMESTAMP_SERVER = "http://timestamp.digicert.com";
@@ -20,6 +21,7 @@ module.exports = {
     productName: "STFC Community Mod Companion",
     electronVersion: ELECTRON_VERSION,
     asar: false,
+    forceCodeSigning: useAzureSigning || useCertStoreSigning,
     directories: {
         output: "dist",
     },
@@ -74,14 +76,10 @@ module.exports = {
         signAndEditExecutable: shouldSignAndEditExecutable,
         ...(useAzureSigning
             ? {
-                azureSignOptions: {
+                signtoolOptions: {
                     publisherName,
-                    endpoint: requiredEnv("AZURE_TRUSTED_SIGNING_ENDPOINT"),
-                    certificateProfileName: requiredEnv("AZURE_CERTIFICATE_PROFILE_NAME"),
-                    codeSigningAccountName: requiredEnv("AZURE_CODE_SIGNING_ACCOUNT_NAME"),
-                    fileDigest: "SHA256",
-                    timestampDigest: "SHA256",
-                    timestampRfc3161: "http://timestamp.acs.microsoft.com",
+                    sign: signWithAzureCli,
+                    signingHashAlgorithms: ["sha256"],
                 },
             }
             : {}),
