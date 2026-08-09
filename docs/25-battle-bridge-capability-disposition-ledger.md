@@ -168,6 +168,13 @@ outside the immutable eligibility plan or make a narrow, reason-preserving
 extension. They must not encode those axes as fake runtime capabilities or
 provider checks.
 
+The candidate composition contract is recorded in
+[`26-battle-bridge-state-readiness-contract.md`](26-battle-bridge-state-readiness-contract.md).
+It composes preferences, collection lifecycle, retained-data readability,
+provider/install trust, blockers, Home preference, recovery, and explicit
+feature requests after the immutable activation plan. It does not reimplement
+the resolver or elevate any candidate capability in this ledger.
+
 ## Current Guffawaffle Producer Dependency Inventory
 
 These source observations help define #241. They are not activation evidence
