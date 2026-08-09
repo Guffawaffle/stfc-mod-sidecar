@@ -533,6 +533,7 @@ Reserved for their existing evidence owners:
 - exact accepted Battle capability/feature IDs and fixtures: #55/#75/#241;
 - exact checked-in feature/workspace predicate that makes Battle Home
   offerable, plus any one-time prompt: #55/#75/native UX review;
-- whether collection outlives the visible Bridge process: #59;
+- process, window, collection, locking, and crash-recovery lifecycle:
+  [`27-battle-bridge-lifecycle-state-contract.md`](27-battle-bridge-lifecycle-state-contract.md);
 - storage budget, compression, migration, and retention defaults: #61/#63/#78;
 - actual integrated-package cost and final package naming: #66/#67.
