@@ -1,0 +1,107 @@
+{
+  "corpusSchema": "stfc.battle-bridge.golden.v1",
+  "status": "planning-evidence-only",
+  "provisionalIds": true,
+  "sourceInventory": {
+    "reviewedAt": "2026-08-08",
+    "sidecarRevision": "02d2264518779b3edadfa42ca07dace580a93222",
+    "bridgeRevision": "a797254a54a82bfd1fe3f928820fd5290588284c",
+    "guffawaffleModRevision": "b50dc8522a1f289c0ed2e6d86790d0c830be6962"
+  },
+  "capabilityInventoryPin": {
+    "schema": "stfc.battle-bridge.capability-evidence-pin.v1",
+    "entries": [
+      {"id": "battle.analytics.v0", "schema": "sidecar-source-observation"},
+      {"id": "battle.capture.v1", "schema": "stfc.battle.capture.v1"},
+      {"id": "battle.catalog-snapshot.v0", "schema": "sidecar-source-observation"},
+      {"id": "battle.report.v0", "schema": "sidecar-source-observation"},
+      {"id": "fleet.alert-evidence.v0", "schema": "unproven"},
+      {"id": "fleet.runtime-snapshot.v1", "schema": "stfc.fleet.runtime_snapshot.v1"},
+      {"id": "ingest.stfc-sidecar.v1", "schema": "stfc.sidecar.ingest.v1"}
+    ],
+    "sha256": "aa6b738eab60a3bcb17a0c37cfcd533198096dd05d98abfd4a43308e891a9cc9"
+  },
+  "capabilityEvidence": [
+    {
+      "id": "ingest.stfc-sidecar.v1",
+      "schema": "stfc.sidecar.ingest.v1",
+      "status": "payload-fixture-only",
+      "fixtures": ["battle-capture.json", "fleet-runtime.json"],
+      "acceptedRuntimeContract": false
+    },
+    {
+      "id": "battle.capture.v1",
+      "schema": "stfc.battle.capture.v1",
+      "status": "payload-fixture-only",
+      "fixtures": ["battle-capture.json"],
+      "acceptedRuntimeContract": false
+    },
+    {
+      "id": "battle.report.v0",
+      "schema": "sidecar-source-observation",
+      "status": "source-observed-outside-bounded-corpus",
+      "fixtures": [],
+      "acceptedRuntimeContract": false
+    },
+    {
+      "id": "battle.analytics.v0",
+      "schema": "sidecar-source-observation",
+      "status": "source-observed-outside-bounded-corpus",
+      "fixtures": [],
+      "acceptedRuntimeContract": false
+    },
+    {
+      "id": "battle.catalog-snapshot.v0",
+      "schema": "sidecar-source-observation",
+      "status": "source-observed-outside-bounded-corpus",
+      "fixtures": [],
+      "acceptedRuntimeContract": false
+    },
+    {
+      "id": "fleet.runtime-snapshot.v1",
+      "schema": "stfc.fleet.runtime_snapshot.v1",
+      "status": "payload-fixture-only",
+      "fixtures": ["fleet-runtime.json"],
+      "acceptedRuntimeContract": false
+    },
+    {
+      "id": "fleet.alert-evidence.v0",
+      "schema": "unproven",
+      "status": "unproven-current-producer",
+      "fixtures": [],
+      "acceptedRuntimeContract": false
+    }
+  ],
+  "fixtureContracts": [
+    {
+      "file": "battle-capture.json",
+      "evidence": [
+        {"label": "ingest.stfc-sidecar.v1", "schema": "stfc.sidecar.ingest.v1"},
+        {"label": "battle.capture.v1", "schema": "stfc.battle.capture.v1"}
+      ]
+    },
+    {
+      "file": "fleet-runtime.json",
+      "evidence": [
+        {"label": "ingest.stfc-sidecar.v1", "schema": "stfc.sidecar.ingest.v1"},
+        {"label": "fleet.runtime-snapshot.v1", "schema": "stfc.fleet.runtime_snapshot.v1"}
+      ]
+    }
+  ],
+  "evidenceTransitions": [
+    {
+      "id": "payload-fixture-does-not-accept-runtime-contract",
+      "fromStatus": "payload-fixture-only",
+      "outcome": "requires-new-separately-reviewed-schema",
+      "allowedInThisSchema": false,
+      "gate": "reviewed producer declaration and Bridge runtime contract"
+    },
+    {
+      "id": "unproven-alert-does-not-accept-runtime-contract",
+      "fromStatus": "unproven-current-producer",
+      "outcome": "requires-new-separately-reviewed-schema",
+      "allowedInThisSchema": false,
+      "gate": "real producer evidence"
+    }
+  ]
+}
