@@ -46,13 +46,31 @@ AZURE_CODE_SIGNING_ACCOUNT_NAME=stfcsidecarsign
 AZURE_CERTIFICATE_PROFILE_NAME=stfc-sidecar-public
 AZURE_TENANT_ID=2afe118a-d47a-4fe3-b056-a4b51e111dd6
 AZURE_CLIENT_ID=5e40e5bb-52cb-4c95-a939-30237646c389
-AZURE_CLIENT_SECRET=<GitHub environment secret>
+AZURE_SUBSCRIPTION_ID=da6a1985-e91a-4a6c-95a3-f6a2dddb40f4
 ```
 
 The GitHub workflow is `.github/workflows/release-windows.yml`. It builds on
 tag pushes and manual dispatches in the protected `windows-release` environment,
 then verifies every generated `.exe` with `signtool verify /pa /v` and
 `Get-AuthenticodeSignature`.
+
+The workflow authenticates through GitHub OIDC and `azure/login`; it does not
+use a stored Azure client secret. The Microsoft Entra application has the
+federated subject:
+
+```text
+repo:Guffawaffle/stfc-mod-sidecar:environment:windows-release
+```
+
+The GitHub environment requires approval and permits only `v*` tags or manual
+runs from `main`.
+
+Electron Builder 26.8.1's built-in `azureSignOptions` authentication preflight
+does not accept secretless Azure CLI credentials. The release config therefore
+uses Electron Builder's supported custom Windows signer callback so its normal
+app, helper, installer, and portable signing lifecycle is preserved. The
+callback invokes the pinned `TrustedSigning` 0.5.8 PowerShell module and permits
+only `AzureCliCredential`, which is populated by the preceding OIDC login.
 
 The companion also exposes local release metadata through `/api/health` and the
 About page: version, release channel, update mode, and the expected signing
@@ -71,10 +89,7 @@ Use GitHub Environment variables for non-secret profile metadata:
 - `AZURE_CERTIFICATE_PROFILE_NAME`
 - `AZURE_TENANT_ID`
 - `AZURE_CLIENT_ID`
-
-Use one GitHub Environment secret for the credential:
-
-- `AZURE_CLIENT_SECRET`
+- `AZURE_SUBSCRIPTION_ID`
 
 Set the variables with GitHub CLI:
 
@@ -86,14 +101,18 @@ gh variable set AZURE_CODE_SIGNING_ACCOUNT_NAME --env windows-release --body "st
 gh variable set AZURE_CERTIFICATE_PROFILE_NAME --env windows-release --body "stfc-sidecar-public" -R Guffawaffle/stfc-mod-sidecar
 gh variable set AZURE_TENANT_ID --env windows-release --body "2afe118a-d47a-4fe3-b056-a4b51e111dd6" -R Guffawaffle/stfc-mod-sidecar
 gh variable set AZURE_CLIENT_ID --env windows-release --body "5e40e5bb-52cb-4c95-a939-30237646c389" -R Guffawaffle/stfc-mod-sidecar
-gh secret set AZURE_CLIENT_SECRET --env windows-release -R Guffawaffle/stfc-mod-sidecar
+gh variable set AZURE_SUBSCRIPTION_ID --env windows-release --body "da6a1985-e91a-4a6c-95a3-f6a2dddb40f4" -R Guffawaffle/stfc-mod-sidecar
 ```
 
-The final command prompts for the client secret. Do not commit the secret or pass
-it as a command-line argument.
+The OIDC federated credential, required-reviewer rule, and deployment branch/tag
+rules are Azure/GitHub control-plane configuration and cannot be established by
+repository variables alone.
 
-Longer term, prefer OIDC over a stored client secret if the signing integration
-supports it cleanly for the Electron Builder flow.
+The previous `AZURE_CLIENT_SECRET` remains temporarily as a rollback credential
+while the OIDC workflow is validated. It is no longer referenced by the
+workflow. After a successful protected signing run, delete that GitHub secret,
+delete the Entra application password, and narrow the legacy signer assignment
+from the signing account to the `stfc-sidecar-public` certificate profile.
 
 ## Cert Store Fallback
 
@@ -127,6 +146,8 @@ signtool verify /pa /v "packages\desktop\dist\STFC Community Mod Companion-Porta
 - Certificate profile created for the intended publisher name.
 - `windows-release` GitHub Environment requires approval.
 - CI identity has only the signing role needed for that certificate profile.
+- GitHub OIDC federation is restricted to the `windows-release` environment.
+- The environment requires approval and allows only `main` or `v*` tags.
 - `WIN_SIGN_MODE=azure` in the release workflow.
 - NSIS setup and portable `.exe` are both built.
 - Every `.exe` passes Authenticode verification in CI.
@@ -136,4 +157,5 @@ signtool verify /pa /v "packages\desktop\dist\STFC Community Mod Companion-Porta
   reputation warnings.
 
 Never store a PFX/private key, hardware token PIN, personal Microsoft account
-password, or broad Azure admin credential in repository secrets.
+password, Azure client secret, or broad Azure admin credential in repository
+secrets.
