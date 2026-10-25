@@ -30,7 +30,7 @@ describe("community mod release catalog", () => {
             status: "ready",
             installSupported: true,
             profile: "netniv-basic",
-            repository: "netniV/stfc-mod",
+            repository: "STFC-Mod/mod",
             release: { tagName: "v1.1.0", prerelease: false },
             windowsAsset: {
                 kind: "zip",
@@ -153,7 +153,7 @@ function release(tagName, options = {}) {
         name: tagName,
         draft: false,
         prerelease: false,
-        html_url: `https://github.com/netniV/stfc-mod/releases/tag/${tagName}`,
+        html_url: `https://github.com/STFC-Mod/mod/releases/tag/${tagName}`,
         published_at: "2026-05-03T00:00:00.000Z",
         assets: [],
         ...options,
@@ -167,7 +167,7 @@ function asset(name, options = {}) {
         digest: "",
         content_type: "application/octet-stream",
         browser_download_url:
-            `https://github.com/netniV/stfc-mod/releases/download/v1.1.0/${encodeURIComponent(name)}`,
+            `https://github.com/STFC-Mod/mod/releases/download/v1.1.0/${encodeURIComponent(name)}`,
         ...options,
     };
 }

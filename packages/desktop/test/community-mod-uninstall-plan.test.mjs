@@ -164,7 +164,7 @@ function manifest(options = {}) {
         distribution: "official-basic",
         profile: "netniv-basic",
         action: "install",
-        repo: "netniV/stfc-mod",
+        repo: "STFC-Mod/mod",
         tag: "v1.1.0",
         assetName: "stfc-community-mod-v1.1.0.zip",
         dllSha256: currentSha(),

@@ -10,7 +10,7 @@ export const COMMUNITY_MOD_PROFILE_DEFINITIONS = Object.freeze({
         distribution: "official-basic",
         aliases: Object.freeze(["netniv-basic", "netniv", "official", "official-basic", "basic"]),
         release: Object.freeze({
-            repository: "netniV/stfc-mod",
+            repository: "STFC-Mod/mod",
             channel: "stable",
             installSupported: true,
         }),

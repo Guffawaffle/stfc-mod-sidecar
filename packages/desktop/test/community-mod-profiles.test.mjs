@@ -27,7 +27,7 @@ describe("community mod profiles", () => {
     });
 
     test("keeps release metadata and capability declarations together", () => {
-        expect(COMMUNITY_MOD_RELEASE_PROFILES["netniv-basic"].repository).toBe("netniV/stfc-mod");
+        expect(COMMUNITY_MOD_RELEASE_PROFILES["netniv-basic"].repository).toBe("STFC-Mod/mod");
         expect(COMMUNITY_MOD_RELEASE_PROFILES["waffle-basic"].distribution).toBe("waffle-basic");
         expect(COMMUNITY_MOD_RELEASE_PROFILES["waffle-advanced"].channel).toBe("alpha");
         expect(COMMUNITY_MOD_RELEASE_PROFILES["waffle-advanced"].distribution).toBe("advanced-alpha");

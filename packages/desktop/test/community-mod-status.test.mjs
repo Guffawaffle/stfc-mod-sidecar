@@ -90,13 +90,13 @@ describe("Community Mod status formatting", () => {
         const catalog = {
             ok: true,
             profile: "netniv-basic",
-            repository: "netniV/stfc-mod",
+            repository: "STFC-Mod/mod",
             status: "ready",
             installSupported: true,
             release: {
                 version: "1.1.0",
                 tagName: "v1.1.0",
-                htmlUrl: "https://github.com/netniV/stfc-mod/releases/tag/v1.1.0",
+                htmlUrl: "https://github.com/STFC-Mod/mod/releases/tag/v1.1.0",
             },
             windowsAsset: {
                 name: "stfc-community-mod-v1.1.0.zip",
