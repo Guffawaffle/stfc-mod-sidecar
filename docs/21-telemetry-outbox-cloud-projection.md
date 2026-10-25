@@ -85,9 +85,9 @@ Implementation must proceed in this order:
 5. Phase 4: Majel projection tables and cheap read API.
    - Majel issues: https://github.com/Guffawaffle/majel/issues/293, https://github.com/Guffawaffle/majel/issues/291
 6. Phase 5: mod producer handoff to sidecar broker.
-   - Mod issues: https://github.com/netniV/stfc-mod/issues/176, https://github.com/netniV/stfc-mod/issues/175
+   - Mod issues: https://github.com/STFC-Mod/mod/issues/176, https://github.com/STFC-Mod/mod/issues/175
 7. Phase 6: profiling and optimization, including named pipe evaluation only if justified.
-   - Mod issue: https://github.com/netniV/stfc-mod/issues/174
+   - Mod issue: https://github.com/STFC-Mod/mod/issues/174
 
 The current sidecar bridge slice is intentionally smaller than this full architecture: it exposes a token-gated, memory-backed `/api/fleet/sync` adapter for advanced testing of the strict Majel telemetry boundary. Durable local outbox, restart-safe retry, projection tables, and broader mod handoff remain gated by the dependency order below.
 

@@ -100,7 +100,7 @@ describe("Community Mod install execution", () => {
             schemaVersion: 2,
             distribution: "official-basic",
             action: "install",
-            repo: "netniV/stfc-mod",
+            repo: "STFC-Mod/mod",
             tag: "v1.1.0",
             assetName: "stfc-community-mod-v1.1.0.zip",
             dllSha256: fixture.stagedSha256,
@@ -337,7 +337,7 @@ function basicCatalog() {
     return {
         profile: "netniv-basic",
         distribution: "official-basic",
-        repository: "netniV/stfc-mod",
+        repository: "STFC-Mod/mod",
         release: { tagName: "v1.1.0" },
         windowsAsset: { name: "stfc-community-mod-v1.1.0.zip" },
     };

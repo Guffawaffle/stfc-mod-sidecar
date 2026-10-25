@@ -26,7 +26,7 @@ C:\Games\Star Trek Fleet Command\default\game
 ```
 
 6. Pick a Community Mod profile:
-   - `Basic`: release artifacts from `netniV/stfc-mod`.
+   - `Basic`: release artifacts from `STFC-Mod/mod`.
    - `Waffle Basic`: release artifacts from `Guffawaffle/stfc-mod`, including `v1.1.0-guffa.rc3`, with notification and audio settings enabled.
    - `Waffle Advanced`: the Waffle profile with Battle Log, event-store, and developer-facing views enabled.
 7. Open `Settings` -> `Notifications` for desktop notification and audio cue controls when using a Waffle profile.

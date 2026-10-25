@@ -144,7 +144,7 @@ function basicCatalog() {
     return {
         profile: "netniv-basic",
         distribution: "official-basic",
-        repository: "netniV/stfc-mod",
+        repository: "STFC-Mod/mod",
         release: { tagName: "v1.1.0" },
         windowsAsset: { name: "stfc-community-mod-v1.1.0.zip" },
     };
