@@ -1,3 +1,4 @@
+// The upstream repository transferred to STFC-Mod/mod; saved profile IDs and aliases stay stable.
 export const COMMUNITY_MOD_PROFILE_NETNIV_BASIC = "netniv-basic";
 export const COMMUNITY_MOD_PROFILE_WAFFLE_BASIC = "waffle-basic";
 export const COMMUNITY_MOD_PROFILE_WAFFLE_ADVANCED = "waffle-advanced";
